@@ -534,8 +534,10 @@ interface Trade {
   sellPrice: number;
   buyTime: number;      // epoch ms
   sellTime: number;      // epoch ms
-  profit: number;        // sellPrice*qty - buyPrice*qty
-  roi: number;            // profit / cost
+  travelCost: number;     // sum of taxi fares paid on travel legs between buyTime and sellTime; 0 if walked the whole way
+  grossProfit: number;    // sellPrice*qty - buyPrice*qty (matches the number in the sell action's own message)
+  profit: number;         // net: grossProfit - travelCost - bribe (bribe only when this trip involved a bribed customs stop)
+  roi: number;            // profit / (buyPrice*qty + travelCost)
   caught: boolean;
   bribe: number;
 }
@@ -593,11 +595,24 @@ interface PlayerStatsSnapshot {
 ```
 
 Note: `Trade.buyPrice` should be the buy-time wholesale price read from the panel
-snapshot (the buy action's own response has no price); `Trade.sellPrice`/`profit`
+snapshot (the buy action's own response has no price); `Trade.sellPrice`/`grossProfit`
 should come straight from the sell action's response message, which already contains
 both the sale total and the profit — no independent computation needed there. Both
 should be stored as **totals for the transaction**, not unit price, since quantities
 vary per trade.
+
+**Travel cost (player-flagged, easy to miss otherwise):** taxi has a real cash cost —
+confirmed from the `get_cities` payload's `travel_cost_taxi` per city (e.g. $5,500 to
+The Strip) — while walking is free. That cost must come out of profit, or ROI numbers
+will look better than they actually are. The trade matcher needs to sum the taxi fare
+of every `action=travel&method=taxi` leg observed between a trade's `buyTime` and
+`sellTime` (usually just one leg — buy locally, travel to another district, sell —
+but could be more than one if the player travels through several districts before
+settling on where to sell) into `Trade.travelCost`, using the destination city's
+`travel_cost_taxi` from the District table (walk legs contribute `0`). `profit` is then
+`grossProfit − travelCost − bribe` (bribe only applies if a customs stop was bribed
+during that same trip), and `roi` divides by `buyPrice*qty + travelCost` so the cost
+basis reflects what was actually spent to realize the trade, not just the goods.
 
 ---
 
@@ -683,8 +698,11 @@ implementation.
    (success) — confirmed for `customs_run`, defensively assumed for buy/sell too.
 3. Wire the trade matcher: open trade on a buy action (item, qty, buyDistrict from
    current_city, buyPrice from last panel snapshot, buyTime), close it on the matching
-   sell action (sellPrice + profit parsed directly from the sell message, sellTime,
+   sell action (sellPrice + grossProfit parsed directly from the sell message, sellTime,
    sellDistrict from current_city, trip duration from elapsed time and/or travel data).
+   Sum taxi fares (from any `action=travel&method=taxi` legs between buyTime and
+   sellTime, using the District table's `travel_cost_taxi`) into `travelCost`, and net
+   it (plus any bribe) out of `grossProfit` to get the real `profit`/`roi`.
 4. Wire the customs/risk pipeline: raid-screen detection on `panel.php?type=smuggling`,
    cargo attribution from last stash snapshot, resolution capture from the
    `actions/smuggling.php` follow-up call.
