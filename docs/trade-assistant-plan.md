@@ -51,15 +51,102 @@ sample payload or an answer from the player.
   is only useful as an outcome confirmation (parse "$X" out of the message as a
   cross-check, or just trust that a `customs_bribe` action firing means the prior raid
   screen's outcome was "paid").
-- **The "Border Ambush!" customs screen is very likely returned as part of a
-  buy/sell/offload action's own response** (i.e. `POST .../smuggling.php` returns the
-  raid-screen `html` instead of a normal success message, when the server's RNG decides
-  you get caught) — rather than being its own independently-fetched panel. **Needs
-  confirmation**: capture the exact request/response pair for the moment "Border
-  Ambush!" first appears (not just the `resolveCustoms` follow-up), so we can confirm
-  which action triggers it and whether cargo type/qty/value are present in that
-  specific response even though they weren't in the raid-screen HTML you already
-  captured.
+- **Corrected: the "Border Ambush!" raid screen is returned by a plain
+  `GET /api/panel.php?type=smuggling` reload, not embedded in a POST action's
+  response.** Confirmed directly: "when it showed that i was caught by border agents,
+  it is the same request, no body just a GET request." So `panel.php?type=smuggling`
+  has (at least) two possible response shapes for the exact same request — the normal
+  listing, or the raid screen — decided server-side by RNG at fetch time. Our adapter
+  for this endpoint needs to branch on response shape (e.g. presence of
+  `sgl-raid-screen` in the HTML) rather than assume one fixed shape per `type=`. The
+  raid screen still only carries district + bribe amount, no cargo type/qty/value — see
+  "Customs cargo attribution" design decision below for how we plan to fill that gap
+  without further captures.
+- **Confirmed buy action:** `POST /actions/smuggling.php`, **multipart FormData**
+  (not urlencoded) body `action=buy&item_id=<id>&qty=<n>&_csrf=<token>`. So buy *does*
+  take an explicit quantity — confirmed real example `item_id=3&qty=22` (Stolen
+  Artwork). Response is still just a message:
+  `{"ok":true,"message":"Secured 22 Stolen Artwork! Now move out securely."}` — no
+  price or resulting cash in the response, so **buy price must come from the most
+  recent smuggling-panel price snapshot for that item**, not from the action response.
+- **Confirmed sell action:** `POST /actions/smuggling.php`, FormData body
+  `action=sell&item_id=<id>&_csrf=<token>` — **no `qty` param**, consistent with the
+  single shared stash pool (selling always offloads everything you're holding).
+  Response is structured enough to parse directly:
+  `{"ok":true,"message":"Market offload: Sold 22 Counterfeit Passports for $81,503
+  ($15,503 profit)"}`. This one message gives us quantity, item name, total sale
+  value, **and profit** in one shot — parseable with something like
+  `/Sold (\d+) (.+?) for \$([\d,]+) \(\$([\d,]+) profit\)/`. Since profit = sale − cost,
+  we can back out the total buy cost (`sale − profit`) straight from this single
+  message, without needing to have perfectly tracked the earlier buy price — though we
+  still want the buy event for `buyDistrict`/`buyTime`/trip-duration fields.
+- **The earlier ambiguity is resolved:** the previous capture's
+  `"Secured 22 Counterfeit Passports!"` message *was* a genuine buy confirmation — it's
+  just that a separate sell of the held Artwork happened first (now confirmed above as
+  its own distinct `action=sell` request), and both fired in the same play session.
+  Two separate actions, as suspected, not one combined action.
+- **Confirmed: travel is a distinct subsystem with its own API file, not
+  `panel.php`/`actions/smuggling.php`.** `GET /api/panel.php?type=travel` only returns
+  a loading shell — the actual city list and travel state are fetched by a second,
+  inline-injected request the shell's own script fires immediately after:
+  `POST /api/travel.php` with FormData `action=get_cities` (no other fields), returning
+  the full city catalog plus live travel status:
+  ```json
+  {
+    "ok": true,
+    "cities": [
+      { "id": 1, "name": "Downtown", "slug": "downtown", "level_required": 0,
+        "travel_time_walk": 660, "travel_time_taxi": 330, "travel_cost_taxi": 4000,
+        "crime_bonus": "1.00", "casino_bonus": "1.00", "smuggling_bonus": "0.00",
+        "requires_boss_id": null, "boss_locked": false, "boss_lock_msg": "" },
+      { "id": 4, "name": "The Strip", "smuggling_bonus": "0.00", "boss_locked": false, "...": "..." },
+      { "id": 7, "name": "The Waterfront", "smuggling_bonus": "2.50", "boss_locked": true,
+        "boss_lock_msg": "Defeat Don Enzo Castellano in The Penthouse", "...": "..." }
+    ],
+    "current_city": 4,
+    "travelling": true,
+    "travel_remaining": 660,
+    "travel_destination": 1,
+    "vehicle_name": "2023 Monarch Imperium",
+    "vehicle_travel_reduction": 0
+  }
+  ```
+  This is the **authoritative source for the District reference table** — full
+  id/name/slug catalog, unlock requirements, and per-city bonuses — and it's fetched
+  passively every time the player opens the Travel panel, so we get it for free. It
+  also fully resolves the `current_city` id→name mapping (see table below) and gives us
+  a **live, non-inferred travel countdown** (`travel_remaining` seconds,
+  `travel_destination` id) instead of having to guess trip duration from timestamps.
+  **Actually initiating travel** is a separate call:
+  `POST /api/travel.php` with FormData `action=travel&city_id=<id>&method=walk|taxi` →
+  `{"ok":true,"message":"Travelling to Downtown! ETA: 11 minutes.","instant":false,"travel_time":660}`.
+  Travel is **not instant** — walking/taxi have real durations (taxi costs cash, is
+  faster). This means PRD item 4's "trip duration" should be computed from this real
+  `travel_time`/`travel_remaining` data, not purely inferred from buy/sell timestamp
+  deltas, and district-change detection (item 1) should fire on arrival (when
+  `current_city` actually updates), with travel-in-progress as its own visible state
+  rather than a district change.
+- **Confirmed full district catalog (from `get_cities`), superseding the earlier
+  partial table** — note there are **8 districts total, not 7**; "The Syndicate" is an
+  endgame-locked 8th location not mentioned in the original PRD:
+
+  | id | Name | Native contraband | Unlock | Smuggling bonus |
+  |---|---|---|---|---|
+  | 1 | Downtown | Counterfeit Passports | none (start) | 0% |
+  | 2 | The Docks | Uncut Diamonds | defeat boss in The Strip | 0% |
+  | 3 | The Underground | Black-Market Steroids | defeat boss in Arms District | 0% |
+  | 4 | The Strip | Stolen Artwork | defeat boss in Downtown | 0% |
+  | 5 | Arms District | Military Munitions | defeat boss in The Docks | 0% |
+  | 6 | The Penthouse | Forged Bonds | defeat boss in The Underground | 0% |
+  | 7 | The Waterfront | Rare Antiquities | defeat boss in The Penthouse | **+250%** |
+  | 8 | The Syndicate | *(unknown — not yet reached)* | defeat boss in The Waterfront | 0% |
+
+  Note the district *id* order doesn't match travel-unlock order (id 4 = The Strip
+  unlocks 2nd, right after Downtown) — so ids must never be assumed sequential by
+  in-game progression, only learned from this payload. Also worth flagging for the
+  later Best Trade feature (not v1): The Waterfront's +250% smuggling bonus suggests
+  the displayed "Live Street Value" prices may already have per-city bonuses baked in,
+  or may not — needs checking once we're at the recommendation-engine stage.
 - **Confirmed: full contraband catalog = 7 items, one per district, matching 1:1.**
   Read directly off the `type=smuggling` panel's cards:
 
@@ -125,25 +212,53 @@ sample payload or an answer from the player.
   give us real trip-duration data (PRD item 4) instead of inferring it purely from
   buy/sell timestamps.
 
-### Detection Strategy (CONFIRMED approach, changes the PRD's original assumption)
+### Customs cargo attribution — design decision (no further capture needed)
+
+The raid screen itself will likely never carry cargo type/qty/value (we've now seen it
+twice, from a plain panel GET, and it's always just district + bribe amount). Rather
+than keep hunting for a payload that may not exist, the plan is to **attribute cargo
+context from the most recently observed stash snapshot**: every smuggling-panel view
+already tells us current STASH item + quantity (via the `sgl-c-owned` card matching
+`(You are here)`/held-item state). When a raid screen appears, we look up whatever
+item+quantity we last saw the player holding and attribute the encounter to that. This
+is a reasonable inference since the player can only hold one contraband type at a time.
+`cargoValue` can be derived as `quantity × last-known wholesale price for that item`.
+
+### Detection Strategy (CONFIRMED approach, changes the PRD's original assumption, and broadened from earlier drafts of this doc)
 
 The original PRD assumed we'd need pure DOM text-matching + `MutationObserver` because
-"the game UI may change." Now that we've seen a real payload, there's a better primary
-signal available: **the panel API responses themselves are structured enough to key
-off of** (`type` param, `title` field, and predictable HTML inside `html`). Plan:
+"the game UI may change." Now that we've seen real payloads, there's a better primary
+signal available: **the panel/action/stats API responses themselves are structured
+enough to key off of** (URL pathname, request body's `action=` field, `type`/`title`
+fields, and predictable HTML inside `html`). One correction from an earlier draft of
+this doc: we originally assumed only two endpoint shapes existed
+(`/api/panel.php` for views, `/actions/*.php` for mutations) — but Travel introduced a
+**third** file, `/api/travel.php`, called directly by inline page script rather than
+through either of those patterns. So the hook must **not** hardcode an allowlist of
+exact URLs — it should intercept every request to `thefifthfamily.com`'s `/api/*.php`
+and `/actions/*.php` paths generically, and let each adapter self-identify from the
+pathname + request body + response shape, since new panels will likely introduce
+further one-off API files the same way Travel did. Plan:
 
 1. **Primary: network interception.** Hook `fetch`/`XMLHttpRequest` in the page's main
    world (MV3 content script with `"world": "MAIN"`, or `chrome.scripting.executeScript`
-   with `world: "MAIN"`) to observe three URL patterns as they happen:
+   with `world: "MAIN"`) to observe every request under `/api/*.php` and
+   `/actions/*.php`, generically, rather than a fixed list. Confirmed endpoints so far:
    - `GET /api/panel.php?type=X` — view snapshots. Parse `response.type` + `response.title`
      to know what we're looking at, then parse `response.html` (as a detached
-     `DOMParser` document, not the live page DOM) for the actual data.
-   - `POST /actions/*.php` — state transitions (buy, sell, customs resolution, etc).
-     Capture both the outgoing request body (which `action=` fired, against which item
-     id) and the response (result message, or an embedded raid-screen `html` if customs
-     triggered).
+     `DOMParser` document, not the live page DOM) for the actual data. Same `type=`
+     can return more than one response *shape* (e.g. `type=smuggling` returns either
+     the normal listing or a raid screen) — adapters must branch on shape, not just on
+     `type=`.
+   - `POST /actions/smuggling.php` — buy/sell/customs-resolution actions. Capture both
+     the outgoing request body (`action=`, `item_id`, `qty` where present) and the
+     response message.
    - `GET /api/stats.php` — frequent player-state polls; diff `current_city` for
-     district-change detection, and read `cash`/`bank`/`travelling` as supporting data.
+     district-arrival detection, and read `cash`/`bank`/`travelling`/`travel_seconds`
+     as supporting data.
+   - `POST /api/travel.php` — `action=get_cities` gives the full District reference
+     table (learned passively whenever Travel is opened); `action=travel` is the actual
+     move, giving real ETA/duration data.
 
    This is more reliable than scraping live DOM because:
    - We get the data before any animation/rendering touches it.
@@ -168,42 +283,25 @@ own JS context (`MAIN` world), because the isolated content-script world has its
 then acts as a relay: `page (MAIN world) → window.postMessage → content script
 (isolated world) → chrome.runtime.sendMessage → background worker`.
 
-### Open questions this raises — **NEEDS VERIFICATION from you**
+### Open questions this raises — **NEEDS VERIFICATION from you** (much smaller list now)
 
-Resolved by the latest capture: buy/sell panel shape, full district+item catalog,
-market timer cadence, current-district signal, and the actions-endpoint pattern.
-Still outstanding (Network tab → right-click the request → Copy Request/Response —
-we now need **request bodies too**, not just responses):
+Resolved by the last two captures: buy/sell action shapes + request bodies, the
+buy/sell ambiguity from the previous round, the full district+item+id catalog, travel
+mechanics, market timer cadence, and current-district signal. What's genuinely left,
+and none of it blocks starting implementation — these can be filled in opportunistically
+as you keep playing, not before we start building:
 
-1. **The `action=` name and request body for buying**, from clicking "Purchase"
-   (`Game.buyContraband(id)`) on a card. Need: the exact `action=` value, the param
-   name carrying the item id, whether a quantity param exists or a click always buys
-   a fixed amount (your sample shows Passports STASH jumping straight from `—` to `22`
-   — full capacity — in one visible step, which suggests one click may fill your
-   entire hold rather than buying incrementally).
-2. **The `action=` name and request body for selling/offloading**
-   (`Game.sellContraband(id)`), and its **response** — does it return structured
-   fields (item, quantity, sale price, resulting cash), or just a message like the
-   buy confirmation did?
-3. **Clear up an ambiguity in the last capture:** the message
-   `"Secured 22 Counterfeit Passports! Now move out securely."` reads like a *buy*
-   confirmation (Passports, not Artwork), but it was preceded by the Stolen Artwork
-   stash (22 units) disappearing and Daily Profit jumping by ~$102k — which only
-   makes sense if a *sell* of the Artwork also happened. Was there a separate sell
-   request that wasn't captured, or does one action do both (auto-sell your current
-   hold, then buy the new item) in a single POST? Please capture buy and sell as two
-   **separate, isolated** clicks so we can see each request/response in isolation.
-4. **The request/response pair for the moment "Border Ambush!" first appears** —
-   not the `resolveCustoms` follow-up, but whichever buy/sell/offload action's
-   response actually contains the raid-screen `html`. We still don't have cargo
-   type/quantity/cargo-value for a customs event, only district + bribe amount.
-5. **Is "Border Seizure Risk" (the global, volume-scaling % on the smuggling panel)
-   the same thing as the PRD's per-item "displayed risk", or is there a separate
-   per-encounter risk % shown only during an actual customs raid?**
-6. **`current_city` id mapping** — optional, since we can learn it dynamically by
-   pairing `stats.php`'s `current_city` with the district name shown in the
-   `smuggling` panel at the same moment, but if you happen to note the id while
-   visiting each district that saves us a step.
+1. **`customs_run` and `customs_surrender` response shapes** — we only have
+   `customs_bribe`'s response captured. Not blocking (we already know the resolution
+   type from which button/action fired), just nice to have the exact message text for
+   consistent outcome parsing.
+2. **Is "Border Seizure Risk" (global, volume-scaling %) the same number the PRD calls
+   "displayed risk", or is there a separate per-encounter % shown only during an actual
+   raid?** We're proceeding with "Border Seizure Risk at time of encounter" as the
+   `displayedRisk` value for CustomsEvent unless you spot a distinct number on the raid
+   screen itself.
+3. Whether taxi travel's response differs meaningfully from walk's beyond
+   `travel_time`/cost — low priority, same shape expected.
 
 ---
 
@@ -312,25 +410,33 @@ interface PriceSnapshot {
 interface CustomsEvent {
   id: string;
   timestamp: number;
-  item: string;            // still unconfirmed whether this is present on the raid screen itself
+  item: string;            // attributed from the most recent stash snapshot, not present on the raid screen itself
   quantity: number;        // ditto
-  cargoValue: number;      // ditto
+  cargoValue: number;      // quantity * last-known wholesale price
   bribe: number;
-  displayedRisk: number;   // ditto — may just be the smuggling panel's global "Border Seizure Risk"
+  displayedRisk: number;   // = smuggling panel's global "Border Seizure Risk" at time of encounter, pending Q2 above
   district: string;
   resolution: 'bribe' | 'run' | 'surrender';
-  caught: boolean;         // for 'bribe'/'surrender' caught is trivially known; 'run' outcome needs its own confirmation payload
+  caught: boolean;         // true unless resolution === 'bribe' (bribe = passed) — 'run' outcome TBD, see Q1 above
 }
 
 interface District {
-  id: string;       // maps to stats.php's numeric current_city, learned dynamically
+  id: number;        // confirmed via GET/POST /api/travel.php action=get_cities — 1 Downtown, 2 Docks, 3 Underground,
+                      // 4 The Strip, 5 Arms District, 6 Penthouse, 7 Waterfront, 8 The Syndicate (locked)
   name: string;
+  slug: string;
+  nativeItem: string;       // the one contraband item bought here
+  smugglingBonus: number;    // e.g. Waterfront = 2.50 (+250%) — relevant to Best Trade later, not v1
+  bossLocked: boolean;
 }
 ```
 
-Note: `Trade.buyPrice`/`sellPrice` should be captured as **totals for the transaction**
-(not just unit price) if buying/selling fills to full stash capacity per click, per the
-open question above about how quantity actually works.
+Note: `Trade.buyPrice` should be the buy-time wholesale price read from the panel
+snapshot (the buy action's own response has no price); `Trade.sellPrice`/`profit`
+should come straight from the sell action's response message, which already contains
+both the sale total and the profit — no independent computation needed there. Both
+should be stored as **totals for the transaction**, not unit price, since quantities
+vary per trade.
 
 ---
 
@@ -369,17 +475,28 @@ same shape).
 
 ## Next Steps
 
-1. **You:** capture the remaining items listed under "Open questions" above — this
-   time include **request bodies**, not just responses (Network tab → click the
-   request → Payload/Request tab). Specifically: an isolated buy click, an isolated
-   sell click (don't do both back-to-back so we can tell them apart), and — if you
-   can catch it — the request/response where "Border Ambush!" first appears rather
-   than the resolution click.
-2. Once those are in hand, write adapters against the *real* payloads (not
-   assumptions) for: district detection (via `stats.php`'s `current_city`), smuggling
-   panel (buy+sell listings), buy/sell actions, customs detection + resolution.
-3. Stand up the Dexie schema + background message router + main-world fetch/XHR hook
-   (covering `panel.php`, `actions/*.php`, and `stats.php`).
-4. Verify passive capture against real gameplay before touching any UI.
-5. Only then: build the popup dashboard (item 7) and Best Trade (item 8) as a
+We now have enough confirmed, real payload shapes to start building — the remaining
+open questions (customs_run/surrender response shape, displayed-risk source, taxi vs
+walk response parity) are minor and can be filled in opportunistically during testing
+rather than blocking the start of implementation.
+
+1. Stand up the Dexie schema + `shared/types.ts`/`shared/messaging.ts` + background
+   message router + main-world fetch/XHR hook, generically intercepting `/api/*.php`
+   and `/actions/*.php` (not a hardcoded URL list).
+2. Write adapters against the *real* captured payloads for: `stats.php` (district
+   arrival + cash/bank), `panel.php?type=smuggling` (both response shapes: listing and
+   raid screen), `actions/smuggling.php` (buy + sell request/response parsing,
+   including the sell-message regex), `travel.php` (`get_cities` → District table,
+   `travel` → trip start/duration).
+3. Wire the trade matcher: open trade on a buy action (item, qty, buyDistrict from
+   current_city, buyPrice from last panel snapshot, buyTime), close it on the matching
+   sell action (sellPrice + profit parsed directly from the sell message, sellTime,
+   sellDistrict from current_city, trip duration from elapsed time and/or travel data).
+4. Wire the customs/risk pipeline: raid-screen detection on `panel.php?type=smuggling`,
+   cargo attribution from last stash snapshot, resolution capture from the
+   `actions/smuggling.php` follow-up call.
+5. Verify passive capture against real gameplay (a handful of real buy/sell/travel/
+   customs cycles) before touching any UI — confirm Dexie records match what actually
+   happened in a play session.
+6. Only then: build the popup dashboard (item 7) and Best Trade (item 8) as a
    follow-up feature.
