@@ -202,9 +202,18 @@ sample payload or an answer from the player.
     captured but worth defending against defensively in the adapter).
   - **Success** (evaded): `{"ok":true,"message":"You slipped past the guards! Goods
     secured."}`, `caught: false`. Per the player, running is "a 50/50 chance" of
-    evading vs. getting jailed — the jailed-outcome message text still isn't captured,
-    but `caught: true` can be inferred whenever a `customs_run` fires and the
-    subsequent `stats.php` poll shows `status.jailed: true`.
+    evading vs. getting jailed — the jailed-outcome message text still isn't captured
+    yet (player is still trying to reproduce it), but `caught: true` can be inferred
+    whenever a `customs_run` fires and the subsequent `stats.php` poll shows
+    `status.jailed: true`.
+  - **Confirmed gameplay detail (not yet captured as a payload): getting jailed on a
+    failed `customs_run` also forfeits the cargo**, same as `surrender` — jail time is
+    not the only cost. This is exactly why the player says they "mostly do bribes":
+    `run` risks both jail *and* the cargo for a shot at paying nothing, whereas `bribe`
+    guarantees keeping the cargo for a known cost. Matters for the risk/EV model later
+    (Best Trade, follow-up phase): `run`'s expected value must subtract full cargo
+    value in the caught branch, not just an energy/time cost — it is not simply
+    "free if it works, jail if it doesn't."
 - **Confirmed action: `action=customs_surrender`.** Same endpoint, FormData
   `action=customs_surrender&_csrf=<token>`. Response:
   `{"ok":true,"message":"You dropped the bags and walked away. Safe, but broke."}` —
@@ -551,6 +560,7 @@ interface CustomsEvent {
   district: string;
   resolution: 'bribe' | 'run' | 'surrender';
   caught: boolean;         // false for 'bribe' and 'surrender' (both confirmed non-jailing); for 'run', infer from status.jailed on the next stats.php poll (exact failure message not yet captured, non-blocking)
+  cargoLost: boolean;      // true for 'surrender' always, and for 'run' whenever caught=true — a failed run forfeits cargo same as surrender, it's not just jail time. false for 'bribe' (cargo kept) and for a successful 'run'.
 }
 
 interface District {
