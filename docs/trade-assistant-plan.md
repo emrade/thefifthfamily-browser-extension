@@ -5,6 +5,11 @@ This is the first feature of **The Fifth Family Enhancements**, a browser extens
 automatically records trading, customs, and market data so the player never has to
 manually track buy/sell prices, bribes, or catch rates again.
 
+**Note on scope:** the extension as a whole is bigger than this one feature — Trade
+Assistant is the first of what should be several. The popup must reflect that from the
+start: a general "Fifth Family Enhancements" shell with light navigation, not a UI that
+Trade Assistant dominates. See "Popup Information Architecture" below.
+
 Status: **draft — refining before implementation.** Sections marked `CONFIRMED` are
 based on observed network traffic. Sections marked `NEEDS VERIFICATION` still need a
 sample payload or an answer from the player.
@@ -200,6 +205,14 @@ sample payload or an answer from the player.
     evading vs. getting jailed — the jailed-outcome message text still isn't captured,
     but `caught: true` can be inferred whenever a `customs_run` fires and the
     subsequent `stats.php` poll shows `status.jailed: true`.
+- **Confirmed action: `action=customs_surrender`.** Same endpoint, FormData
+  `action=customs_surrender&_csrf=<token>`. Response:
+  `{"ok":true,"message":"You dropped the bags and walked away. Safe, but broke."}` —
+  `caught: false` (no jail), but the cargo is lost (hence "broke": cargo value forfeit,
+  no bribe paid, no energy spent). This closes out all three customs resolutions —
+  `bribe`, `run`, and `surrender` — the only remaining unknown is the message text for
+  a *failed* `customs_run` (caught while fleeing), which is nice-to-have only since
+  `caught: true` can already be inferred from `status.jailed` on the next stats poll.
 - **Confirmed: full contraband catalog = 7 items, one per district, matching 1:1.**
   Read directly off the `type=smuggling` panel's cards:
 
@@ -336,22 +349,19 @@ own JS context (`MAIN` world), because the isolated content-script world has its
 then acts as a relay: `page (MAIN world) → window.postMessage → content script
 (isolated world) → chrome.runtime.sendMessage → background worker`.
 
-### Open questions this raises — **NEEDS VERIFICATION from you** (very small list now)
+### Open questions this raises — **NEEDS VERIFICATION from you** (down to one, non-blocking, item)
 
 Resolved: buy/sell action shapes, the buy/sell ambiguity from an earlier round, the
-full district+item+id catalog, travel mechanics, market timer cadence, current-district
-signal, `customs_run`'s shape, the error-vs-message response convention, and (per the
-community guide, as a prior rather than ground truth) the general shape of the risk
-formula and price-rotation band. None of what's left blocks starting implementation:
+full district+item+id catalog, travel mechanics (walk and taxi), market timer cadence,
+current-district signal, all three `customs_*` resolutions (`bribe`/`run`/`surrender`),
+the error-vs-message response convention (confirmed consistent across both customs and
+travel), and (per the community guide, as a prior rather than ground truth) the general
+shape of the risk formula and price-rotation band. Only one loose end remains, and it
+doesn't block anything:
 
-1. **`action=customs_surrender`'s exact response message** — not captured yet, though
-   its effect (lose the cargo, no bribe/energy cost) is already clear from the UI copy.
-2. **The message text for a *failed* `customs_run`** (caught while trying to flee) —
+1. **The message text for a *failed* `customs_run`** (caught while trying to flee) —
    we can infer `caught: true` from `status.jailed` on the next `stats.php` poll even
    without the exact message, so this is nice-to-have only.
-3. Whether `{"ok":false,"error":"..."}` also shows up for buy (insufficient cash) and
-   sell (empty stash / wrong district) failures the same way it did for `customs_run`
-   — reasonable to assume yes and defend against it in the adapter regardless.
 
 ---
 
@@ -413,11 +423,35 @@ moment travel completes, so the player doesn't have to babysit the tab.
 
 ---
 
+## Popup Information Architecture
+
+This is an extension-wide concern, not something Trade Assistant owns — but since
+Trade Assistant is the first feature, it's the one establishing the pattern everything
+else will slot into later. The popup is a small shell with two levels:
+
+- **Home (default view):** the "Fifth Family Enhancements" landing view. Shows Live
+  Player Stats (cash, bank, energy/stamina/nerve/vitality, level/XP, heat, current
+  district, travel status) since that's general game state, not specific to any one
+  feature — plus a short nav list of installed features ("Trade Assistant" today,
+  more later). This is intentionally light: a glance-and-close view, not a dashboard.
+- **Feature views (opt-in via nav):** Trade Assistant's own screens live behind
+  navigating into it from Home — that's where its future dashboard/Best Trade/trade
+  history views will eventually go, once the follow-up phase builds them. v1 has
+  nothing to show here yet since the dashboard is deferred, but the navigation
+  structure should exist from the start so it isn't a retrofit later.
+
+Routing is intentionally minimal — a small amount of local state in `App.tsx`
+switching between Home and a feature's root view is enough; no router library needed
+for something this size.
+
+---
+
 ## Proposed Architecture
 
 Mirroring the conventions from `simplemmo-browser-extension` (feature-folder pattern,
 `chrome.*` APIs, Vite + `vite-plugin-web-extension`), extended with a real local
-database since this feature accumulates much more data than a bounty watcher does:
+database since this feature accumulates much more data than a bounty watcher does, and
+with a popup shell that leaves room for future features per the IA above:
 
 ```
 thefifthfamily-browser-extension/
@@ -445,9 +479,12 @@ thefifthfamily-browser-extension/
 │   │           ├── districtPanel.ts         # parse current-district signal
 │   │           └── travelPanel.ts           # parse get_cities/travel/cancel
 │   ├── popup/
-│   │   ├── App.tsx
+│   │   ├── App.tsx                          # shell: minimal nav state between Home and feature root views
+│   │   ├── views/
+│   │   │   ├── Home.tsx                     # default view — nav list of installed features
+│   │   │   └── LiveStats.tsx                # general player-stats display, rendered on Home
 │   │   └── features/tradeAssistant/
-│   │       ├── LiveStats.tsx                # v1 — reads latest stats.php snapshot from chrome.storage.local
+│   │       ├── TradeAssistantHome.tsx       # feature entry point, reached via nav from Home — empty in v1
 │   │       ├── Dashboard.tsx                # deferred — today/lifetime profit, ROI, trips, caught %
 │   │       └── BestTrade.tsx                # deferred
 │   ├── shared/
@@ -513,7 +550,7 @@ interface CustomsEvent {
   displayedRisk: number;   // = smuggling panel's global "Border Seizure Risk" at time of encounter (not the community formula — read the real number off the panel)
   district: string;
   resolution: 'bribe' | 'run' | 'surrender';
-  caught: boolean;         // true unless resolution === 'bribe' (bribe = passed) — 'run' outcome TBD, see Q1 above
+  caught: boolean;         // false for 'bribe' and 'surrender' (both confirmed non-jailing); for 'run', infer from status.jailed on the next stats.php poll (exact failure message not yet captured, non-blocking)
 }
 
 interface District {
@@ -583,14 +620,18 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
 - Every time the network hook sees a fresh `stats.php` response, the background worker
   writes it (parsed, with `current_city` resolved to a district name) to
   `chrome.storage.local` under a single fixed key — no history needed, just the latest.
+- **Lives on the popup's Home view** (`popup/views/LiveStats.tsx`, rendered by
+  `popup/views/Home.tsx`), not under Trade Assistant's feature folder — it's general
+  game state, not something specific to trading, and Home is meant to stay the
+  lightweight landing view per the Popup Information Architecture above.
 - The popup reads that key on open and renders it directly. Since MV3 popups only exist
   while actually open, "live" mostly means "as fresh as the last time the hook saw a
   stats poll" (which happens frequently while the game tab is open) rather than a
   constantly-ticking display — good enough for a stats-at-a-glance view, and far
   simpler than wiring up cross-context live updates for something this low-stakes.
 - This does **not** change the "capture first, dashboard later" decision below — the
-  profit/ROI/Best Trade dashboard is still deferred. This is a distinct, much smaller
-  popup view sourced from data we're capturing anyway.
+  profit/ROI/Best Trade dashboard is still deferred, and still lives behind navigating
+  into Trade Assistant specifically, not on Home.
 
 ---
 
@@ -615,10 +656,10 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
 
 ## Next Steps
 
-We now have enough confirmed, real payload shapes to start building — the remaining
-open questions (customs_run/surrender response shape, displayed-risk source, taxi vs
-walk response parity) are minor and can be filled in opportunistically during testing
-rather than blocking the start of implementation.
+We now have enough confirmed, real payload shapes to start building — the one
+remaining open question (the failed-`customs_run` message text) is minor and can be
+filled in opportunistically during testing rather than blocking the start of
+implementation.
 
 1. Stand up the Dexie schema + `shared/types.ts`/`shared/messaging.ts` + background
    message router + main-world fetch/XHR hook, generically intercepting `/api/*.php`
