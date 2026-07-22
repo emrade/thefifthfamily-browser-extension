@@ -147,6 +147,53 @@ sample payload or an answer from the player.
   later Best Trade feature (not v1): The Waterfront's +250% smuggling bonus suggests
   the displayed "Live Street Value" prices may already have per-city bonuses baked in,
   or may not — needs checking once we're at the recommendation-engine stage.
+- **Community-sourced mechanics guide (unofficial, treat as a prior, not ground
+  truth)** — a player-written guide gives formulas that are broadly consistent with
+  what we've observed, but not authoritative:
+  - Sell-side prices shift server-wide every 10 minutes (consistent with the
+    `smug-price-timer` countdown), with each item's live price randomized somewhere in
+    a **0.85×–1.43× band around its wholesale/base price**.
+  - You **cannot sell in an item's origin district** — matches what we've seen (the
+    origin card only ever shows a buy button, never sell).
+  - Cargo capacity: starts at 1, base max 20, Academy training adds up to +26%, hard
+    cap 26 absolute. (Our test account's observed "22 / 22, +2 from Academy" is
+    consistent with a partial Academy bonus, well under the hard cap.)
+  - **Claimed customs risk formula:** `5% base + (cargo fullness% × 0.6)`, capped at
+    95%. **This does not cleanly match our own captured data** — our first sample
+    showed `Border Seizure Risk: 50%` at `22/22` (100% fullness relative to that
+    account's *effective* capacity), where the formula predicts 65%. It's plausible
+    fullness is computed against the *hard cap* (26) rather than effective capacity —
+    `22/26 ≈ 84.6%` → `5 + 84.6×0.6 ≈ 55.8%`, still not an exact match to 50% but
+    closer. **We're treating this formula as a useful prior/sanity-check, not as
+    something to hardcode** — this is precisely why the PRD's "actual catch rate vs.
+    displayed risk" risk database (item 6) matters: even a community-reverse-engineered
+    formula may be stale, approximate, or missing hidden modifiers, and our own
+    empirical tracking is the only way to find out for sure.
+  - The guide's per-item buy-price numbers match what we've actually observed
+    (Passports $3,000, Diamonds $5,000, Artwork $8,000 — all confirmed against real
+    captures). Its "Market Range"/"Best Sell" columns, however, contain internal
+    inconsistencies (e.g. Stolen Artwork's stated "Best Sell" of $11,440 falls outside
+    its own stated "Market Range" of $6,800–$7,140; Forged Bonds and Black-Market
+    Steroids share an identical "Best Sell" figure that looks like a copy/paste error).
+    **Conclusion: don't hardcode any of the guide's range/multiplier numbers into the
+    extension** — keep sourcing prices live from captured panel snapshots, and let the
+    guide's *shape* (10-min rotation, 0.85–1.43× band) inform the Market Timeline
+    design, not its exact numbers.
+- **Confirmed action: `action=customs_run`.** Same endpoint
+  (`POST /actions/smuggling.php`), FormData `action=customs_run&_csrf=<token>`. Two
+  observed outcomes:
+  - **Precondition failure** (not enough energy): `{"ok":false,"error":"Need 50 Energy
+    to bolt!"}` — note the **error shape differs from success**: failures use an
+    `error` string field, successes use a `message` string field. Every action adapter
+    must check `ok` first and branch on `error` vs `message` accordingly — this
+    presumably applies to buy/sell too (an insufficient-cash buy or empty-stash sell
+    would plausibly return the same `{"ok":false,"error":"..."}` shape, not yet
+    captured but worth defending against defensively in the adapter).
+  - **Success** (evaded): `{"ok":true,"message":"You slipped past the guards! Goods
+    secured."}`, `caught: false`. Per the player, running is "a 50/50 chance" of
+    evading vs. getting jailed — the jailed-outcome message text still isn't captured,
+    but `caught: true` can be inferred whenever a `customs_run` fires and the
+    subsequent `stats.php` poll shows `status.jailed: true`.
 - **Confirmed: full contraband catalog = 7 items, one per district, matching 1:1.**
   Read directly off the `type=smuggling` panel's cards:
 
@@ -283,24 +330,23 @@ own JS context (`MAIN` world), because the isolated content-script world has its
 then acts as a relay: `page (MAIN world) → window.postMessage → content script
 (isolated world) → chrome.runtime.sendMessage → background worker`.
 
-### Open questions this raises — **NEEDS VERIFICATION from you** (much smaller list now)
+### Open questions this raises — **NEEDS VERIFICATION from you** (very small list now)
 
-Resolved by the last two captures: buy/sell action shapes + request bodies, the
-buy/sell ambiguity from the previous round, the full district+item+id catalog, travel
-mechanics, market timer cadence, and current-district signal. What's genuinely left,
-and none of it blocks starting implementation — these can be filled in opportunistically
-as you keep playing, not before we start building:
+Resolved: buy/sell action shapes, the buy/sell ambiguity from an earlier round, the
+full district+item+id catalog, travel mechanics, market timer cadence, current-district
+signal, `customs_run`'s shape, the error-vs-message response convention, and (per the
+community guide, as a prior rather than ground truth) the general shape of the risk
+formula and price-rotation band. None of what's left blocks starting implementation:
 
-1. **`customs_run` and `customs_surrender` response shapes** — we only have
-   `customs_bribe`'s response captured. Not blocking (we already know the resolution
-   type from which button/action fired), just nice to have the exact message text for
-   consistent outcome parsing.
-2. **Is "Border Seizure Risk" (global, volume-scaling %) the same number the PRD calls
-   "displayed risk", or is there a separate per-encounter % shown only during an actual
-   raid?** We're proceeding with "Border Seizure Risk at time of encounter" as the
-   `displayedRisk` value for CustomsEvent unless you spot a distinct number on the raid
-   screen itself.
-3. Whether taxi travel's response differs meaningfully from walk's beyond
+1. **`action=customs_surrender`'s exact response message** — not captured yet, though
+   its effect (lose the cargo, no bribe/energy cost) is already clear from the UI copy.
+2. **The message text for a *failed* `customs_run`** (caught while trying to flee) —
+   we can infer `caught: true` from `status.jailed` on the next `stats.php` poll even
+   without the exact message, so this is nice-to-have only.
+3. Whether `{"ok":false,"error":"..."}` also shows up for buy (insufficient cash) and
+   sell (empty stash / wrong district) failures the same way it did for `customs_run`
+   — reasonable to assume yes and defend against it in the adapter regardless.
+4. Whether taxi travel's response differs meaningfully from walk's beyond
    `travel_time`/cost — low priority, same shape expected.
 
 ---
@@ -414,7 +460,7 @@ interface CustomsEvent {
   quantity: number;        // ditto
   cargoValue: number;      // quantity * last-known wholesale price
   bribe: number;
-  displayedRisk: number;   // = smuggling panel's global "Border Seizure Risk" at time of encounter, pending Q2 above
+  displayedRisk: number;   // = smuggling panel's global "Border Seizure Risk" at time of encounter (not the community formula — read the real number off the panel)
   district: string;
   resolution: 'bribe' | 'run' | 'surrender';
   caught: boolean;         // true unless resolution === 'bribe' (bribe = passed) — 'run' outcome TBD, see Q1 above
@@ -487,7 +533,9 @@ rather than blocking the start of implementation.
    arrival + cash/bank), `panel.php?type=smuggling` (both response shapes: listing and
    raid screen), `actions/smuggling.php` (buy + sell request/response parsing,
    including the sell-message regex), `travel.php` (`get_cities` → District table,
-   `travel` → trip start/duration).
+   `travel` → trip start/duration). Every action adapter must check `ok` first and
+   branch on `error` (failure, e.g. `customs_run` without enough energy) vs. `message`
+   (success) — confirmed for `customs_run`, defensively assumed for buy/sell too.
 3. Wire the trade matcher: open trade on a buy action (item, qty, buyDistrict from
    current_city, buyPrice from last panel snapshot, buyTime), close it on the matching
    sell action (sellPrice + profit parsed directly from the sell message, sellTime,
