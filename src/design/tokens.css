@@ -1,0 +1,117 @@
+/* The Fifth Family Enhancements — Design System
+ *
+ * The game's own UI already commits to a visual language: Playfair Display for
+ * headers, Inter for body text, Courier New for money/ledger figures, and a fixed
+ * semantic palette (green = profit, gold = money/emphasis, red = danger/heat,
+ * blue = info/travel, purple = rare). We deliberately reuse those exact semantic
+ * hexes so a glance at the extension and a glance at the game read as the same
+ * language — green really does mean the same thing in both places. The neutral
+ * (background/ink) tones are our own: warmer and more "aged ledger paper" than the
+ * game's cooler near-black, which is where this popup gets its own identity without
+ * breaking from its world.
+ */
+
+:root {
+  /* ── Backgrounds ─────────────────────────────── */
+  --ff-bg:            #0d0b08;
+  --ff-surface:       #17130e;
+  --ff-surface-raised:#1f1a13;
+  --ff-hover:         #241e15;
+
+  /* ── Borders ──────────────────────────────────── */
+  --ff-border:        rgba(201, 168, 76, 0.16);
+  --ff-border-strong:  rgba(201, 168, 76, 0.34);
+
+  /* ── Accents (semantic — matched to the game's own palette) ─ */
+  --ff-gold:        #c9a84c;   /* our own chrome accent — antique gold, dividers/crest */
+  --ff-gold-bright: #fbbf24;   /* == game's amber — money emphasis, active states */
+  --ff-red:         #ef4444;   /* == game's danger/heat/risk */
+  --ff-green:       #34d399;   /* == game's profit/success */
+  --ff-blue:        #60a5fa;   /* == game's info/travel */
+  --ff-purple:      #a78bfa;   /* == game's rare/leverage */
+
+  /* ── Text ─────────────────────────────────────── */
+  --ff-ink:        #f1ede2;
+  --ff-ink-muted:  #a89e8c;
+  --ff-ink-faint:  #6b6455;
+
+  /* ── Typography ───────────────────────────────── */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'Courier New', ui-monospace, Menlo, monospace;
+
+  /* ── Radius ───────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* ── Easing ───────────────────────────────────── */
+  --ease-snap: cubic-bezier(.22, 1, .36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+@keyframes ff-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes ff-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .5; }
+}
+
+/* ── Shared utility classes ───────────────────────── */
+
+.ff-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ff-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  margin: 4px 0 10px;
+}
+
+.ff-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ff-border-strong), transparent);
+}
+
+.ff-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.ff-pill--gold {
+  background: rgba(251, 191, 36, .08);
+  border: 1px solid rgba(251, 191, 36, .28);
+  color: var(--ff-gold-bright);
+}
+
+.ff-pill--blue {
+  background: rgba(96, 165, 250, .08);
+  border: 1px solid rgba(96, 165, 250, .28);
+  color: var(--ff-blue);
+}

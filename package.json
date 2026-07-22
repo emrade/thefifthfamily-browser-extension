@@ -1,0 +1,24 @@
+{
+  "name": "thefifthfamily-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "type-check": "tsc --noEmit",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "dexie": "^4.0.10",
+    "preact": "^10.24.3",
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.279",
+    "@types/webextension-polyfill": "^0.10.7",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vite-plugin-web-extension": "^4.2.0"
+  }
+}
