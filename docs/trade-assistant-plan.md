@@ -121,11 +121,17 @@ sample payload or an answer from the player.
   `POST /api/travel.php` with FormData `action=travel&city_id=<id>&method=walk|taxi` →
   `{"ok":true,"message":"Travelling to Downtown! ETA: 11 minutes.","instant":false,"travel_time":660}`.
   Travel is **not instant** — walking/taxi have real durations (taxi costs cash, is
-  faster). This means PRD item 4's "trip duration" should be computed from this real
-  `travel_time`/`travel_remaining` data, not purely inferred from buy/sell timestamp
-  deltas, and district-change detection (item 1) should fire on arrival (when
-  `current_city` actually updates), with travel-in-progress as its own visible state
-  rather than a district change.
+  faster). Taxi confirmed to use the identical request/response shape (just
+  `method=taxi`, e.g. `city_id=4`/`method=taxi` → `"Travelling to The Strip! ETA: 5
+  minutes.","travel_time":330`), including the same success/error convention below —
+  an under-funded taxi attempt returns `{"ok":false,"error":"You need $4,000 for this
+  travel method."}`, confirming the `ok:false`/`error` failure shape (see the
+  `customs_run` note below) is used consistently across at least travel and customs
+  actions, not just one-off. This means PRD item 4's "trip duration" should be computed
+  from this real `travel_time`/`travel_remaining` data, not purely inferred from
+  buy/sell timestamp deltas, and district-change detection (item 1) should fire on
+  arrival (when `current_city` actually updates), with travel-in-progress as its own
+  visible state rather than a district change.
 - **Confirmed full district catalog (from `get_cities`), superseding the earlier
   partial table** — note there are **8 districts total, not 7**; "The Syndicate" is an
   endgame-locked 8th location not mentioned in the original PRD:
@@ -346,8 +352,6 @@ formula and price-rotation band. None of what's left blocks starting implementat
 3. Whether `{"ok":false,"error":"..."}` also shows up for buy (insufficient cash) and
    sell (empty stash / wrong district) failures the same way it did for `customs_run`
    — reasonable to assume yes and defend against it in the adapter regardless.
-4. Whether taxi travel's response differs meaningfully from walk's beyond
-   `travel_time`/cost — low priority, same shape expected.
 
 ---
 
