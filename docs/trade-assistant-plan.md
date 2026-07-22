@@ -201,18 +201,26 @@ sample payload or an answer from the player.
     would plausibly return the same `{"ok":false,"error":"..."}` shape, not yet
     captured but worth defending against defensively in the adapter).
   - **Success** (evaded): `{"ok":true,"message":"You slipped past the guards! Goods
-    secured."}`, `caught: false`. Per the player, running is "a 50/50 chance" of
-    evading vs. getting jailed — the jailed-outcome message text still isn't captured
-    yet (player is still trying to reproduce it), but `caught: true` can be inferred
-    whenever a `customs_run` fires and the subsequent `stats.php` poll shows
-    `status.jailed: true`.
-  - **Confirmed gameplay detail (not yet captured as a payload): getting jailed on a
-    failed `customs_run` also forfeits the cargo**, same as `surrender` — jail time is
-    not the only cost. This is exactly why the player says they "mostly do bribes":
-    `run` risks both jail *and* the cargo for a shot at paying nothing, whereas `bribe`
-    guarantees keeping the cargo for a known cost. Matters for the risk/EV model later
-    (Best Trade, follow-up phase): `run`'s expected value must subtract full cargo
-    value in the caught branch, not just an energy/time cost — it is not simply
+    secured."}`, `caught: false`.
+  - **Failure (caught)** — now confirmed:
+    `{"ok":false,"error":"BUSTED! Tackled to the ground. Goods seized. Jailed for 1h
+    50m (reduced from 2h 0m by your perks)."}`. Note this uses the **failure shape**
+    (`error`, not `message`) even though it's a "normal" gameplay outcome, not a
+    precondition failure like the energy case — confirms `ok:false`/`error` is the
+    general failure convention for this action, not just for "can't even attempt it."
+    Confirms `caught: true` and `cargoLost: true` directly (no need to infer from a
+    following `stats.php` poll, though that remains a valid cross-check). The message
+    also gives actual jail duration in two forms — base (`2h 0m`) and
+    perk-reduced (`1h 50m`) — confirming some player perk reduces jail time; worth
+    parsing both numbers if useful later, though `stats.php`'s `jail_seconds` already
+    gives an exact figure.
+  - Per the player, running is "a 50/50 chance" of evading vs. getting jailed. Getting
+    jailed on a failed `customs_run` **also forfeits the cargo**, same as `surrender` —
+    jail time is not the only cost. This is exactly why the player says they "mostly do
+    bribes": `run` risks both jail *and* the cargo for a shot at paying nothing, whereas
+    `bribe` guarantees keeping the cargo for a known cost. Matters for the risk/EV model
+    later (Best Trade, follow-up phase): `run`'s expected value must subtract full
+    cargo value in the caught branch, not just an energy/time cost — it is not simply
     "free if it works, jail if it doesn't."
 - **Confirmed action: `action=customs_surrender`.** Same endpoint, FormData
   `action=customs_surrender&_csrf=<token>`. Response:
@@ -358,19 +366,15 @@ own JS context (`MAIN` world), because the isolated content-script world has its
 then acts as a relay: `page (MAIN world) → window.postMessage → content script
 (isolated world) → chrome.runtime.sendMessage → background worker`.
 
-### Open questions this raises — **NEEDS VERIFICATION from you** (down to one, non-blocking, item)
+### Open questions — **none remaining**
 
-Resolved: buy/sell action shapes, the buy/sell ambiguity from an earlier round, the
-full district+item+id catalog, travel mechanics (walk and taxi), market timer cadence,
-current-district signal, all three `customs_*` resolutions (`bribe`/`run`/`surrender`),
-the error-vs-message response convention (confirmed consistent across both customs and
-travel), and (per the community guide, as a prior rather than ground truth) the general
-shape of the risk formula and price-rotation band. Only one loose end remains, and it
-doesn't block anything:
-
-1. **The message text for a *failed* `customs_run`** (caught while trying to flee) —
-   we can infer `caught: true` from `status.jailed` on the next `stats.php` poll even
-   without the exact message, so this is nice-to-have only.
+Every mechanic needed for v1 has now been confirmed against real payloads: buy/sell
+action shapes, the full district+item+id catalog, travel mechanics (walk and taxi,
+including cost), market timer cadence, current-district signal, all three
+`customs_*` resolutions (`bribe`/`run`/`surrender`) including both `run` outcomes
+(evaded and caught/jailed/cargo-seized), the `error`-vs-`message` response convention,
+and (per the community guide, as a prior rather than ground truth) the general shape
+of the risk formula and price-rotation band. Nothing is blocking implementation.
 
 ---
 
@@ -561,7 +565,7 @@ interface CustomsEvent {
   displayedRisk: number;   // = smuggling panel's global "Border Seizure Risk" at time of encounter (not the community formula — read the real number off the panel)
   district: string;
   resolution: 'bribe' | 'run' | 'surrender';
-  caught: boolean;         // false for 'bribe' and 'surrender' (both confirmed non-jailing); for 'run', infer from status.jailed on the next stats.php poll (exact failure message not yet captured, non-blocking)
+  caught: boolean;         // false for 'bribe' and 'surrender'; for 'run', true/false directly from the action response's ok field (both outcomes confirmed)
   cargoLost: boolean;      // true for 'surrender' always, and for 'run' whenever caught=true — a failed run forfeits cargo same as surrender, it's not just jail time. false for 'bribe' (cargo kept) and for a successful 'run'.
 }
 
@@ -681,10 +685,8 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
 
 ## Next Steps
 
-We now have enough confirmed, real payload shapes to start building — the one
-remaining open question (the failed-`customs_run` message text) is minor and can be
-filled in opportunistically during testing rather than blocking the start of
-implementation.
+Every mechanic needed for v1 is now confirmed against real payloads — there's nothing
+left to capture before starting implementation.
 
 1. Stand up the Dexie schema + `shared/types.ts`/`shared/messaging.ts` + background
    message router + main-world fetch/XHR hook, generically intercepting `/api/*.php`
