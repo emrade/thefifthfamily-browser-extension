@@ -355,7 +355,7 @@ formula and price-rotation band. None of what's left blocks starting implementat
 
 ---
 
-## MVP Scope (from PRD, unchanged)
+## MVP Scope (from PRD, plus one player-requested addition)
 
 1. Detect current district on change → store `{ timestamp, district }`
 2. Detect market prices whenever a market panel loads → store `{ timestamp, district, item, price }` (buy side), keep full history
@@ -365,9 +365,51 @@ formula and price-rotation band. None of what's left blocks starting implementat
 6. Risk database: aggregate customs outcomes per item to compute **actual** catch rate vs. displayed risk %
 7. Popup dashboard: Today's Profit, Lifetime Profit, Average ROI, Trips, Caught %, Average Bribe
 8. Best Trade recommendation: given current known prices across visited districts, suggest buy/sell pair with expected profit/risk/EV
+9. **[Added, not in original PRD] Travel-arrival notification.** Not part of the
+   original PRD, but small, self-contained, and reuses data we're already capturing —
+   included in v1 per player request. See "Travel Arrival Notification" below.
+10. **[Added, not in original PRD] Live player stats in the popup.** Cash, bank,
+    energy/stamina/nerve/vitality + regen timers, level/XP, heat, current district,
+    travel status — a direct mirror of the latest `stats.php` snapshot we're already
+    capturing. See "Live Player Stats" below. Distinct from item 7's trade-performance
+    dashboard, which needs aggregation logic we're still deferring.
 
 Nice-to-haves (heatmap, market timer, bribe predictor, customs calculator slider, trade
-history table, analytics graphs) are explicitly deferred past MVP per the PRD.
+history table, analytics graphs) are explicitly deferred past MVP per the PRD. Items
+7–8 (trade-performance dashboard, Best Trade) are also deferred past v1 per the
+"capture first, trade-dashboard later" decision below — items 9–10 are the exceptions,
+since neither needs the trade-matching/risk aggregation we're deferring.
+
+---
+
+## Travel Arrival Notification (added — player request, included in v1)
+
+Not in the original PRD, but cheap to add given the data we're already capturing, and
+useful enough that the player asked for it directly. Fires an OS notification the
+moment travel completes, so the player doesn't have to babysit the tab.
+
+- **Trigger:** our network hook already observes `POST /api/travel.php action=travel`
+  and its response (`travel_time` in seconds, plus `city_id` from the request body —
+  the destination).
+- **Scheduling:** on that event, the background worker calls `chrome.alarms.create`
+  for `now + travel_time` under a fixed alarm name (e.g. `'travel-arrival'`) — using
+  `chrome.alarms` rather than `setTimeout` so it survives the service worker going
+  idle, same pattern the SimpleMMO extension already relies on for its bounty poller.
+  A fixed alarm name means a new trip (or a cancel + re-travel) naturally overwrites
+  any previous pending alarm.
+- **Confirmation, not a blind timer:** when the alarm fires, the background worker
+  does one `fetch('/api/stats.php', { credentials: 'include' })` and checks
+  `stats.current_city` matches the expected destination and `status.travelling` is
+  `false`, retrying a couple of times a few seconds apart if not yet arrived (guards
+  against client/server clock drift).
+- **Notification:** `chrome.notifications.create(...)` — e.g. "You've arrived in The
+  Strip!" — same API/pattern as the SimpleMMO bounty watcher.
+- **Cancellation handling:** the travel panel exposes its own `action=cancel` on
+  `/api/travel.php`; when we observe that fire, clear the pending alarm so we don't
+  notify for a trip that no longer exists.
+- **New permissions needed:** `alarms` and `notifications` in `manifest.json` (both
+  already used by the SimpleMMO extension, so this isn't a new pattern for the
+  project).
 
 ---
 
@@ -390,7 +432,8 @@ thefifthfamily-browser-extension/
 │   │   └── features/tradeAssistant/
 │   │       ├── index.ts                     # wires events → db writes
 │   │       ├── tradeMatcher.ts              # buy/sell matching, profit/ROI calc
-│   │       └── riskEngine.ts                # actual-catch-rate aggregation
+│   │       ├── riskEngine.ts                # actual-catch-rate aggregation
+│   │       └── travelNotifier.ts            # chrome.alarms scheduling + stats.php confirm + chrome.notifications
 │   ├── content/
 │   │   ├── index.ts                         # entry, injects main-world hook
 │   │   ├── mainWorldHook.ts                 # world:"MAIN" — patches fetch/XHR, posts raw panel.php responses
@@ -399,14 +442,16 @@ thefifthfamily-browser-extension/
 │   │       └── adapters/
 │   │           ├── smugglingPanel.ts        # parse buy/sell listings
 │   │           ├── customsPanel.ts          # parse customs encounter
-│   │           └── districtPanel.ts         # parse current-district signal
+│   │           ├── districtPanel.ts         # parse current-district signal
+│   │           └── travelPanel.ts           # parse get_cities/travel/cancel
 │   ├── popup/
 │   │   ├── App.tsx
 │   │   └── features/tradeAssistant/
-│   │       ├── Dashboard.tsx                # today/lifetime profit, ROI, trips, caught %
-│   │       └── BestTrade.tsx
+│   │       ├── LiveStats.tsx                # v1 — reads latest stats.php snapshot from chrome.storage.local
+│   │       ├── Dashboard.tsx                # deferred — today/lifetime profit, ROI, trips, caught %
+│   │       └── BestTrade.tsx                # deferred
 │   ├── shared/
-│   │   ├── types.ts                         # Trade, PriceSnapshot, Customs, District
+│   │   ├── types.ts                         # Trade, PriceSnapshot, Customs, District, PlayerStatsSnapshot
 │   │   ├── messaging.ts                     # ExtensionMessage union
 │   │   ├── db.ts                            # Dexie schema + queries
 │   │   └── constants.ts
@@ -426,6 +471,7 @@ thefifthfamily-browser-extension/
 | Local DB | Dexie (IndexedDB) | new — SimpleMMO only needed `chrome.storage.local`, but this feature accumulates thousands of price snapshots/trades, which needs real querying |
 | Charts | Chart.js | deferred past v1 — not needed until the dashboard/analytics phase |
 | State | Plain hooks + Dexie live queries | decided against Zustand for now — v1 has no dashboard yet, so there's no UI state complex enough to need it; revisit once the dashboard is built |
+| Permissions | `alarms`, `notifications`, `storage`, host permission for `thefifthfamily.com` | `alarms`/`notifications` needed for the Travel Arrival Notification, both already used by the SimpleMMO extension |
 
 ---
 
@@ -479,6 +525,24 @@ interface District {
   smugglingBonus: number;    // e.g. Waterfront = 2.50 (+250%) — relevant to Best Trade later, not v1
   bossLocked: boolean;
 }
+
+// Not a Dexie table — a single latest-snapshot record in chrome.storage.local,
+// overwritten on every fresh stats.php response. Powers the Live Player Stats popup.
+interface PlayerStatsSnapshot {
+  timestamp: number;
+  cash: number;
+  bank: number;
+  energy: number; maxEnergy: number;
+  stamina: number; maxStamina: number;
+  nerve: number; maxNerve: number;
+  vitality: number; maxVitality: number;
+  level: number; xp: number; xpToNext: number;
+  heat: number;
+  currentDistrict: string;   // resolved from stats.php's numeric current_city via the District table
+  travelling: boolean;
+  travelDestination: string | null;
+  travelSecondsRemaining: number;
+}
 ```
 
 Note: `Trade.buyPrice` should be the buy-time wholesale price read from the panel
@@ -506,15 +570,41 @@ same shape).
 
 ---
 
+## Live Player Stats (added — player request, included in v1)
+
+Not the same thing as the PRD's "Popup dashboard" (item 7 — Today's Profit, Lifetime
+Profit, ROI, Trips, Caught %, Average Bribe), which needs the trade-matching/risk
+engine we deliberately deferred. This is much cheaper: a **live mirror of the latest
+`stats.php` snapshot** we're already capturing for district detection — cash, bank,
+energy/stamina/nerve/vitality (with their regen timers), level/XP, heat, current
+district (resolved via the District table), and travel status (in transit / ETA) when
+mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
+
+- Every time the network hook sees a fresh `stats.php` response, the background worker
+  writes it (parsed, with `current_city` resolved to a district name) to
+  `chrome.storage.local` under a single fixed key — no history needed, just the latest.
+- The popup reads that key on open and renders it directly. Since MV3 popups only exist
+  while actually open, "live" mostly means "as fresh as the last time the hook saw a
+  stats poll" (which happens frequently while the game tab is open) rather than a
+  constantly-ticking display — good enough for a stats-at-a-glance view, and far
+  simpler than wiring up cross-context live updates for something this low-stakes.
+- This does **not** change the "capture first, dashboard later" decision below — the
+  profit/ROI/Best Trade dashboard is still deferred. This is a distinct, much smaller
+  popup view sourced from data we're capturing anyway.
+
+---
+
 ## Decisions Locked In
 
 - **UI library:** Preact — matches the SimpleMMO extension, no benefit to React here.
-- **v1 scope: capture first, dashboard later.** v1 ships the passive recording
-  pipeline only — district detection, market/sell price capture, trade matching,
-  customs/risk tracking, all written into Dexie. No popup dashboard, no Best Trade
-  recommender, no heatmap/analytics yet. Once we've verified the captured data is
-  accurate against real gameplay, the dashboard (item 7) and Best Trade (item 8)
-  become their own follow-up feature built on data we already trust.
+- **v1 scope: capture first, trade-dashboard later — with one exception.** v1 ships
+  the passive recording pipeline — district detection, market/sell price capture,
+  trade matching, customs/risk tracking, all written into Dexie — plus a **minimal
+  popup showing live player stats** (see above), since that needs no aggregation logic.
+  Still deferred to the follow-up phase: the trade-performance dashboard (item 7 —
+  profit/ROI/trips/caught %), Best Trade recommender (item 8), heatmap/analytics. Once
+  we've verified the captured data is accurate against real gameplay, those become
+  their own follow-up feature built on data we already trust.
 - **Background market-timeline polling: fast-follow, not v1.** v1 only records what
   you actually see by visiting panels in-game. The `chrome.alarms`-driven background
   poller (snapshotting every district every ~10 min even when not actively viewed)
