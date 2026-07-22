@@ -7,7 +7,8 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "type-check": "tsc --noEmit",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "release": "npm run build && npx web-ext sign --source-dir dist --api-key $AMO_API_KEY --api-secret $AMO_API_SECRET --channel unlisted"
   },
   "dependencies": {
     "dexie": "^4.0.10",
