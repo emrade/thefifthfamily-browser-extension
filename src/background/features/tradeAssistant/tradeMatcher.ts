@@ -93,6 +93,42 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
     grossProfit,
     profit,
     roi,
+    caught: false,
+    status: 'closed',
+  });
+}
+
+/**
+ * Closes the open trade for `item` as a total loss — called when customs seizes the
+ * cargo (a bribed stop keeps the goods and the trade stays open; a surrender or a
+ * failed run does not). Without this, a lost-cargo trip would just sit `status: 'open'`
+ * forever: no sell action ever fires for goods that no longer exist, so it would
+ * silently vanish from Trips/profit history instead of counting as the loss it was.
+ */
+export async function closeTradeAsLoss(item: string, timestamp: number) {
+  const open = await db.trades
+    .where('item')
+    .equals(item)
+    .filter((t) => t.status === 'open')
+    .last();
+  if (!open?.id) return;
+
+  const legs = await db.travelLegs.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
+  const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
+
+  const grossProfit = -open.buyPrice;
+  const profit = grossProfit - travelCost;
+  const costBasis = open.buyPrice + travelCost;
+
+  await db.trades.update(open.id, {
+    sellDistrict: null,
+    sellPrice: 0,
+    sellTime: timestamp,
+    travelCost,
+    grossProfit,
+    profit,
+    roi: costBasis > 0 ? profit / costBasis : null,
+    caught: true,
     status: 'closed',
   });
 }

@@ -7,11 +7,13 @@
 
 html, body {
   width: 380px;
+  max-height: 600px;
   background: var(--ff-bg);
   color: var(--ff-ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #app { width: 380px; }
@@ -379,6 +381,202 @@ button {
   line-height: 1.6;
   max-width: 260px;
   margin: 0 auto;
+}
+
+/* ── Dashboard stat grid ────────────────────────────────── */
+
+.ff-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ff-stat-tile {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.ff-stat-tile__value {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-stat-tile__label {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: var(--ff-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-top: 4px;
+}
+
+/* ── Best Trade card ────────────────────────────────────── */
+
+.ff-best-trade {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border-strong);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.ff-best-trade__route {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ff-best-trade__leg {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ff-best-trade__leg-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--ff-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+}
+
+.ff-best-trade__leg-item {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--ff-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ff-best-trade__leg-district {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ff-ink-muted);
+}
+
+.ff-best-trade__arrow {
+  color: var(--ff-gold);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ff-best-trade__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ff-border);
+}
+
+.ff-best-trade__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+}
+
+.ff-best-trade__stat-label {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  color: var(--ff-ink-faint);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.ff-best-trade__stat-value {
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-best-trade__note {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ff-border);
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+  line-height: 1.5;
+}
+
+/* ── Trade history ──────────────────────────────────────── */
+
+.ff-search-input {
+  width: 100%;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-sm);
+  color: var(--ff-ink);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.ff-search-input::placeholder { color: var(--ff-ink-faint); }
+
+.ff-search-input:focus { border-color: var(--ff-border-strong); }
+
+.ff-trade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.ff-trade-row {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+}
+
+.ff-trade-row__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ff-trade-row__item {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: var(--ff-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ff-trade-row__profit {
+  font-size: 11.5px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ff-trade-row__bottom {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ff-ink-faint);
+  margin-top: 3px;
+}
+
+.ff-trade-row__flags {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
 }
 
 /* ── Footer ─────────────────────────────────────────────── */

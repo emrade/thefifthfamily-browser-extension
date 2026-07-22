@@ -71,6 +71,7 @@ async function handlePriceSnapshot(msg: Extract<ExtensionMessage, { type: 'price
     borderSeizureRisk: msg.borderSeizureRisk,
     heldItem: held?.item ?? null,
     heldQuantity: held?.stash ?? 0,
+    cargoCapacity: msg.hiddenCargo.max,
     timestamp: msg.timestamp,
   });
 }

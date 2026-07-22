@@ -143,6 +143,7 @@ export interface LastSmugglingContext {
   borderSeizureRisk: number;
   heldItem: string | null;
   heldQuantity: number;
+  cargoCapacity: number;
   timestamp: number;
 }
 

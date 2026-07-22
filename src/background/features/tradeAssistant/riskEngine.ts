@@ -1,6 +1,7 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
+import * as tradeMatcher from './tradeMatcher';
 
 async function estimateCargoValue(item: string, quantity: number, atOrBefore: number): Promise<number | null> {
   const rows = await db.priceSnapshots.where('item').equals(item).toArray();
@@ -45,4 +46,8 @@ export async function resolveCustoms(msg: Extract<ExtensionMessage, { type: 'cus
   });
 
   await storage.clearPendingCustoms();
+
+  if (msg.cargoLost && pending.item) {
+    await tradeMatcher.closeTradeAsLoss(pending.item, msg.timestamp);
+  }
 }

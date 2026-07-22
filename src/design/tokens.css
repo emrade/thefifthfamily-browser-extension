@@ -115,3 +115,9 @@
   border: 1px solid rgba(96, 165, 250, .28);
   color: var(--ff-blue);
 }
+
+.ff-pill--red {
+  background: rgba(239, 68, 68, .08);
+  border: 1px solid rgba(239, 68, 68, .28);
+  color: var(--ff-red);
+}
