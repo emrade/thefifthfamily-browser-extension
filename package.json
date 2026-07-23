@@ -11,6 +11,7 @@
     "release": "npm run build && npx web-ext sign --source-dir dist --api-key $AMO_API_KEY --api-secret $AMO_API_SECRET --channel unlisted"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "dexie": "^4.0.10",
     "preact": "^10.24.3",
     "webextension-polyfill": "^0.12.0"

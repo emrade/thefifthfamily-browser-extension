@@ -144,6 +144,11 @@ export interface LastSmugglingContext {
   heldItem: string | null;
   heldQuantity: number;
   cargoCapacity: number;
+  /** Absolute epoch ms when the market next shifts, derived from the panel's
+   * `data-seconds` countdown at capture time — stored absolute so a countdown
+   * computed later (e.g. when the popup opens) stays accurate rather than going
+   * stale the moment it's read. Null if the panel didn't carry a timer. */
+  marketShiftAt: number | null;
   timestamp: number;
 }
 
@@ -157,4 +162,17 @@ export interface PendingCustoms {
   quantity: number | null;
   cargoValue: number | null;
   timestamp: number;
+}
+
+/**
+ * One (cargo fullness %, displayed risk %) reading — recorded on every smuggling
+ * panel view, regardless of whether anything is held. Lets the Customs Calculator
+ * interpolate a real, account-specific fullness→risk curve instead of relying on
+ * the single most recent reading or an unverified third-party formula.
+ */
+export interface RiskObservation {
+  id?: number;
+  timestamp: number;
+  fullnessPct: number;
+  riskPct: number;
 }

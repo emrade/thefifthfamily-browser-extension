@@ -35,6 +35,7 @@ export function handleCapturedRequest(req: CapturedRequest) {
       timestamp: req.timestamp,
       borderSeizureRisk: result.borderSeizureRisk,
       hiddenCargo: result.hiddenCargo,
+      marketShiftSeconds: result.marketShiftSeconds,
       entries: result.entries.map((e) => ({
         item: e.item,
         price: e.price,

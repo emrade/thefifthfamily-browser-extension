@@ -72,8 +72,17 @@ async function handlePriceSnapshot(msg: Extract<ExtensionMessage, { type: 'price
     heldItem: held?.item ?? null,
     heldQuantity: held?.stash ?? 0,
     cargoCapacity: msg.hiddenCargo.max,
+    marketShiftAt: msg.marketShiftSeconds !== null ? msg.timestamp + msg.marketShiftSeconds * 1000 : null,
     timestamp: msg.timestamp,
   });
+
+  if (msg.hiddenCargo.max > 0) {
+    await db.riskObservations.add({
+      timestamp: msg.timestamp,
+      fullnessPct: (msg.hiddenCargo.current / msg.hiddenCargo.max) * 100,
+      riskPct: msg.borderSeizureRisk,
+    });
+  }
 }
 
 async function handlePlayerStats(snapshot: RawStatsPayload) {

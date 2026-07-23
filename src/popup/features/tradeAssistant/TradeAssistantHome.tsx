@@ -1,18 +1,39 @@
-import { Dashboard } from './Dashboard';
-import { BestTrade } from './BestTrade';
-import { TradeHistory } from './TradeHistory';
+import { useState } from 'preact/hooks';
+import { Overview } from './tabs/Overview';
+import { Market } from './tabs/Market';
+import { Calculator } from './tabs/Calculator';
+import { Analytics } from './tabs/Analytics';
+
+type Tab = 'overview' | 'market' | 'calculator' | 'analytics';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'market', label: 'Market' },
+  { id: 'calculator', label: 'Calculator' },
+  { id: 'analytics', label: 'Analytics' },
+];
 
 export function TradeAssistantHome() {
+  const [tab, setTab] = useState<Tab>('overview');
+
   return (
-    <>
-      <div class="ff-section-label">Performance</div>
-      <Dashboard />
+    <div>
+      <div class="ff-tab-bar">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            class={`ff-tab${tab === t.id ? ' ff-tab--active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <div class="ff-section-label">Best Trade</div>
-      <BestTrade />
-
-      <div class="ff-section-label">Trade History</div>
-      <TradeHistory />
-    </>
+      {tab === 'overview' && <Overview />}
+      {tab === 'market' && <Market />}
+      {tab === 'calculator' && <Calculator />}
+      {tab === 'analytics' && <Analytics />}
+    </div>
   );
 }

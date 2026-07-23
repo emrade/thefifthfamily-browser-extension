@@ -27,6 +27,7 @@ export type ExtensionMessage =
       timestamp: number;
       borderSeizureRisk: number;
       hiddenCargo: { current: number; max: number };
+      marketShiftSeconds: number | null;
       entries: { item: string; price: number; type: 'buy' | 'sell'; trendPct: number | null; stash: number }[];
     }
   | { type: 'trade-buy'; item: string; quantity: number; timestamp: number }
