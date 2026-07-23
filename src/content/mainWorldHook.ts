@@ -10,9 +10,27 @@
  * bridge, so the game changing its markup only ever requires updating one adapter.
  */
 
-const TRACKED_PATH = /\/(api|actions)\//;
+const TRACKED_PATH = /^\/(api|actions)\//;
+const LOG_PREFIX = '[FifthFamily]';
+
+/**
+ * The game calls at least some of its endpoints with bare relative URLs — confirmed
+ * from its own injected travel script: `fetch("api/travel.php", ...)`, no leading
+ * slash. A regex tested against that raw string would never match `/api/` or
+ * `/actions/` (no slash before "api"). Resolving against location first normalizes
+ * relative, absolute-path, and full-URL forms alike before we ever test the pattern.
+ */
+function resolveTrackedPath(rawUrl: string): string | null {
+  try {
+    const resolved = new URL(rawUrl, window.location.href);
+    return TRACKED_PATH.test(resolved.pathname) ? resolved.href : null;
+  } catch {
+    return null;
+  }
+}
 
 function post(method: 'GET' | 'POST', url: string, requestBody: string | null, responseText: string) {
+  console.debug(LOG_PREFIX, 'captured', method, url);
   window.postMessage(
     {
       source: 'ff-network-hook',
@@ -47,15 +65,21 @@ function installFetchHook() {
     const response = await originalFetch(input, init);
 
     try {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (TRACKED_PATH.test(url)) {
+      const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const resolvedUrl = resolveTrackedPath(rawUrl);
+      if (resolvedUrl) {
         const method = ((init?.method ?? 'GET').toUpperCase() as 'GET' | 'POST');
         const requestBody = await formDataToString(init?.body);
         const cloned = response.clone();
-        cloned.text().then((text) => post(method, url, requestBody, text)).catch(() => {});
+        cloned.text()
+          .then((text) => post(method, resolvedUrl, requestBody, text))
+          .catch((err) => console.error(LOG_PREFIX, 'failed to read response body for', resolvedUrl, err));
       }
-    } catch {
-      // Never let capture failures break the page's own network calls.
+    } catch (err) {
+      // Never let capture failures break the page's own network calls — but still
+      // surface them, since a silent catch here is exactly what let a real bug
+      // (relative-URL matching) go undiagnosed until a player noticed missing data.
+      console.error(LOG_PREFIX, 'fetch hook error', err);
     }
 
     return response;
@@ -77,15 +101,14 @@ function installXhrHook() {
   OriginalXHR.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
     const self = this as unknown as { __ffMethod?: string; __ffUrl?: string };
     const method = (self.__ffMethod ?? 'GET') as 'GET' | 'POST';
-    const url = self.__ffUrl ?? '';
+    const rawUrl = self.__ffUrl ?? '';
+    const resolvedUrl = resolveTrackedPath(rawUrl);
 
-    if (TRACKED_PATH.test(url)) {
+    if (resolvedUrl) {
       this.addEventListener('loadend', () => {
-        try {
-          formDataToString(body).then((requestBody) => post(method, url, requestBody, this.responseText));
-        } catch {
-          // Ignore capture failures.
-        }
+        formDataToString(body)
+          .then((requestBody) => post(method, resolvedUrl, requestBody, this.responseText))
+          .catch((err) => console.error(LOG_PREFIX, 'XHR hook error for', resolvedUrl, err));
       });
     }
 

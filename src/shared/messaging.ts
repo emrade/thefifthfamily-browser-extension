@@ -19,7 +19,6 @@ export interface CapturedRequest {
  * via chrome.runtime.sendMessage, after adapters have parsed a CapturedRequest.
  */
 export type ExtensionMessage =
-  | { type: 'district-changed'; cityId: number; timestamp: number }
   | { type: 'district-catalog'; districts: District[] }
   | {
       type: 'price-snapshot';
