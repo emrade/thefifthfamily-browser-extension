@@ -1,3 +1,5 @@
+import { unwrapPanelEnvelope } from '@/content/adapters/panelEnvelope';
+
 /**
  * Parses `GET /api/panel.php?type=smuggling`. This one endpoint returns two distinct
  * response *shapes* for the same `type=` — a normal market listing, or a customs raid
@@ -30,7 +32,16 @@ export interface SmugglingRaid {
 
 export type SmugglingPanelResult = SmugglingListing | SmugglingRaid | null;
 
-export function parseSmugglingPanel(html: string): SmugglingPanelResult {
+/**
+ * Takes the raw `panel.php` response body (the JSON envelope, not a pre-extracted
+ * fragment) — unwrapped via the shared panelEnvelope helper, consistent with every
+ * other adapter, all of which receive raw responseText and unwrap it themselves.
+ */
+export function parseSmugglingPanel(responseText: string): SmugglingPanelResult {
+  const envelope = unwrapPanelEnvelope(responseText);
+  if (!envelope) return null;
+
+  const html = envelope.html;
   if (html.includes('class="sgl-raid-screen"')) {
     return parseRaidScreen(html);
   }
