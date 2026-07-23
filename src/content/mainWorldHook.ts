@@ -30,7 +30,6 @@ function resolveTrackedPath(rawUrl: string): string | null {
 }
 
 function post(method: 'GET' | 'POST', url: string, requestBody: string | null, responseText: string) {
-  console.debug(LOG_PREFIX, 'captured', method, url);
   window.postMessage(
     {
       source: 'ff-network-hook',

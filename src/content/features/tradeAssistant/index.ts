@@ -8,9 +8,7 @@ const LOG_PREFIX = '[FifthFamily]';
 
 function send(message: ExtensionMessage) {
   chrome.runtime.sendMessage(message).catch((err) => {
-    // "Could not establish connection" right after install/reload is expected and
-    // harmless (background wasn't ready yet) — anything else is worth seeing.
-    console.debug(LOG_PREFIX, 'sendMessage failed for', message.type, err);
+    console.error(LOG_PREFIX, 'sendMessage failed for', message.type, err);
   });
 }
 
@@ -21,14 +19,14 @@ export function handleCapturedRequest(req: CapturedRequest) {
   if (path.endsWith('/api/stats.php') && req.method === 'GET') {
     const snapshot = parseStatsPayload(req.responseText, req.timestamp);
     if (snapshot) send({ type: 'player-stats', snapshot });
-    else console.warn(LOG_PREFIX, 'stats.php captured but failed to parse', req.responseText.slice(0, 200));
+    else console.error(LOG_PREFIX, 'stats.php captured but failed to parse', req.responseText.slice(0, 200));
     return;
   }
 
   if (path.endsWith('/api/panel.php') && url.searchParams.get('type') === 'smuggling') {
     const result = parseSmugglingPanel(req.responseText);
     if (!result) {
-      console.warn(LOG_PREFIX, 'smuggling panel captured but failed to parse', req.responseText.slice(0, 200));
+      console.error(LOG_PREFIX, 'smuggling panel captured but failed to parse', req.responseText.slice(0, 200));
       return;
     }
 
@@ -58,16 +56,15 @@ export function handleCapturedRequest(req: CapturedRequest) {
   if (path.endsWith('/actions/smuggling.php') && req.method === 'POST') {
     const message = parseSmugglingAction(req.requestBody, req.responseText, req.timestamp);
     if (message) send(message);
-    else console.debug(LOG_PREFIX, 'smuggling action captured but not a recognized outcome', req.requestBody);
+    // No `else` log here — a null result just means this particular action outcome
+    // isn't one we track (e.g. a precondition failure like insufficient cash), which
+    // is routine, not an error.
     return;
   }
 
   if (path.endsWith('/api/travel.php') && req.method === 'POST') {
     const message = parseTravelAction(req.requestBody, req.responseText, req.timestamp);
     if (message) send(message);
-    else console.debug(LOG_PREFIX, 'travel action captured but not a recognized outcome', req.requestBody);
     return;
   }
-
-  console.debug(LOG_PREFIX, 'tracked path captured but no adapter claimed it', path);
 }
