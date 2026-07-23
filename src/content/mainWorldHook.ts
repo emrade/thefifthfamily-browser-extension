@@ -125,7 +125,15 @@ function installXhrHook() {
  */
 const INSTALL_FLAG = '__ffNetworkHookInstalled';
 
-if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
+if ((window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
+  // This guard only stops *this* injection from stacking a second time — it can't
+  // undo hooks a previous injection already installed earlier in this same document
+  // (e.g. an unguarded pre-fix version, or any copy from before this tab's last real
+  // page load). If you see this, the fix is a full page reload of the game tab, not
+  // just re-enabling the extension — only a fresh navigation clears old wrapped
+  // fetch/XHR closures still attached to this window.
+  console.error(LOG_PREFIX, 'network hook already installed in this document — reload the page to clear stale copies');
+} else {
   (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
   installFetchHook();
   installXhrHook();
