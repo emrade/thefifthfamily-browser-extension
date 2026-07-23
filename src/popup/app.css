@@ -104,6 +104,9 @@ button {
 }
 
 .ff-header__back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-left: auto;
   background: none;
   border: 1px solid var(--ff-border);
@@ -325,7 +328,6 @@ button {
   background: rgba(251, 191, 36, .08);
   border: 1px solid rgba(251, 191, 36, .25);
   color: var(--ff-gold-bright);
-  font-size: 14px;
 }
 
 .ff-nav-row__text {
@@ -348,8 +350,9 @@ button {
 }
 
 .ff-nav-row__chevron {
+  display: flex;
+  align-items: center;
   color: var(--ff-ink-faint);
-  font-size: 13px;
   flex-shrink: 0;
 }
 

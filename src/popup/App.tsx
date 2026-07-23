@@ -3,6 +3,7 @@ import '../design/tokens.css';
 import './app.css';
 import { Home } from './views/Home';
 import { Settings } from './views/Settings';
+import { ChevronLeftIcon } from './views/icons';
 import { TradeAssistantHome } from './features/tradeAssistant/TradeAssistantHome';
 import manifest from '../../manifest.json';
 
@@ -20,7 +21,10 @@ export function App() {
           <span class="ff-header__subtitle">Enhancements</span>
         </div>
         {view !== 'home' && (
-          <button class="ff-header__back" onClick={() => setView('home')}>← Back</button>
+          <button class="ff-header__back" onClick={() => setView('home')}>
+            <ChevronLeftIcon />
+            Back
+          </button>
         )}
       </header>
 
