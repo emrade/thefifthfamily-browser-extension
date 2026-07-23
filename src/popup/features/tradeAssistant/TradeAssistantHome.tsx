@@ -3,14 +3,16 @@ import { Overview } from './tabs/Overview';
 import { Market } from './tabs/Market';
 import { Calculator } from './tabs/Calculator';
 import { Analytics } from './tabs/Analytics';
+import { RiskDatabase } from './tabs/RiskDatabase';
 
-type Tab = 'overview' | 'market' | 'calculator' | 'analytics';
+type Tab = 'overview' | 'market' | 'calculator' | 'analytics' | 'riskdb';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'market', label: 'Market' },
   { id: 'calculator', label: 'Calculator' },
   { id: 'analytics', label: 'Analytics' },
+  { id: 'riskdb', label: 'Risk DB' },
 ];
 
 export function TradeAssistantHome() {
@@ -34,6 +36,7 @@ export function TradeAssistantHome() {
       {tab === 'market' && <Market />}
       {tab === 'calculator' && <Calculator />}
       {tab === 'analytics' && <Analytics />}
+      {tab === 'riskdb' && <RiskDatabase />}
     </div>
   );
 }

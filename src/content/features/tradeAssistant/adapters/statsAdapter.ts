@@ -34,5 +34,7 @@ export function parseStatsPayload(responseText: string, timestamp: number): RawS
     travelling: Boolean(status.travelling),
     travelDestinationId: Number.isFinite(travelDestId) && travelDestId > 0 ? travelDestId : null,
     travelSecondsRemaining: Number(status.travel_seconds) || 0,
+    jailed: Boolean(status.jailed),
+    hospitalized: Boolean(status.hospitalized),
   };
 }

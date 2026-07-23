@@ -11,7 +11,17 @@ export const STORAGE_KEYS = {
 
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
+  MARKET_POLL: 'ff-market-poll',
 } as const;
+
+// Used to schedule the next background market poll when we don't have a precise
+// market-shift countdown to align to (e.g. the very first poll before any panel view
+// has told us the real cadence) — matches the community guide's observed ~10-minute
+// rotation, though we never assume this once a real countdown is available.
+export const MARKET_POLL_FALLBACK_INTERVAL_MS = 10 * 60_000;
+// Small buffer after the market-shift deadline, so the server has actually rotated
+// prices by the time we poll rather than catching the tail end of the old cycle.
+export const MARKET_POLL_BUFFER_MS = 5_000;
 
 // Seed data confirmed from a real `POST /api/travel.php action=get_cities` capture —
 // used to bootstrap the District table before the player has ever opened Travel in a

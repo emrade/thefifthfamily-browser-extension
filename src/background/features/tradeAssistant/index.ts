@@ -2,12 +2,15 @@ import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 import { SEED_DISTRICTS } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { District, PlayerStatsSnapshot, RawStatsPayload } from '@/shared/types';
+import type { District, PlayerStatsSnapshot, RawStatsPayload, SmugglingListing } from '@/shared/types';
 import * as tradeMatcher from './tradeMatcher';
 import * as riskEngine from './riskEngine';
 import * as travelNotifier from './travelNotifier';
+import * as marketPoller from './marketPoller';
+import { applySmugglingListing } from './applySmugglingListing';
 
-export { handleAlarm } from './travelNotifier';
+export { handleAlarm as handleTravelAlarm } from './travelNotifier';
+export { handlePollAlarm as handleMarketPollAlarm } from './marketPoller';
 
 export async function ensureSeedData() {
   const count = await db.districts.count();
@@ -47,42 +50,25 @@ async function upsertDistricts(incoming: District[]) {
 }
 
 async function handlePriceSnapshot(msg: Extract<ExtensionMessage, { type: 'price-snapshot' }>) {
-  for (const entry of msg.entries) {
-    await db.priceSnapshots.add({
-      timestamp: msg.timestamp,
-      district: msg.district,
-      item: entry.item,
-      price: entry.price,
-      type: entry.type,
-      trendPct: entry.trendPct,
-    });
-
-    if (entry.type === 'buy') {
-      const district = await db.districts.where('name').equals(msg.district).first();
-      if (district && !district.nativeItem) {
-        await db.districts.update(district.id, { nativeItem: entry.item });
-      }
-    }
-  }
-
-  const held = msg.entries.find((e) => e.stash > 0);
-  await storage.setSmugglingContext({
+  const listing: SmugglingListing = {
+    kind: 'listing',
     district: msg.district,
+    hiddenCargo: msg.hiddenCargo,
     borderSeizureRisk: msg.borderSeizureRisk,
-    heldItem: held?.item ?? null,
-    heldQuantity: held?.stash ?? 0,
-    cargoCapacity: msg.hiddenCargo.max,
-    marketShiftAt: msg.marketShiftSeconds !== null ? msg.timestamp + msg.marketShiftSeconds * 1000 : null,
-    timestamp: msg.timestamp,
-  });
+    marketShiftSeconds: msg.marketShiftSeconds,
+    entries: msg.entries.map((e) => ({
+      item: e.item,
+      isLocal: e.type === 'buy',
+      price: e.price,
+      trendPct: e.trendPct,
+      stash: e.stash,
+    })),
+  };
 
-  if (msg.hiddenCargo.max > 0) {
-    await db.riskObservations.add({
-      timestamp: msg.timestamp,
-      fullnessPct: (msg.hiddenCargo.current / msg.hiddenCargo.max) * 100,
-      riskPct: msg.borderSeizureRisk,
-    });
-  }
+  const marketShiftAt = await applySmugglingListing(listing, msg.timestamp);
+  // A real, manually-captured view is exactly when we learn the actual market-shift
+  // cadence — (re)arm the background poller's chain from here.
+  marketPoller.scheduleNextPoll(marketShiftAt);
 }
 
 async function handlePlayerStats(snapshot: RawStatsPayload) {

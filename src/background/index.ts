@@ -1,4 +1,4 @@
-import { ensureSeedData, handleMessage, handleAlarm } from './features/tradeAssistant';
+import { ensureSeedData, handleMessage, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
 import type { ExtensionMessage } from '@/shared/messaging';
 
 const LOG_PREFIX = '[FifthFamily]';
@@ -13,5 +13,6 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  handleAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleAlarm failed', err));
+  handleTravelAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleTravelAlarm failed', err));
+  handleMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleMarketPollAlarm failed', err));
 });

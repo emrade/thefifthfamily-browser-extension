@@ -675,11 +675,21 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   profit/ROI/trips/caught %), Best Trade recommender (item 8), heatmap/analytics. Once
   we've verified the captured data is accurate against real gameplay, those become
   their own follow-up feature built on data we already trust.
-- **Background market-timeline polling: fast-follow, not v1.** v1 only records what
-  you actually see by visiting panels in-game. The `chrome.alarms`-driven background
-  poller (snapshotting every district every ~10 min even when not actively viewed)
-  comes after passive capture is proven, once we're confident about `panel.php`'s
-  auth/param requirements from real usage.
+- **Background market-timeline polling: now implemented** (`marketPoller.ts`),
+  after passive capture was proven against real gameplay. One correction from the
+  original plan: it polls whichever district the player's *actual current* location
+  is (via `panel.php?type=smuggling`, no location parameter exists to request a
+  different district), not "every district" — there's no way to check another
+  district's market without physically traveling there. Aligned to the real
+  market-shift countdown (`data-seconds`) rather than an assumed cadence, with a
+  10-minute fallback interval when no countdown is known yet. **Safety-gated**: skips
+  entirely whenever cargo is currently held, or the player is traveling/jailed/
+  hospitalized — the confirmed fact that a customs raid screen can come back from a
+  *plain reload* means an unguarded automatic poll could trigger a real raid check
+  against the player's account with no chance to respond. Uses a separate, DOM-free
+  regex parser (`smugglingHtmlRegexParser.ts`) since MV3 service workers don't
+  reliably have `DOMParser`; verified to produce identical output to the content
+  script's DOM-based parser against real captured payloads before being wired in.
 
 ---
 

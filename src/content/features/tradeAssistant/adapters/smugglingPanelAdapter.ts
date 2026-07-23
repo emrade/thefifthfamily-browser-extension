@@ -1,4 +1,7 @@
-import { unwrapPanelEnvelope } from '@/content/adapters/panelEnvelope';
+import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import type { SmugglingListing, SmugglingRaid, SmugglingPanelResult } from '@/shared/types';
+
+export type { SmugglingListing, SmugglingRaid, SmugglingPanelResult };
 
 /**
  * Parses `GET /api/panel.php?type=smuggling`. This one endpoint returns two distinct
@@ -7,35 +10,12 @@ import { unwrapPanelEnvelope } from '@/content/adapters/panelEnvelope';
  * to any particular action, it can come back from a plain reload). We branch on the
  * presence of an actual `class="sgl-raid-screen"` *element* (not just the CSS rule
  * that always ships in the inlined <style> block, which would give a false positive).
- */
-
-export interface SmugglingListing {
-  kind: 'listing';
-  district: string;
-  hiddenCargo: { current: number; max: number };
-  borderSeizureRisk: number;
-  marketShiftSeconds: number | null;
-  entries: {
-    item: string;
-    isLocal: boolean;
-    price: number;
-    trendPct: number | null;
-    stash: number;
-  }[];
-}
-
-export interface SmugglingRaid {
-  kind: 'raid';
-  district: string;
-  bribe: number;
-}
-
-export type SmugglingPanelResult = SmugglingListing | SmugglingRaid | null;
-
-/**
- * Takes the raw `panel.php` response body (the JSON envelope, not a pre-extracted
- * fragment) — unwrapped via the shared panelEnvelope helper, consistent with every
- * other adapter, all of which receive raw responseText and unwrap it themselves.
+ *
+ * This is the DOM-based (DOMParser) implementation, used from the content script where
+ * DOMParser is available. The background market poller uses a separate, regex-based
+ * implementation of the same logic (marketPoller.ts) since MV3 service workers don't
+ * reliably have DOMParser — both produce the exact same SmugglingListing/SmugglingRaid
+ * shape from shared/types.ts.
  */
 export function parseSmugglingPanel(responseText: string): SmugglingPanelResult {
   const envelope = unwrapPanelEnvelope(responseText);

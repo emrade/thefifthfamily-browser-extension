@@ -77,6 +77,8 @@ export interface PlayerStatsSnapshot {
   travelDestinationId: number | null;
   travelDestination: string | null;
   travelSecondsRemaining: number;
+  jailed: boolean;
+  hospitalized: boolean;
 }
 
 /**
@@ -105,6 +107,8 @@ export interface RawStatsPayload {
   travelling: boolean;
   travelDestinationId: number | null;
   travelSecondsRemaining: number;
+  jailed: boolean;
+  hospitalized: boolean;
 }
 
 export interface PendingTravel {
@@ -176,3 +180,32 @@ export interface RiskObservation {
   fullnessPct: number;
   riskPct: number;
 }
+
+/**
+ * Shared between the content-side DOM-based parser (smugglingPanelAdapter.ts) and the
+ * background-side regex-based parser (marketPoller.ts's parser) — MV3 service workers
+ * don't reliably have DOMParser, so the background poller needs its own DOM-free
+ * implementation, but both should produce the exact same shape.
+ */
+export interface SmugglingListing {
+  kind: 'listing';
+  district: string;
+  hiddenCargo: { current: number; max: number };
+  borderSeizureRisk: number;
+  marketShiftSeconds: number | null;
+  entries: {
+    item: string;
+    isLocal: boolean;
+    price: number;
+    trendPct: number | null;
+    stash: number;
+  }[];
+}
+
+export interface SmugglingRaid {
+  kind: 'raid';
+  district: string;
+  bribe: number;
+}
+
+export type SmugglingPanelResult = SmugglingListing | SmugglingRaid | null;

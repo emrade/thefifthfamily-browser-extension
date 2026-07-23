@@ -8,10 +8,10 @@ export interface PanelEnvelope {
  * `{"ok":true,"title":"...","html":"..."}` — confirmed identical across at least
  * `type=smuggling`, `type=street_intel`, and `type=travel` (the travel panel is just
  * a loading shell; its real data comes from a separate `/api/travel.php` call, but
- * the shell itself still arrives in this same envelope). Lives outside
- * features/tradeAssistant since it isn't Trade-Assistant-specific — any future
- * feature parsing a panel.php response (e.g. the planned Street Intel Assistant)
- * should unwrap through here rather than re-deriving this per adapter.
+ * the shell itself still arrives in this same envelope). Lives in shared/ (not
+ * content/ or background/) since both the content-script adapter and the
+ * background market poller need it — any future feature parsing a panel.php response
+ * (e.g. the planned Street Intel Assistant) should unwrap through here too.
  */
 export function unwrapPanelEnvelope(responseText: string): PanelEnvelope | null {
   let json: any;
