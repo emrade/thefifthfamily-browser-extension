@@ -1,8 +1,8 @@
 import { LiveStats } from './LiveStats';
-import { ResetDataButton } from './ResetDataButton';
 
 interface HomeProps {
   onOpenTradeAssistant: () => void;
+  onOpenSettings: () => void;
 }
 
 export function Home(props: HomeProps) {
@@ -21,7 +21,14 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__chevron">›</div>
       </button>
 
-      <ResetDataButton />
+      <button class="ff-nav-row" onClick={props.onOpenSettings}>
+        <div class="ff-nav-row__icon">⚙</div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Settings</div>
+          <div class="ff-nav-row__status">Backup or clear stored data</div>
+        </div>
+        <div class="ff-nav-row__chevron">›</div>
+      </button>
     </>
   );
 }

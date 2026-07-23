@@ -115,5 +115,18 @@ function installXhrHook() {
   };
 }
 
-installFetchHook();
-installXhrHook();
+/**
+ * Guards against installing the hooks more than once in the same document. Without
+ * this, reloading the extension during development while the game tab stays open
+ * leaves the old copy of this script still running — it has no chrome.* API calls,
+ * so it's never invalidated — and it keeps wrapping fetch/XHR forever. A freshly
+ * injected copy then wraps them again on top, so every real request gets posted
+ * once per stacked layer (confirmed: a single bribe got recorded 6 times this way).
+ */
+const INSTALL_FLAG = '__ffNetworkHookInstalled';
+
+if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
+  (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
+  installFetchHook();
+  installXhrHook();
+}

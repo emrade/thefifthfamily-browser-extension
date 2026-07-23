@@ -2,10 +2,11 @@ import { useState } from 'preact/hooks';
 import '../design/tokens.css';
 import './app.css';
 import { Home } from './views/Home';
+import { Settings } from './views/Settings';
 import { TradeAssistantHome } from './features/tradeAssistant/TradeAssistantHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant';
+type View = 'home' | 'tradeAssistant' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -26,8 +27,11 @@ export function App() {
       <div class="ff-divider" />
 
       <main class="ff-main">
-        {view === 'home' && <Home onOpenTradeAssistant={() => setView('tradeAssistant')} />}
+        {view === 'home' && (
+          <Home onOpenTradeAssistant={() => setView('tradeAssistant')} onOpenSettings={() => setView('settings')} />
+        )}
         {view === 'tradeAssistant' && <TradeAssistantHome />}
+        {view === 'settings' && <Settings />}
       </main>
 
       <footer class="ff-footer">
