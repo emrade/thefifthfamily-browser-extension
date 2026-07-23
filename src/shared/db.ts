@@ -27,4 +27,25 @@ db.version(2).stores({
   riskObservations: '++id, timestamp',
 });
 
+/** Wipes every Dexie table. `districts` is included — `ensureSeedData()` re-seeds it
+ * automatically the next time the background worker wakes, since it just checks
+ * `count() === 0`. */
+export async function clearAllData(): Promise<void> {
+  await db.transaction(
+    'rw',
+    [db.trades, db.priceSnapshots, db.customsEvents, db.districts, db.districtVisits, db.travelLegs, db.riskObservations],
+    async () => {
+      await Promise.all([
+        db.trades.clear(),
+        db.priceSnapshots.clear(),
+        db.customsEvents.clear(),
+        db.districts.clear(),
+        db.districtVisits.clear(),
+        db.travelLegs.clear(),
+        db.riskObservations.clear(),
+      ]);
+    },
+  );
+}
+
 export { db };

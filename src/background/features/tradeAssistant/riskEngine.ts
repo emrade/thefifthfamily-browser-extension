@@ -36,7 +36,11 @@ export async function resolveCustoms(msg: Extract<ExtensionMessage, { type: 'cus
     item: pending.item,
     quantity: pending.quantity,
     cargoValue: pending.cargoValue,
-    bribe: msg.resolution === 'bribe' ? pending.bribe : 0,
+    // Prefer the amount confirmed in the bribe action's own response — it's the actual
+    // paid amount, unlike `pending.bribe` (the raid screen's earlier-offered amount,
+    // which can go stale if a second raid overwrites the single pending-customs slot
+    // before this one resolves). Fall back to it only if the response couldn't be parsed.
+    bribe: msg.resolution === 'bribe' ? (msg.bribeAmount ?? pending.bribe) : 0,
     displayedRisk: pending.displayedRisk,
     district: pending.district,
     resolution: msg.resolution,

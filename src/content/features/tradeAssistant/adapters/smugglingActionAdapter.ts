@@ -31,11 +31,11 @@ export function parseSmugglingAction(
     case 'sell':
       return parseSell(json, timestamp);
     case 'customs_bribe':
-      return json.ok ? { type: 'customs-resolved', resolution: 'bribe', caught: false, cargoLost: false, jailSeconds: null, timestamp } : null;
+      return parseCustomsBribe(json, timestamp);
     case 'customs_run':
       return parseCustomsRun(json, timestamp);
     case 'customs_surrender':
-      return json.ok ? { type: 'customs-resolved', resolution: 'surrender', caught: false, cargoLost: true, jailSeconds: null, timestamp } : null;
+      return json.ok ? { type: 'customs-resolved', resolution: 'surrender', caught: false, cargoLost: true, jailSeconds: null, bribeAmount: null, timestamp } : null;
     default:
       return null;
   }
@@ -65,9 +65,21 @@ function parseSell(json: any, timestamp: number): ExtensionMessage | null {
   };
 }
 
+function parseCustomsBribe(json: any, timestamp: number): ExtensionMessage | null {
+  if (!json.ok) return null;
+  const message: string = json.message ?? '';
+  // The response confirms the actual amount paid (e.g. "You slipped the guard
+  // $44,000. You passed the checkpoint."), so we use it directly rather than the
+  // raid screen's earlier-offered amount, which can go stale if a second raid is
+  // detected before this one resolves.
+  const match = message.match(/slipped the guard \$([\d,]+)/i);
+  const bribeAmount = match ? Number(match[1].replace(/,/g, '')) : null;
+  return { type: 'customs-resolved', resolution: 'bribe', caught: false, cargoLost: false, jailSeconds: null, bribeAmount, timestamp };
+}
+
 function parseCustomsRun(json: any, timestamp: number): ExtensionMessage | null {
   if (json.ok) {
-    return { type: 'customs-resolved', resolution: 'run', caught: false, cargoLost: false, jailSeconds: null, timestamp };
+    return { type: 'customs-resolved', resolution: 'run', caught: false, cargoLost: false, jailSeconds: null, bribeAmount: null, timestamp };
   }
 
   const error: string = json.error ?? '';
@@ -78,5 +90,5 @@ function parseCustomsRun(json: any, timestamp: number): ExtensionMessage | null 
   const jailMatch = error.match(/Jailed for (\d+)h (\d+)m/);
   const jailSeconds = jailMatch ? Number(jailMatch[1]) * 3600 + Number(jailMatch[2]) * 60 : null;
 
-  return { type: 'customs-resolved', resolution: 'run', caught: true, cargoLost: true, jailSeconds, timestamp };
+  return { type: 'customs-resolved', resolution: 'run', caught: true, cargoLost: true, jailSeconds, bribeAmount: null, timestamp };
 }

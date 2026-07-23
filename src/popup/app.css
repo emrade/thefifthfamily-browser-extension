@@ -850,6 +850,81 @@ button {
   color: var(--ff-ink-faint);
 }
 
+/* ── Reset data ─────────────────────────────────────────── */
+
+.ff-reset-trigger {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ff-ink-faint);
+  cursor: pointer;
+  text-align: center;
+  transition: color .15s;
+}
+
+.ff-reset-trigger:hover { color: var(--ff-red); }
+
+.ff-reset-confirm {
+  margin-top: 4px;
+  padding: 12px;
+  background: rgba(239, 68, 68, .06);
+  border: 1px solid rgba(239, 68, 68, .28);
+  border-radius: var(--radius-md);
+  font-size: 10.5px;
+  color: var(--ff-ink-muted);
+  line-height: 1.5;
+}
+
+.ff-reset-confirm__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ff-reset-confirm__cancel,
+.ff-reset-confirm__go {
+  flex: 1;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.ff-reset-confirm__cancel {
+  background: transparent;
+  border: 1px solid var(--ff-border);
+  color: var(--ff-ink-muted);
+}
+
+.ff-reset-confirm__go {
+  background: rgba(239, 68, 68, .15);
+  border: 1px solid rgba(239, 68, 68, .5);
+  color: var(--ff-red);
+}
+
+.ff-reset-confirm__go:hover {
+  background: var(--ff-red);
+  color: #000;
+}
+
+.ff-reset-done {
+  margin-top: 4px;
+  padding: 10px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ff-green);
+}
+
 /* ── Footer ─────────────────────────────────────────────── */
 
 .ff-footer {

@@ -14,6 +14,11 @@ export interface Trade {
   roi: number | null;
   caught: boolean | null;
   bribe: number;
+  /** How many separate bribe-resolution CustomsEvents were summed into `bribe` — a
+   * lump-sum dollar figure alone can look wrong/surprising when it's actually the
+   * total of more than one payment; showing the count makes that visible instead of
+   * requiring a devtools dig to explain a number that looks too high. */
+  bribeCount: number;
   status: 'open' | 'closed';
 }
 

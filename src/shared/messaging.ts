@@ -32,7 +32,7 @@ export type ExtensionMessage =
   | { type: 'trade-buy'; item: string; quantity: number; timestamp: number }
   | { type: 'trade-sell'; item: string; quantity: number; sellTotal: number; grossProfit: number; timestamp: number }
   | { type: 'customs-raid-detected'; district: string; bribe: number; timestamp: number }
-  | { type: 'customs-resolved'; resolution: 'bribe' | 'run' | 'surrender'; caught: boolean; cargoLost: boolean; jailSeconds: number | null; timestamp: number }
+  | { type: 'customs-resolved'; resolution: 'bribe' | 'run' | 'surrender'; caught: boolean; cargoLost: boolean; jailSeconds: number | null; bribeAmount: number | null; timestamp: number }
   | { type: 'player-stats'; snapshot: RawStatsPayload }
   | { type: 'travel-started'; destinationCityId: number; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
   | { type: 'travel-cancelled'; timestamp: number };

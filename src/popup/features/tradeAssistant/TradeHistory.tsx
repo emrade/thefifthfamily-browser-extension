@@ -86,7 +86,11 @@ export function TradeHistory() {
             {(t.caught || t.bribe > 0) && (
               <div class="ff-trade-row__flags">
                 {t.caught && <span class="ff-pill ff-pill--red">Cargo Seized</span>}
-                {t.bribe > 0 && <span class="ff-pill ff-pill--gold">Bribed {formatCash(t.bribe)}</span>}
+                {t.bribe > 0 && (
+                  <span class="ff-pill ff-pill--gold">
+                    Bribed {formatCash(t.bribe)}{t.bribeCount > 1 ? ` (${t.bribeCount}×)` : ''}
+                  </span>
+                )}
               </div>
             )}
           </div>

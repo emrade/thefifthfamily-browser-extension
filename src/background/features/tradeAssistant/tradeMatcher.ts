@@ -34,6 +34,7 @@ export async function openTrade(item: string, quantity: number, timestamp: numbe
     roi: null,
     caught: null,
     bribe: 0,
+    bribeCount: 0,
     status: 'open',
   });
 }
@@ -69,6 +70,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
       roi: null,
       caught: null,
       bribe: 0,
+      bribeCount: 0,
       status: 'closed',
     });
     return;
@@ -78,7 +80,8 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
   const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
 
   const customsInWindow = await db.customsEvents.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
-  const bribeTotal = customsInWindow.filter((c) => c.resolution === 'bribe').reduce((sum, c) => sum + c.bribe, 0);
+  const bribeEvents = customsInWindow.filter((c) => c.resolution === 'bribe');
+  const bribeTotal = bribeEvents.reduce((sum, c) => sum + c.bribe, 0);
 
   const profit = grossProfit - travelCost - bribeTotal;
   const costBasis = open.buyPrice + travelCost + bribeTotal;
@@ -90,6 +93,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
     sellTime: timestamp,
     travelCost,
     bribe: bribeTotal,
+    bribeCount: bribeEvents.length,
     grossProfit,
     profit,
     roi,
@@ -116,15 +120,26 @@ export async function closeTradeAsLoss(item: string, timestamp: number) {
   const legs = await db.travelLegs.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
   const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
 
+  // A trade that ultimately ends in a loss may still have paid one or more bribes
+  // earlier in its life (survived a stop, kept the cargo, then got caught/surrendered
+  // later) — those were real costs of this same trip and should still count against
+  // it. The resolution that caused *this* loss itself carries bribe: 0 (surrender and
+  // a failed run never pay a bribe), so including it in the sum is harmless.
+  const customsInWindow = await db.customsEvents.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
+  const bribeEvents = customsInWindow.filter((c) => c.resolution === 'bribe');
+  const bribeTotal = bribeEvents.reduce((sum, c) => sum + c.bribe, 0);
+
   const grossProfit = -open.buyPrice;
-  const profit = grossProfit - travelCost;
-  const costBasis = open.buyPrice + travelCost;
+  const profit = grossProfit - travelCost - bribeTotal;
+  const costBasis = open.buyPrice + travelCost + bribeTotal;
 
   await db.trades.update(open.id, {
     sellDistrict: null,
     sellPrice: 0,
     sellTime: timestamp,
     travelCost,
+    bribe: bribeTotal,
+    bribeCount: bribeEvents.length,
     grossProfit,
     profit,
     roi: costBasis > 0 ? profit / costBasis : null,

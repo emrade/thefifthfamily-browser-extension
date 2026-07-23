@@ -28,4 +28,6 @@ export const storage = {
   getPendingCustoms: () => get<PendingCustoms | null>(STORAGE_KEYS.PENDING_CUSTOMS, null),
   setPendingCustoms: (v: PendingCustoms) => set(STORAGE_KEYS.PENDING_CUSTOMS, v),
   clearPendingCustoms: () => remove(STORAGE_KEYS.PENDING_CUSTOMS),
+
+  clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

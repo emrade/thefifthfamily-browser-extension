@@ -1,4 +1,5 @@
 import { LiveStats } from './LiveStats';
+import { ResetDataButton } from './ResetDataButton';
 
 interface HomeProps {
   onOpenTradeAssistant: () => void;
@@ -19,6 +20,8 @@ export function Home(props: HomeProps) {
         </div>
         <div class="ff-nav-row__chevron">›</div>
       </button>
+
+      <ResetDataButton />
     </>
   );
 }
