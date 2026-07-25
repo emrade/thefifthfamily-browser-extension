@@ -760,6 +760,31 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   on catching it downstream. ~20 leftover phantom rows and 2 already-corrupted bogus
   closures were found and removed from the affected install via a one-off devtools
   script once discovered.
+- **Serialized message handling + broader duplicate-delivery audit (bug fix):**
+  the duplicate-open-trade guard above prompted auditing every background message
+  handler for the same failure class. Root cause found at the dispatch level:
+  `chrome.runtime.onMessage`'s listener (`background/index.ts`) called
+  `handleMessage(msg)` without awaiting it, so two messages for the same event
+  arriving close together would run *concurrently* — this, not the duplicate
+  messages alone, is what let the original bribe-duplication bug slip past
+  `resolveCustoms`'s own `if (!pending) return` guard: every concurrent call read
+  `pending` as non-null before any single one finished clearing it. Messages are now
+  processed through one serial queue, so a handler can't start until the previous
+  one has fully settled — closing this race for every handler at once. Two more
+  handlers had the identical "append with no duplicate guard" shape and are now
+  fixed directly: `closeTrade`'s "no matching buy on record" fallback
+  (`tradeMatcher.ts`) would create a second standalone closed trade if a duplicate
+  `trade-sell` arrived after the real one already closed the trade; `scheduleArrival`
+  (`travelNotifier.ts`) would insert a second `travelLeg` for the same trip, silently
+  doubling travel cost in `closeTrade`'s sum. Both now check for an equivalent
+  existing record first. `applySmugglingListing`'s `priceSnapshots`/
+  `riskObservations` appends got the same treatment for a different reason — not
+  just the old hook bug, but genuinely running the game in two browser tabs at once
+  could have each tab's content script independently capture the same real panel
+  view moments apart, which isn't a bug so much as two truly separate captures of
+  identical reality; both now skip if an equivalent snapshot already exists within a
+  5-second window (wide enough to catch near-identical timestamps from either cause,
+  well short of how often the market actually shifts).
 
 ---
 

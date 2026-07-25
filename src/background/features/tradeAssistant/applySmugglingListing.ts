@@ -3,6 +3,14 @@ import { storage } from '@/shared/storage';
 import { reconcileHeldCargo } from './cargoReconciler';
 import type { SmugglingListing } from '@/shared/types';
 
+// Two calls within this window with identical content are treated as the same real
+// observation, not two distinct market shifts — wide enough to catch both a stacked
+// duplicate hook (same physical request re-posted, near-identical timestamps) and two
+// genuinely separate tabs each independently capturing the same real panel view a
+// moment apart (different real Date.now() readings, but still the same underlying
+// state) — the market doesn't shift on a cadence anywhere near this fast.
+const DUPLICATE_CAPTURE_WINDOW_MS = 5_000;
+
 /**
  * The actual persistence logic for a parsed smuggling-panel listing — shared between
  * a manually-captured view (handlePriceSnapshot, triggered by the player actually
@@ -18,14 +26,29 @@ export async function applySmugglingListing(result: SmugglingListing, timestamp:
   const previousContext = await storage.getSmugglingContext();
 
   for (const entry of result.entries) {
-    await db.priceSnapshots.add({
-      timestamp,
-      district: result.district,
-      item: entry.item,
-      price: entry.price,
-      type: entry.isLocal ? 'buy' : 'sell',
-      trendPct: entry.trendPct,
-    });
+    const type = entry.isLocal ? 'buy' : 'sell';
+    const duplicate = await db.priceSnapshots
+      .where('item')
+      .equals(entry.item)
+      .filter(
+        (r) =>
+          r.district === result.district &&
+          r.type === type &&
+          r.price === entry.price &&
+          Math.abs(r.timestamp - timestamp) < DUPLICATE_CAPTURE_WINDOW_MS,
+      )
+      .first();
+
+    if (!duplicate) {
+      await db.priceSnapshots.add({
+        timestamp,
+        district: result.district,
+        item: entry.item,
+        price: entry.price,
+        type,
+        trendPct: entry.trendPct,
+      });
+    }
 
     if (entry.isLocal) {
       const district = await db.districts.where('name').equals(result.district).first();
@@ -51,11 +74,16 @@ export async function applySmugglingListing(result: SmugglingListing, timestamp:
   });
 
   if (result.hiddenCargo.max > 0) {
-    await db.riskObservations.add({
-      timestamp,
-      fullnessPct: (result.hiddenCargo.current / result.hiddenCargo.max) * 100,
-      riskPct: result.borderSeizureRisk,
-    });
+    const fullnessPct = (result.hiddenCargo.current / result.hiddenCargo.max) * 100;
+    const duplicateObservation = await db.riskObservations
+      .where('timestamp')
+      .between(timestamp - DUPLICATE_CAPTURE_WINDOW_MS, timestamp + DUPLICATE_CAPTURE_WINDOW_MS, true, true)
+      .filter((r) => r.fullnessPct === fullnessPct && r.riskPct === result.borderSeizureRisk)
+      .first();
+
+    if (!duplicateObservation) {
+      await db.riskObservations.add({ timestamp, fullnessPct, riskPct: result.borderSeizureRisk });
+    }
   }
 
   return marketShiftAt;

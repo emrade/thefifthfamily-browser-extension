@@ -74,6 +74,22 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
   const open = await findOpenTrade(item);
 
   if (!open?.id) {
+    // A duplicate delivery of the same real trade-sell message would land here too —
+    // the first delivery already closed the matching open trade, so a second one
+    // finds nothing 'open' and would otherwise fall into this same fallback and
+    // double the trade. An identical standalone closed trade (same item/sellTime/
+    // sellTotal) already existing means that's exactly what's happening — skip it
+    // rather than recording the same real sell twice.
+    const duplicate = await db.trades
+      .where('item')
+      .equals(item)
+      .filter((t) => t.status === 'closed' && t.sellTime === timestamp && t.sellPrice === sellTotal)
+      .first();
+    if (duplicate) {
+      console.error(LOG_PREFIX, `duplicate trade-sell captured for ${item} — ignoring`);
+      return;
+    }
+
     // No matching buy on record (e.g. the extension was installed mid-session) —
     // still worth recording as a standalone closed trade rather than dropping it.
     await db.trades.add({

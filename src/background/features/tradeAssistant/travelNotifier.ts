@@ -22,6 +22,17 @@ export async function scheduleArrival(msg: Extract<ExtensionMessage, { type: 'tr
   // previously pending alarm rather than stacking notifications.
   chrome.alarms.create(ALARM_NAMES.TRAVEL_ARRIVAL, { when: arrivesAt });
 
+  // A duplicate delivery of the same real travel-started message would otherwise add
+  // a second identical leg — closeTrade/closeTradeAsLoss sum every leg's cost within
+  // the trade's time window, so a duplicate here would silently double-count travel
+  // cost and understate profit for whatever trade is open at the time.
+  const duplicate = await db.travelLegs
+    .where('timestamp')
+    .equals(msg.timestamp)
+    .filter((leg) => leg.destinationCityId === msg.destinationCityId && leg.method === msg.method)
+    .first();
+  if (duplicate) return;
+
   const cost = msg.method === 'taxi' ? (district?.travelCostTaxi ?? 0) : 0;
   await db.travelLegs.add({ timestamp: msg.timestamp, destinationCityId: msg.destinationCityId, method: msg.method, cost });
 }
