@@ -700,13 +700,15 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   but have no way to know when it becomes worth selling without manually reopening
   the panel repeatedly. The held item and its current price both come directly from
   the listing just polled (`entries.find(stash > 0)`), compared against the cost
-  basis on the matching open `Trade` record; notifies via `chrome.notifications` on
-  each *transition* from not-profitable to profitable — not just the first ever for a
-  holding period, since price shifts every cycle and can dip back under cost and
-  later recover while the same cargo is still held, and each recovery is worth a
-  fresh notification. Tracked via `STORAGE_KEYS.SELL_ALERT_STATE` (`{item,
-  wasProfitable}`, cleared once nothing is held), so it stays quiet on subsequent
-  shifts only while *consistently* profitable, not across a dip-and-recover.
+  basis on the matching open `Trade` record; notifies via `chrome.notifications`
+  **every cycle** the position is profitable, not just once per holding period —
+  revised after a real case where a 3% shift notified, then a later 19% shift on the
+  same hold stayed silent under the original "only on transition" design, and the
+  player judged that a worse tradeoff than occasional repeat notifications (which
+  they can disable outright in Settings if it turns out too chatty, so the extension
+  doesn't need to guess at a magnitude threshold on their behalf). No state tracking
+  needed for this any more — removed `SellAlertState`/`STORAGE_KEYS.SELL_ALERT_STATE`
+  along with the transition logic.
 - **Customs Raid Notification (added — player request, follows from lifting the
   poll gate above):** a raid surfaced by the background poller is now recorded via
   `riskEngine.detectRaid` (previously skipped, since there was no way for a

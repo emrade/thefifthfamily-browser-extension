@@ -1,4 +1,4 @@
-import type { LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot, SellAlertState } from './types';
+import type { LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 
@@ -29,10 +29,6 @@ export const storage = {
   getPendingCustoms: () => get<PendingCustoms | null>(STORAGE_KEYS.PENDING_CUSTOMS, null),
   setPendingCustoms: (v: PendingCustoms) => set(STORAGE_KEYS.PENDING_CUSTOMS, v),
   clearPendingCustoms: () => remove(STORAGE_KEYS.PENDING_CUSTOMS),
-
-  getSellAlertState: () => get<SellAlertState | null>(STORAGE_KEYS.SELL_ALERT_STATE, null),
-  setSellAlertState: (v: SellAlertState) => set(STORAGE_KEYS.SELL_ALERT_STATE, v),
-  clearSellAlertState: () => remove(STORAGE_KEYS.SELL_ALERT_STATE),
 
   // Merged with the defaults rather than returned as-is: a notification type added
   // in a later version won't exist yet in an existing install's stored object, and
