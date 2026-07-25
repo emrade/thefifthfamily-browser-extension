@@ -1,9 +1,20 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 import { notify } from '@/shared/notify';
+import * as marketPoller from './marketPoller';
 import { ALARM_NAMES, ARRIVAL_CONFIRM_RETRIES, ARRIVAL_CONFIRM_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { RawStatsPayload } from '@/shared/types';
+
+const LOG_PREFIX = '[FifthFamily]';
+
+// Arrival is confirmed via a fresher, more direct signal (a stats.php fetch just
+// made for this exact purpose) than whatever's cached in storage.getLatestStats() —
+// this module never writes back to that cache — so the regular travelling gate
+// would otherwise read stale state and block the very poll meant to catch landing.
+function pollNowOnArrival() {
+  marketPoller.pollNow({ skipTravellingCheck: true }).catch((err) => console.error(LOG_PREFIX, 'immediate arrival poll failed', err));
+}
 
 export async function scheduleArrival(msg: Extract<ExtensionMessage, { type: 'travel-started' }>) {
   const district = await db.districts.get(msg.destinationCityId);
@@ -62,6 +73,7 @@ async function confirmArrival(retriesLeft = ARRIVAL_CONFIRM_RETRIES) {
     if (json?.ok && Number(json.stats?.current_city) === pending.destinationCityId && !json.status?.travelling) {
       await notifyArrived(pending.destinationName);
       await storage.clearPendingTravel();
+      pollNowOnArrival();
       return;
     }
   } catch {
@@ -91,4 +103,5 @@ export async function checkImmediateArrival(snapshot: RawStatsPayload) {
 
   await notifyArrived(pending.destinationName);
   await cancelPending();
+  pollNowOnArrival();
 }

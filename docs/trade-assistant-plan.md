@@ -785,6 +785,24 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   identical reality; both now skip if an equivalent snapshot already exists within a
   5-second window (wide enough to catch near-identical timestamps from either cause,
   well short of how often the market actually shifts).
+- **Immediate poll on travel arrival (added — player request):** previously, the
+  sell-opportunity and customs-raid checks only ever ran as a side effect of
+  `applySmugglingListing`, triggered by a manual panel view or the background
+  poller's own alarm — which is scheduled off the *last known* market-shift
+  countdown (or a 10-minute fallback) and explicitly refuses to fire while
+  `travelling`. Landing after a trip didn't trigger anything: if a poll was due
+  mid-trip it got silently deferred to a fresh 10-minute-out fallback, so a player
+  could land and get no read on the new district for several minutes with no
+  indication anything was wrong. `marketPoller.pollNow()` is now exported separately
+  from the alarm handler and called directly from both of travelNotifier.ts's
+  arrival-confirmation paths, so landing triggers an immediate check — this is
+  additive, not a replacement: `pollNow()` still ends by calling `scheduleNextPoll`
+  exactly as the alarm-driven path does, so the regular shift-timer cadence
+  continues unaffected afterward. Needed a `skipTravellingCheck` escape hatch on
+  `isSafeToPoll`: `travelNotifier.ts` confirms arrival via its own fresh, direct
+  `stats.php` fetch and never writes that result back into
+  `storage.getLatestStats()`, so the normal travelling gate would otherwise read
+  stale cached state and block the very poll meant to catch the moment of arrival.
 
 ---
 

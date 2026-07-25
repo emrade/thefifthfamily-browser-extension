@@ -33,8 +33,24 @@ export function scheduleNextPoll(marketShiftAt: number | null) {
 
 export async function handlePollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.MARKET_POLL) return;
+  await pollNow();
+}
 
-  if (!(await isSafeToPoll())) {
+/**
+ * The actual poll — fetch, parse, apply, reschedule. Exported separately from the
+ * alarm handler so travelNotifier.ts can trigger an immediate check the moment
+ * arrival is confirmed, instead of waiting out whatever's left of the regular
+ * schedule — which could be several minutes away, having been deferred for the
+ * whole trip (isSafeToPoll refuses to fire while `travelling`).
+ *
+ * `skipTravellingCheck` exists for that exact call site: arrival was just confirmed
+ * via its own fresh, direct stats.php fetch — more current than whatever's cached in
+ * `storage.getLatestStats()` (which travelNotifier.ts's own arrival check doesn't
+ * write back to) — so the normal travelling gate would otherwise read stale cached
+ * state and incorrectly block the very poll meant to catch the moment of arrival.
+ */
+export async function pollNow(opts: { skipTravellingCheck?: boolean } = {}): Promise<void> {
+  if (!(await isSafeToPoll(opts.skipTravellingCheck))) {
     // Conditions (travelling / jailed / hospitalized) may change by the next cycle —
     // keep trying rather than going dormant.
     scheduleNextPoll(null);
@@ -83,10 +99,10 @@ async function notifyRaidDetected(district: string) {
   });
 }
 
-async function isSafeToPoll(): Promise<boolean> {
+async function isSafeToPoll(skipTravellingCheck = false): Promise<boolean> {
   const stats = await storage.getLatestStats();
 
-  if (stats?.travelling) return false; // mid-transit, not standing in any specific district
+  if (!skipTravellingCheck && stats?.travelling) return false; // mid-transit, not standing in any specific district
   if (stats?.jailed || stats?.hospitalized) return false; // panel likely inaccessible anyway
 
   return true;
