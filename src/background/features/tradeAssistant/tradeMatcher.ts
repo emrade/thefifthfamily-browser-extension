@@ -1,6 +1,8 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 
+const LOG_PREFIX = '[FifthFamily]';
+
 export async function latestPrice(item: string, atOrBefore: number, district?: string, type?: 'buy' | 'sell'): Promise<number | null> {
   const rows = await db.priceSnapshots
     .where('item')
@@ -26,6 +28,20 @@ export async function findOpenTrade(item: string) {
 }
 
 export async function openTrade(item: string, quantity: number, timestamp: number) {
+  // A second captured buy for an item that already has an open trade should never
+  // create a second concurrent one — under normal play there's only ever one trade
+  // in flight per item. A duplicate here (e.g. a network hook briefly double-firing)
+  // previously left permanent orphaned "phantom" open trades that a later, unrelated
+  // cargo-reconciliation pass could mistake for the real one once it closed, silently
+  // fabricating a bogus completed trade from an old, already-accounted-for buy. This
+  // stops that whole class of corruption at the source rather than relying on
+  // catching it downstream.
+  const existing = await findOpenTrade(item);
+  if (existing) {
+    console.error(LOG_PREFIX, `duplicate trade-buy captured for ${item} while a trade is already open — ignoring`);
+    return;
+  }
+
   const stats = await storage.getLatestStats();
   const buyDistrict = stats?.currentDistrict ?? 'Unknown';
   const unitPrice = await latestPrice(item, timestamp, buyDistrict, 'buy');

@@ -745,6 +745,21 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   client) are left at 0, not guessed — that data is genuinely unrecoverable, and the
   design goal here was honest reconciliation of what we *do* capture, not an attempt
   to somehow observe the mobile app.
+- **Duplicate-open-trade guard (bug fix):** the pre-v0.5.1 stacked-network-hook bug
+  (fixed in mainWorldHook.ts) turned out to have duplicated *buy* captures too, not
+  just customs/bribe ones — leaving permanent orphaned "phantom" open Trade rows for
+  the same real purchase, harmless on their own since `findOpenTrade` always resolved
+  to the real (highest-id) one. They stopped being harmless the moment cargo
+  reconciliation shipped: the instant the real trade closed and cargo read as "nothing
+  held" for one poll cycle, the reconciler would find no real open trade left and
+  mistakenly resurrect the highest-id *phantom* instead, fabricating a bogus
+  "completed" trade with an estimated price — one per real trade closed, silently
+  consuming the backlog of old duplicates over time. `openTrade` (`tradeMatcher.ts`)
+  now refuses to create a second concurrent open trade for an item that already has
+  one, closing off this whole class of corruption at the source rather than relying
+  on catching it downstream. ~20 leftover phantom rows and 2 already-corrupted bogus
+  closures were found and removed from the affected install via a one-off devtools
+  script once discovered.
 
 ---
 
