@@ -27,10 +27,13 @@ export async function checkSellOpportunity(result: SmugglingListing, district: s
   const estimatedProfit = held.price * held.stash - openTrade.buyPrice;
   if (estimatedProfit <= 0) return;
 
+  const roiPct = openTrade.buyPrice > 0 ? (estimatedProfit / openTrade.buyPrice) * 100 : null;
+  const roiSuffix = roiPct !== null ? ` (${roiPct.toFixed(0)}%)` : '';
+
   await notify('sellOpportunity', {
     type: 'basic',
     iconUrl: 'icons/icon-128.png',
     title: 'Sell opportunity',
-    message: `${held.item} is now worth selling in ${district} — an estimated $${estimatedProfit.toLocaleString()} profit.`,
+    message: `${held.item} is now worth selling in ${district} — an estimated $${estimatedProfit.toLocaleString()}${roiSuffix} profit.`,
   });
 }
