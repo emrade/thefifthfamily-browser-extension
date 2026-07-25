@@ -7,6 +7,8 @@ export const STORAGE_KEYS = {
   PENDING_TRAVEL: 'ff_pending_travel',
   LAST_SMUGGLING_CONTEXT: 'ff_last_smuggling_context',
   PENDING_CUSTOMS: 'ff_pending_customs',
+  SELL_ALERT_STATE: 'ff_sell_alert_state',
+  NOTIFICATION_PREFERENCES: 'ff_notification_preferences',
 } as const;
 
 export const ALARM_NAMES = {

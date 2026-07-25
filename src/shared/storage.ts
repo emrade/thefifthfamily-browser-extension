@@ -1,5 +1,6 @@
-import type { LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
+import type { LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot, SellAlertState } from './types';
 import { STORAGE_KEYS } from './constants';
+import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 
 async function get<T>(key: string, fallback: T): Promise<T> {
   const result = await chrome.storage.local.get(key);
@@ -28,6 +29,20 @@ export const storage = {
   getPendingCustoms: () => get<PendingCustoms | null>(STORAGE_KEYS.PENDING_CUSTOMS, null),
   setPendingCustoms: (v: PendingCustoms) => set(STORAGE_KEYS.PENDING_CUSTOMS, v),
   clearPendingCustoms: () => remove(STORAGE_KEYS.PENDING_CUSTOMS),
+
+  getSellAlertState: () => get<SellAlertState | null>(STORAGE_KEYS.SELL_ALERT_STATE, null),
+  setSellAlertState: (v: SellAlertState) => set(STORAGE_KEYS.SELL_ALERT_STATE, v),
+  clearSellAlertState: () => remove(STORAGE_KEYS.SELL_ALERT_STATE),
+
+  // Merged with the defaults rather than returned as-is: a notification type added
+  // in a later version won't exist yet in an existing install's stored object, and
+  // should still come back enabled (the "default enabled" rule applies to new
+  // notification types too, not just what existed when the player first set prefs).
+  getNotificationPreferences: async (): Promise<NotificationPreferences> => {
+    const stored = await get<Partial<NotificationPreferences>>(STORAGE_KEYS.NOTIFICATION_PREFERENCES, {});
+    return { ...DEFAULT_NOTIFICATION_PREFERENCES, ...stored };
+  },
+  setNotificationPreferences: (v: NotificationPreferences) => set(STORAGE_KEYS.NOTIFICATION_PREFERENCES, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

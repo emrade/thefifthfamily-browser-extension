@@ -161,6 +161,15 @@ export interface LastSmugglingContext {
   timestamp: number;
 }
 
+/** Tracks the profitable/not-profitable transition for the sell-opportunity alert
+ * (sellOpportunity.ts) — not just "have we ever notified for this item," since price
+ * can dip back below cost and later recover while the same cargo is still held. A
+ * fresh notification should fire on each new rise above cost, not just the first. */
+export interface SellAlertState {
+  item: string;
+  wasProfitable: boolean;
+}
+
 /** A raid detected but not yet resolved — completed into a CustomsEvent once the
  * player picks bribe/run/surrender. */
 export interface PendingCustoms {

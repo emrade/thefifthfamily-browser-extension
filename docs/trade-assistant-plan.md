@@ -682,14 +682,48 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   different district), not "every district" — there's no way to check another
   district's market without physically traveling there. Aligned to the real
   market-shift countdown (`data-seconds`) rather than an assumed cadence, with a
-  10-minute fallback interval when no countdown is known yet. **Safety-gated**: skips
-  entirely whenever cargo is currently held, or the player is traveling/jailed/
-  hospitalized — the confirmed fact that a customs raid screen can come back from a
-  *plain reload* means an unguarded automatic poll could trigger a real raid check
-  against the player's account with no chance to respond. Uses a separate, DOM-free
-  regex parser (`smugglingHtmlRegexParser.ts`) since MV3 service workers don't
-  reliably have `DOMParser`; verified to produce identical output to the content
+  10-minute fallback interval when no countdown is known yet. Uses a separate,
+  DOM-free regex parser (`smugglingHtmlRegexParser.ts`) since MV3 service workers
+  don't reliably have `DOMParser`; verified to produce identical output to the content
   script's DOM-based parser against real captured payloads before being wired in.
+  **Safety gating revised (player request):** originally skipped entirely whenever
+  cargo was held, since a customs raid screen can come back from a *plain reload* and
+  an unguarded automatic poll could trigger a real raid with no chance to respond. The
+  player explicitly asked for this to be lifted — a raid found this way is a real,
+  persistent state the game itself doesn't time out (confirmed: it comes back
+  unchanged across reloads until actually resolved), so there's no cost to surfacing
+  it early, only benefit. Still skips while traveling/jailed/hospitalized (panel
+  isn't meaningfully checkable in those states regardless).
+- **Sell Opportunity Notification (added — player request):** `sellOpportunity.ts`,
+  checked after every successful background poll. Solves: a player lands somewhere
+  holding cargo, the price isn't profitable yet, they wait for the next market shift
+  but have no way to know when it becomes worth selling without manually reopening
+  the panel repeatedly. The held item and its current price both come directly from
+  the listing just polled (`entries.find(stash > 0)`), compared against the cost
+  basis on the matching open `Trade` record; notifies via `chrome.notifications` on
+  each *transition* from not-profitable to profitable — not just the first ever for a
+  holding period, since price shifts every cycle and can dip back under cost and
+  later recover while the same cargo is still held, and each recovery is worth a
+  fresh notification. Tracked via `STORAGE_KEYS.SELL_ALERT_STATE` (`{item,
+  wasProfitable}`, cleared once nothing is held), so it stays quiet on subsequent
+  shifts only while *consistently* profitable, not across a dip-and-recover.
+- **Customs Raid Notification (added — player request, follows from lifting the
+  poll gate above):** a raid surfaced by the background poller is now recorded via
+  `riskEngine.detectRaid` (previously skipped, since there was no way for a
+  poll-triggered raid to ever get resolved) and announced via `chrome.notifications`,
+  so the player can go resolve it in-game whenever they're free rather than only
+  discovering it next time they happen to open the panel themselves.
+- **Notification preferences (added — player request):** every notification type is
+  registered in one place, `shared/notifications.ts` (`NOTIFICATION_DEFINITIONS`),
+  which is also what the Settings toggle list renders from — adding a new
+  notification anywhere in the codebase means adding one entry there and calling
+  `notify(id, ...)` (`shared/notify.ts`) at the call site, not hand-wiring a new
+  preference check and a new Settings row separately. All three existing
+  notifications (Travel Arrival, Customs Raid, Sell Opportunity) now go through
+  `notify()` instead of calling `chrome.notifications.create` directly. Enabled by
+  default (opt-out, not opt-in, per player request) — stored prefs are merged with
+  the defaults on read rather than returned as-is, so a notification type added in a
+  later version comes back enabled for existing installs too, not just new ones.
 
 ---
 

@@ -1,5 +1,6 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
+import { notify } from '@/shared/notify';
 import { ALARM_NAMES, ARRIVAL_CONFIRM_RETRIES, ARRIVAL_CONFIRM_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { RawStatsPayload } from '@/shared/types';
@@ -48,7 +49,7 @@ async function confirmArrival(retriesLeft = ARRIVAL_CONFIRM_RETRIES) {
     const res = await fetch(`${GAME_ORIGIN}/api/stats.php`, { credentials: 'include' });
     const json = await res.json();
     if (json?.ok && Number(json.stats?.current_city) === pending.destinationCityId && !json.status?.travelling) {
-      notifyArrived(pending.destinationName);
+      await notifyArrived(pending.destinationName);
       await storage.clearPendingTravel();
       return;
     }
@@ -61,8 +62,8 @@ async function confirmArrival(retriesLeft = ARRIVAL_CONFIRM_RETRIES) {
   }
 }
 
-function notifyArrived(destinationName: string) {
-  chrome.notifications.create({
+async function notifyArrived(destinationName: string) {
+  await notify('travelArrival', {
     type: 'basic',
     iconUrl: 'icons/icon-128.png',
     title: 'You have arrived',
@@ -77,6 +78,6 @@ export async function checkImmediateArrival(snapshot: RawStatsPayload) {
   if (!pending) return;
   if (snapshot.travelling || snapshot.currentCityId !== pending.destinationCityId) return;
 
-  notifyArrived(pending.destinationName);
+  await notifyArrived(pending.destinationName);
   await cancelPending();
 }

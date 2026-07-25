@@ -14,6 +14,17 @@ async function latestPrice(item: string, atOrBefore: number, district?: string, 
   return (before ?? fallback).price;
 }
 
+/** Ordered by primary key (insertion order) — a reasonable proxy for "most recently
+ * opened" since only one item can be held at a time, so there should only ever be
+ * one open trade for a given item anyway. */
+export async function findOpenTrade(item: string) {
+  return db.trades
+    .where('item')
+    .equals(item)
+    .filter((t) => t.status === 'open')
+    .last();
+}
+
 export async function openTrade(item: string, quantity: number, timestamp: number) {
   const stats = await storage.getLatestStats();
   const buyDistrict = stats?.currentDistrict ?? 'Unknown';
@@ -43,14 +54,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
   const stats = await storage.getLatestStats();
   const sellDistrict = stats?.currentDistrict ?? 'Unknown';
 
-  // `.last()` orders by the auto-increment primary key, which tracks insertion order —
-  // a reasonable proxy for "most recently opened" since only one item can be held at
-  // a time, so there should only ever be one open trade for a given item anyway.
-  const open = await db.trades
-    .where('item')
-    .equals(item)
-    .filter((t) => t.status === 'open')
-    .last();
+  const open = await findOpenTrade(item);
 
   if (!open?.id) {
     // No matching buy on record (e.g. the extension was installed mid-session) —
@@ -110,11 +114,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
  * silently vanish from Trips/profit history instead of counting as the loss it was.
  */
 export async function closeTradeAsLoss(item: string, timestamp: number) {
-  const open = await db.trades
-    .where('item')
-    .equals(item)
-    .filter((t) => t.status === 'open')
-    .last();
+  const open = await findOpenTrade(item);
   if (!open?.id) return;
 
   const legs = await db.travelLegs.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();

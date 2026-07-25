@@ -853,6 +853,78 @@ button {
   color: var(--ff-ink-faint);
 }
 
+/* ── Notification toggles ──────────────────────────────── */
+
+.ff-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.ff-toggle-row__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ff-toggle-row__title {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--ff-ink);
+}
+
+.ff-toggle-row__status {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+  margin-top: 1px;
+  line-height: 1.4;
+}
+
+.ff-toggle {
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .5);
+  border: 1px solid var(--ff-border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.ff-toggle::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ff-ink-faint);
+  transition: transform .15s var(--ease-snap), background .15s;
+}
+
+.ff-toggle:checked {
+  background: rgba(251, 191, 36, .18);
+  border-color: var(--ff-gold-bright);
+}
+
+.ff-toggle:checked::before {
+  transform: translateX(14px);
+  background: var(--ff-gold-bright);
+  box-shadow: 0 0 6px rgba(251, 191, 36, .5);
+}
+
 /* ── Reset data ─────────────────────────────────────────── */
 
 .ff-export-trigger,

@@ -1,7 +1,10 @@
 import { storage } from '@/shared/storage';
+import { notify } from '@/shared/notify';
 import { ALARM_NAMES, GAME_ORIGIN, MARKET_POLL_BUFFER_MS, MARKET_POLL_FALLBACK_INTERVAL_MS } from '@/shared/constants';
 import { parseSmugglingPanelRegex } from './smugglingHtmlRegexParser';
 import { applySmugglingListing } from './applySmugglingListing';
+import { checkSellOpportunity } from './sellOpportunity';
+import * as riskEngine from './riskEngine';
 
 const LOG_PREFIX = '[FifthFamily]';
 
@@ -9,15 +12,19 @@ const LOG_PREFIX = '[FifthFamily]';
  * Background market-timeline polling — the plan doc's "fast-follow, not v1" item.
  * Snapshots the smuggling panel automatically, aligned to the game's own market-shift
  * countdown, so price history accumulates even when the player isn't actively looking
- * — not just whenever they happen to open the panel.
+ * — not just whenever they happen to open the panel. Also the mechanism behind the
+ * sell-opportunity alert (sellOpportunity.ts): the only way to know a price shift made
+ * held cargo profitable is to actually check after each shift.
  *
- * Safety note (this matters — read before changing the guard conditions below):
- * the customs raid screen is confirmed to come back from a *plain panel reload*, not
- * tied to any player action. An automatic background poll is exactly that: a plain
- * reload the player didn't ask for. If it fired while cargo was actually held, it
- * could trigger a real raid check against the player's live account with no chance
- * to respond. `isSafeToPoll` exists specifically to make that impossible — we only
- * ever poll when there is nothing at stake.
+ * Safety note: the customs raid screen is confirmed to come back from a *plain panel
+ * reload*, not tied to any player action, so an automatic poll while cargo is held
+ * carries the same raid odds as the player reloading it themselves manually — the
+ * difference is nobody's there to respond immediately. This was deliberately left
+ * gated in an earlier version; it's now allowed on the player's explicit call, since
+ * an unresolved raid just sits waiting for a real response (confirmed: it persists
+ * across reloads rather than timing out), so there's no cost to it surfacing early.
+ * A raid found this way is still detected and notified (see below) so the player can
+ * go resolve it in-game whenever they're free.
  */
 export function scheduleNextPoll(marketShiftAt: number | null) {
   const when = marketShiftAt !== null ? marketShiftAt + MARKET_POLL_BUFFER_MS : Date.now() + MARKET_POLL_FALLBACK_INTERVAL_MS;
@@ -28,8 +35,8 @@ export async function handlePollAlarm(alarm: chrome.alarms.Alarm): Promise<void>
   if (alarm.name !== ALARM_NAMES.MARKET_POLL) return;
 
   if (!(await isSafeToPoll())) {
-    // Conditions (cargo held / travelling / jailed / hospitalized) may change by the
-    // next cycle — keep trying rather than going dormant.
+    // Conditions (travelling / jailed / hospitalized) may change by the next cycle —
+    // keep trying rather than going dormant.
     scheduleNextPoll(null);
     return;
   }
@@ -52,25 +59,33 @@ export async function handlePollAlarm(alarm: chrome.alarms.Alarm): Promise<void>
   }
 
   if (result.kind === 'raid') {
-    // isSafeToPoll should make this exceedingly rare (it already refuses to poll
-    // while cargo is held, which is the only scenario a raid actually costs anything).
-    // We deliberately do NOT call riskEngine.detectRaid here: there's no resolution
-    // mechanism for a poll-triggered raid (no auto-bribe/run/surrender), and creating
-    // a PendingCustoms record that never gets resolved by a real player action would
-    // risk corrupting the *next real* customs resolution's matching logic.
-    console.error(LOG_PREFIX, 'background poll unexpectedly hit a customs raid screen — skipping without resolving');
+    // This is a real, persistent raid the player will eventually resolve in-game via
+    // a real bribe/run/surrender action — detecting it now is no different from the
+    // content script detecting it from a manually-opened panel, so it's recorded the
+    // same way (and correctly matched up whenever that real action fires).
+    await riskEngine.detectRaid(result.district, result.bribe, Date.now());
+    await notifyRaidDetected(result.district);
     scheduleNextPoll(null);
     return;
   }
 
   const marketShiftAt = await applySmugglingListing(result, Date.now());
+  await checkSellOpportunity(result, result.district);
   scheduleNextPoll(marketShiftAt);
 }
 
-async function isSafeToPoll(): Promise<boolean> {
-  const [stats, smugglingContext] = await Promise.all([storage.getLatestStats(), storage.getSmugglingContext()]);
+async function notifyRaidDetected(district: string) {
+  await notify('customsRaid', {
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: 'Customs raid detected',
+    message: `Border agents flagged your cargo in ${district}. Resolve it in-game whenever you're ready.`,
+  });
+}
 
-  if (smugglingContext && smugglingContext.heldQuantity > 0) return false; // carrying cargo — a raid here would cost something real
+async function isSafeToPoll(): Promise<boolean> {
+  const stats = await storage.getLatestStats();
+
   if (stats?.travelling) return false; // mid-transit, not standing in any specific district
   if (stats?.jailed || stats?.hospitalized) return false; // panel likely inaccessible anyway
 
