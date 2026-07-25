@@ -724,6 +724,25 @@ mid-trip. No aggregation, no Dexie querying beyond "give me the latest one."
   default (opt-out, not opt-in, per player request) — stored prefs are merged with
   the defaults on read rather than returned as-is, so a notification type added in a
   later version comes back enabled for existing installs too, not just new ones.
+- **Cross-client cargo reconciliation (added — player request):** the game has a
+  mobile app the player occasionally uses alongside the browser. A browser extension
+  fundamentally cannot see the mobile app's network traffic — there's no way to
+  capture "the other half" of a trade that happened there. Rather than leaving a
+  Trade dangling `status: 'open'` forever when its cargo vanishes with no captured
+  sell/customs event (bought on web, sold on mobile), or missing a trade entirely
+  when new cargo appears with no captured buy (bought on mobile, sold on web),
+  `cargoReconciler.ts` notices the *mismatch* on every fresh listing (manual view or
+  background poll both flow through `applySmugglingListing.ts`, which now diffs the
+  held item against what was previously held) and closes/opens the trade using a
+  best-effort price estimate from our own captured price history — not fabricated
+  data, and not silently guessed as $0 when no price history exists (`profit`/
+  `sellPrice`/`roi` stay `null` — "unknown" — rather than a misleading zero). Flagged
+  via a new `Trade.reconciled` boolean so the UI never presents an inferred number as
+  a precisely captured one — Trade History shows an "Estimated" pill on these. Costs
+  with zero signal at all on the web side (travel cost, a bribe paid on the other
+  client) are left at 0, not guessed — that data is genuinely unrecoverable, and the
+  design goal here was honest reconciliation of what we *do* capture, not an attempt
+  to somehow observe the mobile app.
 
 ---
 

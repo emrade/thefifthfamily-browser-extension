@@ -1,7 +1,7 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 
-async function latestPrice(item: string, atOrBefore: number, district?: string, type?: 'buy' | 'sell'): Promise<number | null> {
+export async function latestPrice(item: string, atOrBefore: number, district?: string, type?: 'buy' | 'sell'): Promise<number | null> {
   const rows = await db.priceSnapshots
     .where('item')
     .equals(item)
@@ -47,6 +47,7 @@ export async function openTrade(item: string, quantity: number, timestamp: numbe
     bribe: 0,
     bribeCount: 0,
     status: 'open',
+    reconciled: false,
   });
 }
 
@@ -76,6 +77,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
       bribe: 0,
       bribeCount: 0,
       status: 'closed',
+      reconciled: false,
     });
     return;
   }

@@ -1,5 +1,6 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
+import { reconcileHeldCargo } from './cargoReconciler';
 import type { SmugglingListing } from '@/shared/types';
 
 /**
@@ -14,6 +15,8 @@ import type { SmugglingListing } from '@/shared/types';
  * when to schedule the next background poll.
  */
 export async function applySmugglingListing(result: SmugglingListing, timestamp: number): Promise<number | null> {
+  const previousContext = await storage.getSmugglingContext();
+
   for (const entry of result.entries) {
     await db.priceSnapshots.add({
       timestamp,
@@ -34,6 +37,8 @@ export async function applySmugglingListing(result: SmugglingListing, timestamp:
 
   const held = result.entries.find((e) => e.stash > 0);
   const marketShiftAt = result.marketShiftSeconds !== null ? timestamp + result.marketShiftSeconds * 1000 : null;
+
+  await reconcileHeldCargo(previousContext, held, result.district, timestamp);
 
   await storage.setSmugglingContext({
     district: result.district,

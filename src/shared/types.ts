@@ -20,6 +20,12 @@ export interface Trade {
    * requiring a devtools dig to explain a number that looks too high. */
   bribeCount: number;
   status: 'open' | 'closed';
+  /** True when this trade's buy or sell side (or both) was never actually captured —
+   * inferred instead from a held-cargo mismatch (see cargoReconciler.ts), most often
+   * because the other half happened via the game's mobile app, which the extension
+   * has no way to observe. Distinguishes an inferred number from a directly captured
+   * one so the UI can flag it rather than presenting a guess as a precise figure. */
+  reconciled: boolean;
 }
 
 export interface PriceSnapshot {

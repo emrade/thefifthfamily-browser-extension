@@ -75,20 +75,28 @@ export function TradeHistory() {
           <div class="ff-trade-row" key={t.id}>
             <div class="ff-trade-row__top">
               <span class="ff-trade-row__item">{t.item}</span>
-              <span class="ff-trade-row__profit ff-mono" style={{ color: (t.profit ?? 0) >= 0 ? 'var(--ff-green)' : 'var(--ff-red)' }}>
-                {formatCash(t.profit ?? 0)}
+              <span
+                class="ff-trade-row__profit ff-mono"
+                style={{ color: t.profit === null ? 'var(--ff-ink-faint)' : t.profit >= 0 ? 'var(--ff-green)' : 'var(--ff-red)' }}
+              >
+                {t.profit === null ? '—' : formatCash(t.profit)}
               </span>
             </div>
             <div class="ff-trade-row__bottom">
               <span>{t.buyDistrict} → {t.sellDistrict ?? '—'} · {formatDuration((t.sellTime ?? t.buyTime) - t.buyTime)}</span>
               <span>{formatDate(t.sellTime ?? t.buyTime)}</span>
             </div>
-            {(t.caught || t.bribe > 0) && (
+            {(t.caught || t.bribe > 0 || t.reconciled) && (
               <div class="ff-trade-row__flags">
                 {t.caught && <span class="ff-pill ff-pill--red">Cargo Seized</span>}
                 {t.bribe > 0 && (
                   <span class="ff-pill ff-pill--gold">
                     Bribed {formatCash(t.bribe)}{t.bribeCount > 1 ? ` (${t.bribeCount}×)` : ''}
+                  </span>
+                )}
+                {t.reconciled && (
+                  <span class="ff-pill ff-pill--blue" title="Buy or sell wasn't captured directly — likely handled via the mobile app — so some figures here are estimated from price history rather than directly observed.">
+                    Estimated
                   </span>
                 )}
               </div>
