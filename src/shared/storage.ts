@@ -1,6 +1,7 @@
 import type { FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
+import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 
 async function get<T>(key: string, fallback: T): Promise<T> {
   const result = await chrome.storage.local.get(key);
@@ -45,6 +46,14 @@ export const storage = {
     return { ...DEFAULT_NOTIFICATION_PREFERENCES, ...stored };
   },
   setNotificationPreferences: (v: NotificationPreferences) => set(STORAGE_KEYS.NOTIFICATION_PREFERENCES, v),
+
+  // Same "merge with defaults" reasoning as notification prefs — a page feature
+  // added in a later version should come back enabled for an existing install too.
+  getPageFeaturePreferences: async (): Promise<PageFeaturePreferences> => {
+    const stored = await get<Partial<PageFeaturePreferences>>(STORAGE_KEYS.PAGE_FEATURE_PREFERENCES, {});
+    return { ...DEFAULT_PAGE_FEATURE_PREFERENCES, ...stored };
+  },
+  setPageFeaturePreferences: (v: PageFeaturePreferences) => set(STORAGE_KEYS.PAGE_FEATURE_PREFERENCES, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

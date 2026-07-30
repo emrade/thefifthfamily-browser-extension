@@ -1,5 +1,6 @@
 import type { CapturedRequest } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
+import { storage } from '@/shared/storage';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
@@ -31,6 +32,17 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     for (const handle of handlers) handle(data as CapturedRequest);
   });
 
-  initFightClubControls().catch((err) => console.error(LOG_PREFIX, 'initFightClubControls failed', err));
-  initStreetIntelHighlights();
+  // Gated by the player's own Settings toggles — each in-page feature only starts
+  // watching/injecting into the live page if enabled, checked once at content-script
+  // load. Toggling takes effect on the next page load, not live, since it's an
+  // init-time decision (whether to start the MutationObserver at all), not
+  // something checked per-action the way notification prefs are.
+  storage.getPageFeaturePreferences().then((prefs) => {
+    if (prefs.fightClubToolbar) {
+      initFightClubControls().catch((err) => console.error(LOG_PREFIX, 'initFightClubControls failed', err));
+    }
+    if (prefs.streetIntelHighlights) {
+      initStreetIntelHighlights();
+    }
+  });
 }

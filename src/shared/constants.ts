@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   NOTIFICATION_PREFERENCES: 'ff_notification_preferences',
   FIGHT_CLUB_STATS: 'ff_fight_club_stats',
   FIGHT_CLUB_FILTER: 'ff_fight_club_filter',
+  PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
 } as const;
 
 export const ALARM_NAMES = {
