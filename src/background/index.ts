@@ -1,13 +1,14 @@
 import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
+import { handleMessage as handleStreetIntel, handlePollAlarm as handleStreetIntelPollAlarm } from './features/streetIntel';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
 // content/index.ts for the matching dispatch on the capture side.
-const messageHandlers = [handlePlayerStats, handleTradeAssistant, handleFightClub];
+const messageHandlers = [handlePlayerStats, handleTradeAssistant, handleFightClub, handleStreetIntel];
 
 async function handleMessage(msg: ExtensionMessage) {
   for (const handle of messageHandlers) await handle(msg);
@@ -38,4 +39,5 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   handleTravelAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleTravelAlarm failed', err));
   handleMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleMarketPollAlarm failed', err));
+  handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
 });

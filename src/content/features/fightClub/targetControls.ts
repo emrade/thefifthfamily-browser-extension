@@ -1,5 +1,7 @@
 import { storage } from '@/shared/storage';
 import type { FightClubFilterPrefs } from '@/shared/types';
+import { injectStyleOnce } from '@/content/shared/injectStyle';
+import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 
 /**
  * Injects a branded sort/filter toolbar directly into the live Fight Club target
@@ -110,39 +112,6 @@ const STYLE = `
   position: absolute; top: 0; left: 8%; right: 8%; height: 1px;
   background: linear-gradient(90deg, transparent, rgba(201,168,76,.6), transparent);
 }
-.ff-fc-brand { display: flex; align-items: center; gap: 8px; }
-.ff-fc-crest {
-  width: 22px; height: 22px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  transform: rotate(45deg);
-  background: linear-gradient(135deg, rgba(201,168,76,.24), rgba(201,168,76,.05));
-  border: 1px solid rgba(201,168,76,.5);
-  border-radius: 4px;
-}
-.ff-fc-crest span {
-  transform: rotate(-45deg);
-  font-family: Georgia, 'Times New Roman', serif;
-  font-weight: 800;
-  font-size: 10.5px;
-  color: #e8c766;
-}
-.ff-fc-brand-text { display: flex; flex-direction: column; gap: 1px; line-height: 1; }
-.ff-fc-brand-text strong {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  color: #d9c48a;
-  white-space: nowrap;
-}
-.ff-fc-brand-text small {
-  font-family: 'Courier New', ui-monospace, monospace;
-  font-size: 7px;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: #6b6455;
-  white-space: nowrap;
-}
 .ff-fc-group { display: flex; align-items: center; gap: 7px; }
 .ff-fc-group-label {
   font-family: 'Courier New', ui-monospace, monospace;
@@ -193,14 +162,6 @@ const STYLE = `
 }
 `;
 
-function ensureStyleInjected() {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
-
 function refresh(grid: Element, countEl: HTMLElement) {
   applySort(grid);
   const { total, shown } = applyFilter(grid);
@@ -208,16 +169,11 @@ function refresh(grid: Element, countEl: HTMLElement) {
 }
 
 function buildToolbar(grid: Element): HTMLElement {
-  ensureStyleInjected();
+  injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + STYLE);
 
   const bar = document.createElement('div');
   bar.id = TOOLBAR_ID;
-
-  const brand = document.createElement('div');
-  brand.className = 'ff-fc-brand';
-  brand.innerHTML = '<div class="ff-fc-crest"><span>V</span></div>'
-    + '<div class="ff-fc-brand-text"><strong>Fifth Family</strong><small>Field Tools</small></div>';
-  bar.appendChild(brand);
+  bar.insertAdjacentHTML('beforeend', brandBadgeHtml('Field Tools'));
 
   const sortGroup = document.createElement('div');
   sortGroup.className = 'ff-fc-group';

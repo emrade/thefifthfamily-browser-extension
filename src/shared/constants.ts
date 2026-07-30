@@ -15,7 +15,15 @@ export const STORAGE_KEYS = {
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
   MARKET_POLL: 'ff-market-poll',
+  STREET_INTEL_POLL: 'ff-street-intel-poll',
 } as const;
+
+// Opportunities rotate on their own per-card expiry timers (independent of the
+// player's own action cooldown), so catching a new medium-risk-or-better one needs
+// recurring polling, not a single check timed off one cooldown. 5 minutes comfortably
+// catches opportunities against the shortest observed expiries (~80s–1100s) without
+// polling so often it's chatty.
+export const STREET_INTEL_POLL_INTERVAL_MS = 5 * 60_000;
 
 // Used to schedule the next background market poll when we don't have a precise
 // market-shift countdown to align to (e.g. the very first poll before any panel view

@@ -21,6 +21,11 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Sell Opportunity',
     description: "Notify when cargo you're holding becomes profitable to sell.",
   },
+  {
+    id: 'streetIntelOpportunity',
+    label: 'Street Intel Opportunity',
+    description: 'Notify when your cooldown clears and a medium-risk-or-better job is available.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

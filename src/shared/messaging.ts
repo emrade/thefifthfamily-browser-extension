@@ -37,7 +37,13 @@ export type ExtensionMessage =
   | { type: 'player-stats'; snapshot: RawStatsPayload }
   | { type: 'travel-started'; destinationCityId: number; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
   | { type: 'travel-cancelled'; timestamp: number }
-  | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number };
+  | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number }
+  // Fired on any sign the player is actively using Street Intel — a panel view or a
+  // resolved attempt — just to arm background's recurring poll (see background/
+  // features/streetIntel) the first time it's needed. Carries no data of its own;
+  // the poll re-fetches the panel itself on every cycle rather than working off
+  // whatever this particular view happened to show.
+  | { type: 'street-intel-viewed'; timestamp: number };
 
 /**
  * Every content-script feature adapter sends its parsed ExtensionMessage the same
