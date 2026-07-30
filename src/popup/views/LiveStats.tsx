@@ -13,6 +13,15 @@ function formatClock(seconds: number): string {
   return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
+function AttributeTile(props: { label: string; value: number; color: string }) {
+  return (
+    <div class="ff-stat-tile">
+      <div class="ff-stat-tile__value" style={{ color: props.color }}>{props.value.toLocaleString()}</div>
+      <div class="ff-stat-tile__label">{props.label}</div>
+    </div>
+  );
+}
+
 function ResourceBar(props: { label: string; value: number; max: number; color: string }) {
   const pct = props.max > 0 ? Math.min(100, (props.value / props.max) * 100) : 0;
   return (
@@ -85,6 +94,13 @@ export function LiveStats() {
         <ResourceBar label="Stamina" value={stats.stamina} max={stats.maxStamina} color="var(--ff-green)" />
         <ResourceBar label="Nerve" value={stats.nerve} max={stats.maxNerve} color="var(--ff-purple)" />
         <ResourceBar label="Vitality" value={stats.vitality} max={stats.maxVitality} color="var(--ff-red)" />
+      </div>
+
+      <div class="ff-attr-grid">
+        <AttributeTile label="Strength" value={stats.strength} color="var(--ff-red)" />
+        <AttributeTile label="Defence" value={stats.defence} color="var(--ff-blue)" />
+        <AttributeTile label="Agility" value={stats.agility} color="var(--ff-green)" />
+        <AttributeTile label="Dexterity" value={stats.dexterity} color="var(--ff-gold-bright)" />
       </div>
     </>
   );

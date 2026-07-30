@@ -78,6 +78,10 @@ export interface PlayerStatsSnapshot {
   maxNerve: number;
   vitality: number;
   maxVitality: number;
+  strength: number;
+  defence: number;
+  agility: number;
+  dexterity: number;
   level: number;
   xp: number;
   xpToNext: number;
@@ -110,6 +114,10 @@ export interface RawStatsPayload {
   maxNerve: number;
   vitality: number;
   maxVitality: number;
+  strength: number;
+  defence: number;
+  agility: number;
+  dexterity: number;
   level: number;
   xp: number;
   xpToNext: number;

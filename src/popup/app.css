@@ -418,6 +418,13 @@ button {
   margin-top: 4px;
 }
 
+.ff-attr-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
 /* ── Best Trade card ────────────────────────────────────── */
 
 .ff-best-trade {
