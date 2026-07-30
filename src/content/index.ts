@@ -1,5 +1,12 @@
 import type { CapturedRequest } from '@/shared/messaging';
-import { handleCapturedRequest } from './features/tradeAssistant';
+import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
+import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
+import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
+
+// Each feature owns the paths it cares about and no-ops on everything else, so every
+// captured request is simply offered to all of them — see background/index.ts for the
+// matching dispatch on the message side.
+const handlers = [handlePlayerStats, handleTradeAssistant, handleFightClub];
 
 // Bridge from the MAIN-world fetch/XHR hook (mainWorldHook.ts) — that script has no
 // chrome.* API access, so it can only forward raw bytes via postMessage; all parsing
@@ -19,6 +26,8 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     const data = event.data as Partial<CapturedRequest> | undefined;
     if (!data || data.source !== 'ff-network-hook') return;
 
-    handleCapturedRequest(data as CapturedRequest);
+    for (const handle of handlers) handle(data as CapturedRequest);
   });
+
+  initFightClubControls();
 }

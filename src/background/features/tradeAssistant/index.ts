@@ -1,8 +1,7 @@
 import { db } from '@/shared/db';
-import { storage } from '@/shared/storage';
 import { SEED_DISTRICTS } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { District, PlayerStatsSnapshot, RawStatsPayload, SmugglingListing } from '@/shared/types';
+import type { District, SmugglingListing } from '@/shared/types';
 import * as tradeMatcher from './tradeMatcher';
 import * as riskEngine from './riskEngine';
 import * as travelNotifier from './travelNotifier';
@@ -22,7 +21,7 @@ export async function ensureSeedData() {
 export async function handleMessage(msg: ExtensionMessage) {
   switch (msg.type) {
     case 'player-stats':
-      return handlePlayerStats(msg.snapshot);
+      return travelNotifier.checkImmediateArrival(msg.snapshot);
     case 'district-catalog':
       return upsertDistricts(msg.districts);
     case 'price-snapshot':
@@ -69,26 +68,4 @@ async function handlePriceSnapshot(msg: Extract<ExtensionMessage, { type: 'price
   // A real, manually-captured view is exactly when we learn the actual market-shift
   // cadence — (re)arm the background poller's chain from here.
   marketPoller.scheduleNextPoll(marketShiftAt);
-}
-
-async function handlePlayerStats(snapshot: RawStatsPayload) {
-  const district = await db.districts.get(snapshot.currentCityId);
-  const currentDistrict = district?.name ?? `City #${snapshot.currentCityId}`;
-  const destDistrict = snapshot.travelDestinationId ? await db.districts.get(snapshot.travelDestinationId) : null;
-
-  const previous = await storage.getLatestStats();
-
-  const enriched: PlayerStatsSnapshot = {
-    ...snapshot,
-    currentDistrict,
-    travelDestination: destDistrict?.name ?? null,
-  };
-
-  await storage.setLatestStats(enriched);
-
-  if (!previous || previous.currentCityId !== snapshot.currentCityId) {
-    await db.districtVisits.add({ cityId: snapshot.currentCityId, district: currentDistrict, timestamp: snapshot.timestamp });
-  }
-
-  await travelNotifier.checkImmediateArrival(snapshot);
 }

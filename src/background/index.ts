@@ -1,7 +1,17 @@
-import { ensureSeedData, handleMessage, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
+import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
+import { handleMessage as handlePlayerStats } from './features/playerStats';
+import { handleMessage as handleFightClub } from './features/fightClub';
 import type { ExtensionMessage } from '@/shared/messaging';
+import { LOG_PREFIX } from '@/shared/log';
 
-const LOG_PREFIX = '[FifthFamily]';
+// Each feature reacts to whichever message types it cares about and no-ops on the
+// rest, so every message is simply offered to all of them in turn — see
+// content/index.ts for the matching dispatch on the capture side.
+const messageHandlers = [handlePlayerStats, handleTradeAssistant, handleFightClub];
+
+async function handleMessage(msg: ExtensionMessage) {
+  for (const handle of messageHandlers) await handle(msg);
+}
 
 // Runs every time the service worker wakes up (install, browser start, or after being
 // killed for idling) — cheap no-op after the first run since it just checks a count.

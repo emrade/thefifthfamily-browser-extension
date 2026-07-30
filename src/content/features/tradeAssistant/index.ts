@@ -1,27 +1,13 @@
-import type { CapturedRequest, ExtensionMessage } from '@/shared/messaging';
-import { parseStatsPayload } from './adapters/statsAdapter';
+import type { CapturedRequest } from '@/shared/messaging';
+import { sendMessage as send } from '@/shared/messaging';
+import { LOG_PREFIX } from '@/shared/log';
 import { parseSmugglingPanel } from './adapters/smugglingPanelAdapter';
 import { parseSmugglingAction } from './adapters/smugglingActionAdapter';
 import { parseTravelAction } from './adapters/travelAdapter';
 
-const LOG_PREFIX = '[FifthFamily]';
-
-function send(message: ExtensionMessage) {
-  chrome.runtime.sendMessage(message).catch((err) => {
-    console.error(LOG_PREFIX, 'sendMessage failed for', message.type, err);
-  });
-}
-
 export function handleCapturedRequest(req: CapturedRequest) {
   const url = new URL(req.url, window.location.origin);
   const path = url.pathname;
-
-  if (path.endsWith('/api/stats.php') && req.method === 'GET') {
-    const snapshot = parseStatsPayload(req.responseText, req.timestamp);
-    if (snapshot) send({ type: 'player-stats', snapshot });
-    else console.error(LOG_PREFIX, 'stats.php captured but failed to parse', req.responseText.slice(0, 200));
-    return;
-  }
 
   if (path.endsWith('/api/panel.php') && url.searchParams.get('type') === 'smuggling') {
     const result = parseSmugglingPanel(req.responseText);

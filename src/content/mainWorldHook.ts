@@ -10,8 +10,9 @@
  * bridge, so the game changing its markup only ever requires updating one adapter.
  */
 
+import { LOG_PREFIX } from '@/shared/log';
+
 const TRACKED_PATH = /^\/(api|actions)\//;
-const LOG_PREFIX = '[FifthFamily]';
 
 /**
  * The game calls at least some of its endpoints with bare relative URLs — confirmed

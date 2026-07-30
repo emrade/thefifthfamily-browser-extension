@@ -1,12 +1,11 @@
 import { storage } from '@/shared/storage';
 import { notify } from '@/shared/notify';
 import { ALARM_NAMES, GAME_ORIGIN, MARKET_POLL_BUFFER_MS, MARKET_POLL_FALLBACK_INTERVAL_MS } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
 import { parseSmugglingPanelRegex } from './smugglingHtmlRegexParser';
 import { applySmugglingListing } from './applySmugglingListing';
 import { checkSellOpportunity } from './sellOpportunity';
 import * as riskEngine from './riskEngine';
-
-const LOG_PREFIX = '[FifthFamily]';
 
 /**
  * Background market-timeline polling — the plan doc's "fast-follow, not v1" item.

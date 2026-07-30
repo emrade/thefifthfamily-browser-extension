@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   LAST_SMUGGLING_CONTEXT: 'ff_last_smuggling_context',
   PENDING_CUSTOMS: 'ff_pending_customs',
   NOTIFICATION_PREFERENCES: 'ff_notification_preferences',
+  FIGHT_CLUB_STATS: 'ff_fight_club_stats',
 } as const;
 
 export const ALARM_NAMES = {

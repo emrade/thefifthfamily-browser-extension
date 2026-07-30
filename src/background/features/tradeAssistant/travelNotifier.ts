@@ -3,10 +3,9 @@ import { storage } from '@/shared/storage';
 import { notify } from '@/shared/notify';
 import * as marketPoller from './marketPoller';
 import { ALARM_NAMES, ARRIVAL_CONFIRM_RETRIES, ARRIVAL_CONFIRM_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { RawStatsPayload } from '@/shared/types';
-
-const LOG_PREFIX = '[FifthFamily]';
 
 // Arrival is confirmed via a fresher, more direct signal (a stats.php fetch just
 // made for this exact purpose) than whatever's cached in storage.getLatestStats() —

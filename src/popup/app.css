@@ -425,6 +425,16 @@ button {
   margin-bottom: 16px;
 }
 
+/* ── Fight Club ─────────────────────────────────────────── */
+
+.ff-fc-captured {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--ff-ink-faint);
+  margin: -10px 0 14px;
+}
+
 /* ── Best Trade card ────────────────────────────────────── */
 
 .ff-best-trade {

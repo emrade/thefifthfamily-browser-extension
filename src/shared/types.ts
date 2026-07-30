@@ -228,3 +228,18 @@ export interface SmugglingRaid {
 }
 
 export type SmugglingPanelResult = SmugglingListing | SmugglingRaid | null;
+
+/**
+ * The player's own Fight Club standing — the hero scoreboard at the top of the
+ * panel, plus their Hall of Fame rank when present. Confirmed the attack_hub
+ * response ships markup for all three tabs (Targets, Combat Log, Top Fighters) in
+ * one payload regardless of which is active client-side, so the rank is free to
+ * read here alongside the hero stats.
+ */
+export interface FightClubHeroStats {
+  rating: number;
+  hitsLanded: number;
+  hitsFailed: number;
+  lethalityPct: number;
+  hallOfFameRank: number | null;
+}

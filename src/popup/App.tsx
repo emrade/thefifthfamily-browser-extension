@@ -5,9 +5,10 @@ import { Home } from './views/Home';
 import { Settings } from './views/Settings';
 import { ChevronLeftIcon } from './views/icons';
 import { TradeAssistantHome } from './features/tradeAssistant/TradeAssistantHome';
+import { FightClubHome } from './features/fightClub/FightClubHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant' | 'settings';
+type View = 'home' | 'tradeAssistant' | 'fightClub' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -32,9 +33,14 @@ export function App() {
 
       <main class="ff-main">
         {view === 'home' && (
-          <Home onOpenTradeAssistant={() => setView('tradeAssistant')} onOpenSettings={() => setView('settings')} />
+          <Home
+            onOpenTradeAssistant={() => setView('tradeAssistant')}
+            onOpenFightClub={() => setView('fightClub')}
+            onOpenSettings={() => setView('settings')}
+          />
         )}
         {view === 'tradeAssistant' && <TradeAssistantHome />}
+        {view === 'fightClub' && <FightClubHome />}
         {view === 'settings' && <Settings />}
       </main>
 

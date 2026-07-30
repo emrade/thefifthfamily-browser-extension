@@ -1,4 +1,5 @@
-import type { District, RawStatsPayload } from './types';
+import type { District, FightClubHeroStats, RawStatsPayload } from './types';
+import { LOG_PREFIX } from './log';
 
 /**
  * Raw envelope posted from the MAIN-world fetch/XHR hook (mainWorldHook.ts) to the
@@ -35,4 +36,17 @@ export type ExtensionMessage =
   | { type: 'customs-resolved'; resolution: 'bribe' | 'run' | 'surrender'; caught: boolean; cargoLost: boolean; jailSeconds: number | null; bribeAmount: number | null; timestamp: number }
   | { type: 'player-stats'; snapshot: RawStatsPayload }
   | { type: 'travel-started'; destinationCityId: number; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
-  | { type: 'travel-cancelled'; timestamp: number };
+  | { type: 'travel-cancelled'; timestamp: number }
+  | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number };
+
+/**
+ * Every content-script feature adapter sends its parsed ExtensionMessage the same
+ * way — fire-and-forget to the background worker, logging (not throwing) on
+ * failure since a dropped message here shouldn't break the page. Centralized so
+ * that behavior lives in exactly one place instead of being re-copied per feature.
+ */
+export function sendMessage(message: ExtensionMessage): void {
+  chrome.runtime.sendMessage(message).catch((err) => {
+    console.error(LOG_PREFIX, 'sendMessage failed for', message.type, err);
+  });
+}

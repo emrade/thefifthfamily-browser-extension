@@ -1,7 +1,6 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
-
-const LOG_PREFIX = '[FifthFamily]';
+import { LOG_PREFIX } from '@/shared/log';
 
 export async function latestPrice(item: string, atOrBefore: number, district?: string, type?: 'buy' | 'sell'): Promise<number | null> {
   const rows = await db.priceSnapshots
