@@ -243,3 +243,10 @@ export interface FightClubHeroStats {
   lethalityPct: number;
   hallOfFameRank: number | null;
 }
+
+/** The in-page Fight Club target-list toolbar's sort/filter choice — persisted so
+ * the player doesn't have to re-enter a max-rating cutoff on every visit. */
+export interface FightClubFilterPrefs {
+  sort: 'default' | 'rating_asc' | 'respect_asc';
+  maxRating: number | null;
+}

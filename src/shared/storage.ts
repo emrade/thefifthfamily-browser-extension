@@ -1,4 +1,4 @@
-import type { FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
+import type { FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 
@@ -32,6 +32,9 @@ export const storage = {
 
   getFightClubStats: () => get<(FightClubHeroStats & { timestamp: number }) | null>(STORAGE_KEYS.FIGHT_CLUB_STATS, null),
   setFightClubStats: (v: FightClubHeroStats & { timestamp: number }) => set(STORAGE_KEYS.FIGHT_CLUB_STATS, v),
+
+  getFightClubFilter: () => get<FightClubFilterPrefs | null>(STORAGE_KEYS.FIGHT_CLUB_FILTER, null),
+  setFightClubFilter: (v: FightClubFilterPrefs) => set(STORAGE_KEYS.FIGHT_CLUB_FILTER, v),
 
   // Merged with the defaults rather than returned as-is: a notification type added
   // in a later version won't exist yet in an existing install's stored object, and

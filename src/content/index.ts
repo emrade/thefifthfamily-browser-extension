@@ -1,4 +1,5 @@
 import type { CapturedRequest } from '@/shared/messaging';
+import { LOG_PREFIX } from '@/shared/log';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
@@ -29,5 +30,5 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     for (const handle of handlers) handle(data as CapturedRequest);
   });
 
-  initFightClubControls();
+  initFightClubControls().catch((err) => console.error(LOG_PREFIX, 'initFightClubControls failed', err));
 }
