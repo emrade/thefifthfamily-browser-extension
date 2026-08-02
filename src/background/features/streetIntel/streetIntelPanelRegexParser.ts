@@ -23,8 +23,19 @@ export function parseStreetIntelOpportunities(responseText: string): StreetIntel
   const envelope = unwrapPanelEnvelope(responseText);
   if (!envelope) return null;
 
+  // The panel response appends an Operation Dossier table and a large inline
+  // <img onerror="..."> script blob after the opportunity cards. Neither is
+  // wanted here, and since split() leaves the *last* card's chunk unbounded
+  // (no further "si-card " delimiter to stop at), a title regex that fails to
+  // match within that last card's own markup will otherwise keep scanning
+  // straight into that trailing blob and pick up JS source as a "title".
+  // Cutting the trailing section off first keeps every chunk — including the
+  // last — bounded to actual card markup.
+  const cardsSectionEnd = envelope.html.indexOf('Operation Dossier');
+  const cardsHtml = cardsSectionEnd === -1 ? envelope.html : envelope.html.slice(0, cardsSectionEnd);
+
   const opportunities: StreetIntelOpportunity[] = [];
-  const chunks = envelope.html.split('<div class="si-card ').slice(1);
+  const chunks = cardsHtml.split('<div class="si-card ').slice(1);
 
   for (const chunk of chunks) {
     const idMatch = chunk.match(/siScout\((\d+),/);
@@ -38,7 +49,11 @@ export function parseStreetIntelOpportunities(responseText: string): StreetIntel
     else if (classes.includes('risk-high')) riskTier = 'high';
     else if (classes.includes('risk-medium')) riskTier = 'medium';
 
-    const titleMatch = chunk.match(/cat-icon"[\s\S]*?<\/div>([^<]+)<\/div>/);
+    // Title now sits in a <span> right after the cat-icon div, itself
+    // followed by a nested <span> carrying a location subtitle
+    // (`<span>Title<span>...location...</span></span>`) — capture stops at
+    // the first '<' so it grabs just the title, not the location text.
+    const titleMatch = chunk.match(/cat-icon"[\s\S]*?<\/div>\s*<span>([^<]+)/);
     const rewardMatch = chunk.match(/class="val"[^>]*>\$([\d,]+)\s*[–-]\s*\$([\d,]+)/);
 
     opportunities.push({
