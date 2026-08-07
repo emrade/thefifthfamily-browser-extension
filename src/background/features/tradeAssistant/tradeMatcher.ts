@@ -26,33 +26,82 @@ export async function findOpenTrade(item: string) {
     .last();
 }
 
-export async function openTrade(item: string, quantity: number, timestamp: number) {
-  // A second captured buy for an item that already has an open trade should never
-  // create a second concurrent one — under normal play there's only ever one trade
-  // in flight per item. A duplicate here (e.g. a network hook briefly double-firing)
-  // previously left permanent orphaned "phantom" open trades that a later, unrelated
-  // cargo-reconciliation pass could mistake for the real one once it closed, silently
-  // fabricating a bogus completed trade from an old, already-accounted-for buy. This
-  // stops that whole class of corruption at the source rather than relying on
-  // catching it downstream.
-  const existing = await findOpenTrade(item);
-  if (existing) {
-    console.error(LOG_PREFIX, `duplicate trade-buy captured for ${item} while a trade is already open — ignoring`);
-    return;
-  }
+/**
+ * A stacked network hook re-posts the *same* physical request once per stacked layer,
+ * all within the same event-loop cascade once the response resolves (see
+ * mainWorldHook.ts's install guard — a single bribe was once recorded 6 times this
+ * way). A genuine second purchase needs a fresh click plus a full server round trip,
+ * so it cannot land anywhere near this fast.
+ *
+ * Deliberately tight. Mistaking a real buy for a duplicate undercounts the cost basis
+ * and *overstates* profit — the exact failure this whole path exists to prevent —
+ * whereas the opposite error merely understates it. When in doubt, count it.
+ */
+const DUPLICATE_BUY_WINDOW_MS = 1_000;
 
+/**
+ * Sums the real per-trip costs incurred between a trade's buy and some later moment.
+ * Shared by trade close-out and the sell-opportunity estimate so a "profit" figure
+ * means the same thing everywhere — an estimate that ignored these while the recorded
+ * ROI subtracted them made the two disagree on the same trade by design.
+ */
+export async function tripCostsSince(buyTime: number, timestamp: number) {
+  const legs = await db.travelLegs.where('timestamp').between(buyTime, timestamp, true, true).toArray();
+  const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
+
+  const customsInWindow = await db.customsEvents.where('timestamp').between(buyTime, timestamp, true, true).toArray();
+  const bribeEvents = customsInWindow.filter((c) => c.resolution === 'bribe');
+  const bribeTotal = bribeEvents.reduce((sum, c) => sum + c.bribe, 0);
+
+  return { travelCost, bribeTotal, bribeCount: bribeEvents.length };
+}
+
+export async function openTrade(item: string, quantity: number, timestamp: number) {
   const stats = await storage.getLatestStats();
   const buyDistrict = stats?.currentDistrict ?? 'Unknown';
   const unitPrice = await latestPrice(item, timestamp, buyDistrict, 'buy');
+  const legCost = (unitPrice ?? 0) * quantity;
+
+  // A second captured buy for an item that already has an open trade must never create
+  // a second concurrent one — under normal play there's only ever one trade in flight
+  // per item, and a phantom second trade could later be mistaken for the real one,
+  // fabricating a bogus completed trade from an already-accounted-for buy.
+  const existing = await findOpenTrade(item);
+  if (existing?.id) {
+    const isRepost =
+      existing.lastBuyTime !== undefined &&
+      existing.lastBuyQuantity === quantity &&
+      timestamp - existing.lastBuyTime < DUPLICATE_BUY_WINDOW_MS;
+
+    if (isRepost) {
+      console.error(LOG_PREFIX, `duplicate trade-buy captured for ${item} — ignoring`);
+      return;
+    }
+
+    // Not a repost: a real top-up filling the rest of the hold. Dropping these (as
+    // this branch used to, unconditionally) left `quantity`/`buyPrice` covering only
+    // the first leg while the panel's stash counted every unit — so revenue for the
+    // whole hold got divided by the cost of part of it and the shortfall was reported
+    // as profit. A 31-unit hold priced as 20 read as +80% on a real +16% position.
+    await db.trades.update(existing.id, {
+      quantity: existing.quantity + quantity,
+      buyPrice: existing.buyPrice + legCost,
+      lastBuyTime: timestamp,
+      lastBuyQuantity: quantity,
+    });
+    return;
+  }
 
   await db.trades.add({
     item,
     quantity,
     buyDistrict,
     sellDistrict: null,
-    buyPrice: (unitPrice ?? 0) * quantity,
+    buyPrice: legCost,
     sellPrice: null,
     buyTime: timestamp,
+    lastBuyTime: timestamp,
+    lastBuyQuantity: quantity,
     sellTime: null,
     travelCost: 0,
     grossProfit: null,
@@ -113,12 +162,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
     return;
   }
 
-  const legs = await db.travelLegs.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
-  const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
-
-  const customsInWindow = await db.customsEvents.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
-  const bribeEvents = customsInWindow.filter((c) => c.resolution === 'bribe');
-  const bribeTotal = bribeEvents.reduce((sum, c) => sum + c.bribe, 0);
+  const { travelCost, bribeTotal, bribeCount } = await tripCostsSince(open.buyTime, timestamp);
 
   const profit = grossProfit - travelCost - bribeTotal;
   const costBasis = open.buyPrice + travelCost + bribeTotal;
@@ -130,7 +174,7 @@ export async function closeTrade(item: string, quantity: number, sellTotal: numb
     sellTime: timestamp,
     travelCost,
     bribe: bribeTotal,
-    bribeCount: bribeEvents.length,
+    bribeCount,
     grossProfit,
     profit,
     roi,
@@ -150,17 +194,12 @@ export async function closeTradeAsLoss(item: string, timestamp: number) {
   const open = await findOpenTrade(item);
   if (!open?.id) return;
 
-  const legs = await db.travelLegs.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
-  const travelCost = legs.reduce((sum, leg) => sum + (leg.method === 'taxi' ? leg.cost : 0), 0);
-
   // A trade that ultimately ends in a loss may still have paid one or more bribes
   // earlier in its life (survived a stop, kept the cargo, then got caught/surrendered
   // later) — those were real costs of this same trip and should still count against
   // it. The resolution that caused *this* loss itself carries bribe: 0 (surrender and
   // a failed run never pay a bribe), so including it in the sum is harmless.
-  const customsInWindow = await db.customsEvents.where('timestamp').between(open.buyTime, timestamp, true, true).toArray();
-  const bribeEvents = customsInWindow.filter((c) => c.resolution === 'bribe');
-  const bribeTotal = bribeEvents.reduce((sum, c) => sum + c.bribe, 0);
+  const { travelCost, bribeTotal, bribeCount } = await tripCostsSince(open.buyTime, timestamp);
 
   const grossProfit = -open.buyPrice;
   const profit = grossProfit - travelCost - bribeTotal;
@@ -172,7 +211,7 @@ export async function closeTradeAsLoss(item: string, timestamp: number) {
     sellTime: timestamp,
     travelCost,
     bribe: bribeTotal,
-    bribeCount: bribeEvents.length,
+    bribeCount,
     grossProfit,
     profit,
     roi: costBasis > 0 ? profit / costBasis : null,

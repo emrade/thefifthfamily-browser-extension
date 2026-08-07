@@ -7,6 +7,13 @@ export interface Trade {
   buyPrice: number;
   sellPrice: number | null;
   buyTime: number;
+  /** The most recent buy leg folded into this trade (a trade can be filled over
+   * several purchases). Used only to recognise a stacked network hook re-posting the
+   * same physical buy — see openTrade() in tradeMatcher.ts. Optional because trades
+   * recorded before multi-leg buys were supported have no leg history, and because a
+   * trade inferred by cargoReconciler.ts never saw a buy request at all. */
+  lastBuyTime?: number;
+  lastBuyQuantity?: number;
   sellTime: number | null;
   travelCost: number;
   grossProfit: number | null;
