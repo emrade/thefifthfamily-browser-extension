@@ -1,20 +1,20 @@
 import { db } from '@/shared/db';
 import { storage } from '@/shared/storage';
 import { estimateRiskForFullness, type RiskSource } from './riskModel';
+import { bribeRateFrom, type BribeRateSource } from './bribeModel';
 
 export interface CustomsCalculatorResult {
   quantity: number;
   cargoValue: number;
   riskPct: number;
   riskSource: RiskSource;
+  /** Tracked separately from `riskSource`: the two are measured from different tables
+   * and one can be a real observation while the other is still a default. */
+  bribeSource: BribeRateSource;
   expectedProfit: number;
   expectedBribe: number;
   expectedEV: number;
 }
-
-// Only one bribe/cargo-value pair has ever been captured (44,000 on ~176,000 cargo,
-// i.e. 25%) — used only until the account has its own bribe history to average.
-const FALLBACK_BRIBE_RATIO = 0.25;
 
 /**
  * Merges the PRD's "Bribe Predictor" and "Customs Calculator" into one tool — both
@@ -46,13 +46,10 @@ export async function computeCustomsCalculator(item: string, quantity: number): 
   const sellUnit = sellEntry?.price ?? unitValue;
   const expectedProfit = (sellUnit - buyUnit) * quantity;
 
-  const bribed = customsEvents.filter((c) => c.resolution === 'bribe' && c.cargoValue && c.cargoValue > 0);
-  const bribeRatio = bribed.length > 0
-    ? bribed.reduce((sum, c) => sum + c.bribe / (c.cargoValue as number), 0) / bribed.length
-    : FALLBACK_BRIBE_RATIO;
-  const expectedBribe = bribeRatio * cargoValue;
+  const { rate: bribeRate, source: bribeSource } = bribeRateFrom(customsEvents);
+  const expectedBribe = bribeRate * cargoValue;
 
   const expectedEV = expectedProfit - (riskPct / 100) * expectedBribe;
 
-  return { quantity, cargoValue, riskPct, riskSource: source, expectedProfit, expectedBribe, expectedEV };
+  return { quantity, cargoValue, riskPct, riskSource: source, bribeSource, expectedProfit, expectedBribe, expectedEV };
 }

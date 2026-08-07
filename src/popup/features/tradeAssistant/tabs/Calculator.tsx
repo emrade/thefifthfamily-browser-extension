@@ -89,7 +89,7 @@ export function Calculator() {
 
       {result && (
         <div class="ff-best-trade__note">
-          Risk from {result.riskSource === 'observed-curve' ? 'your own fullness↔risk history' : result.riskSource === 'single-reading' ? 'your most recent panel reading — more history will refine this' : "a rough default — no readings yet"} · bribe ratio from {result.riskSource !== 'fallback' ? 'your own bribe history where available' : 'a rough default'}
+          Risk from {result.riskSource === 'observed-curve' ? 'your own fullness↔risk history' : result.riskSource === 'single-reading' ? 'your most recent panel reading — more history will refine this' : "a rough default — no readings yet"} · bribe ratio from {result.bribeSource === 'observed' ? 'your own bribe history' : 'a rough default — no stops recorded yet'}
         </div>
       )}
     </div>

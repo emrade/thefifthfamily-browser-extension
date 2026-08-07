@@ -38,7 +38,7 @@ export function BestTrade() {
         <div class="ff-best-trade__leg">
           <span class="ff-best-trade__leg-label">Sell</span>
           <span class="ff-best-trade__leg-item">{rec.sellDistrict}</span>
-          <span class="ff-best-trade__leg-district">{formatCash(rec.sellPrice)}/ea · ×{rec.quantity}</span>
+          <span class="ff-best-trade__leg-district">{formatCash(rec.sellPrice)}/ea · ×{rec.quantity}{rec.quantity < rec.capacity ? ` of ${rec.capacity}` : ''}</span>
         </div>
       </div>
 
@@ -58,7 +58,10 @@ export function BestTrade() {
       </div>
 
       <div class="ff-best-trade__note">
-        Risk from {rec.riskSource === 'observed' ? 'your own customs history' : "the game's displayed gauge — not enough of your own history yet"} · assumes bribing through any stop
+        {rec.quantity < rec.capacity
+          ? "Travelling light beats a full hold here — the margin is too thin to cover the extra seizure risk a fuller load puts on the whole shipment."
+          : 'A full hold wins here — the margin more than covers the extra seizure risk it carries.'}
+        {' '}Risk scales with how full the hold is · assumes bribing through any stop.
       </div>
     </div>
   );
