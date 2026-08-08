@@ -160,7 +160,16 @@ sample payload or an answer from the player.
   or may not — needs checking once we're at the recommendation-engine stage.
 - **Community-sourced mechanics guide (unofficial, treat as a prior, not ground
   truth)** — a player-written guide gives formulas that are broadly consistent with
-  what we've observed, but not authoritative:
+  what we've observed, but not authoritative.
+
+  > **Superseded — see [game-mechanics.md](./game-mechanics.md).** Enough data has since
+  > been captured to measure these directly, and the results settle the open questions
+  > below: the guide's **risk formula is wrong** (real slope 0.45, not 0.6, against
+  > effective capacity — which is why a full hold reads 50%, not 65%); its **0.85–1.43×
+  > price band is exactly right**; its "Best Sell" figures are the top of that band, so
+  > the internal inconsistency noted below is a truncated *Market Range* column rather
+  > than a real contradiction; and its **hard cap of 26 is wrong** (this account is at
+  > 31). Left in place below as the historical prior — do not act on these numbers.
   - Sell-side prices shift server-wide every 10 minutes (consistent with the
     `smug-price-timer` countdown), with each item's live price randomized somewhere in
     a **0.85×–1.43× band around its wholesale/base price**.
