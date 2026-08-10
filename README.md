@@ -66,8 +66,9 @@ src/
 │   ├── views/
 │   │   ├── Home.tsx                    # Default view — live stats + feature nav
 │   │   └── LiveStats.tsx               # Player vitals, sourced from the latest stats.php poll
-│   └── features/tradeAssistant/
-│       └── TradeAssistantHome.tsx      # Feature entry point (dashboard is a later phase)
+│   └── features/
+│       ├── tradeAssistant/             # Feature entry point (dashboard is a later phase)
+│       └── requestLog/                 # HTTP archive view — stats, export picker, retention
 ├── shared/
 │   ├── types.ts, messaging.ts, db.ts (Dexie), storage.ts, constants.ts
 │   └── requestLog/                     # HTTP archive: capture, gzip, shape index, exports

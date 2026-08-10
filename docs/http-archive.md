@@ -3,7 +3,7 @@
 A local, compressed recording of every request the game makes, plus an index of when
 its endpoints change shape.
 
-Added in 0.10.0.
+Added in 0.10.0. Moved from Settings to its own top-level view in 0.10.1.
 
 ---
 
@@ -87,13 +87,13 @@ IndexedDB, and **neither syncs**.
 
 The `unlimitedStorage` permission keeps the browser from evicting it under disk pressure.
 It does not protect against uninstalling the extension, refreshing the profile, or the
-clear buttons in Settings.
+clear controls on the archive's own page.
 
 ---
 
 ## Retention
 
-**30 days by default**, adjustable to 7, 14, or 90 in Settings. A background alarm sweeps
+**30 days by default**, adjustable to 7, 14, or 90 on the archive page. A background alarm sweeps
 hourly, so the archive trims steadily rather than in one large burst after a long gap.
 
 Two things qualify that number:
@@ -113,7 +113,7 @@ Bodies are gzipped via `CompressionStream` before storage. Panel responses are H
 fragments that re-send the same inlined `<style>` block every time, which is close to the
 ideal case for DEFLATE.
 
-Settings shows the **actual** measured ratio for your data ("% saved") rather than an
+The archive page shows the **actual** measured ratio for your data ("% saved") rather than an
 estimate — trust that number over any figure written here, since it depends on what the
 game actually sends.
 
@@ -121,10 +121,18 @@ game actually sends.
 
 ## Using it
 
-### Settings → HTTP Archive
+### Home → HTTP Archive
 
-Live counts, on-disk size, the covered date range, and an amber alert listing any
-endpoint whose response structure has changed.
+A top-level feature view, not a settings pane — it sits on the popup's Home list
+alongside Trade Assistant and Fight Club. The page opens on live counts, on-disk size,
+the covered date range, and an amber alert listing any endpoint whose response structure
+has changed, then splits into three sections:
+
+| Section | Holds |
+|---|---|
+| **Capture** | The on/off switch and the retention window |
+| **Export** | The endpoint picker and the three download buttons |
+| **Maintenance** | Recount size, and the archive's own clear control |
 
 ### The three exports
 
@@ -282,7 +290,8 @@ control. Wiping months of capture as a side effect of resetting a trade ledger w
 the wrong behaviour.
 
 `clearAllData()` handles the former; `clearRequestLog()` handles the latter, behind its
-own confirmation in the HTTP Archive section.
+own confirmation under Maintenance on the archive page. Keeping the two in separate
+places in the UI is part of the point — they are not variations of one action.
 
 The archive's *preferences* (capture on/off, retention) do reset with Clear All Data,
 consistent with every other preference. Capture stays on; retention returns to 30 days.
@@ -295,10 +304,10 @@ All in `src/shared/constants.ts`:
 
 | Constant | Default | Effect |
 |---|---|---|
-| `REQUEST_LOG_RETENTION_DAYS` | 30 | Default age cutoff (per-install override in Settings) |
+| `REQUEST_LOG_RETENTION_DAYS` | 30 | Default age cutoff (per-install override on the archive page) |
 | `REQUEST_LOG_MAX_ROWS` | 120,000 | Hard row cap; raise for a true 90-day window |
 | `REQUEST_LOG_MAX_BODY_BYTES` | 512 KB | Bodies above this are stored truncated |
 | `REQUEST_LOG_SWEEP_INTERVAL_MINUTES` | 60 | How often retention runs |
 
-To disable capture entirely, untick **Record Game Traffic** in Settings. Existing rows
-are kept — toggling off is a pause, not a wipe.
+To disable capture entirely, untick **Record Game Traffic** under Capture on the archive
+page. Existing rows are kept — toggling off is a pause, not a wipe.
