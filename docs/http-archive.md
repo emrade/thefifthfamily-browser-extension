@@ -1,9 +1,10 @@
 # HTTP Archive
 
-A local, compressed recording of every request the game makes, plus an index of when
-its endpoints change shape.
+A local, compressed recording of every request the game makes, plus an index of what
+each endpoint normally emits and when that changes.
 
-Added in 0.10.0. Moved from Settings to its own top-level view in 0.10.1.
+Added in 0.10.0. Moved to its own top-level view in 0.10.1, which also replaced the
+change-detection model — see [The shape index](#the-shape-index) for why.
 
 ---
 
@@ -125,20 +126,20 @@ game actually sends.
 
 A top-level feature view, not a settings pane — it sits on the popup's Home list
 alongside Trade Assistant and Fight Club. The page opens on live counts, on-disk size,
-the covered date range, and an amber alert listing any endpoint whose response structure
-has changed, then splits into three sections:
+the covered date range, and — only when there is something to say — an alert naming any
+endpoint that dropped a previously universal field. It then splits into three sections:
 
 | Section | Holds |
 |---|---|
 | **Capture** | The on/off switch and the retention window |
 | **Export** | The endpoint picker and the three download buttons |
-| **Maintenance** | Recount size, and the archive's own clear control |
+| **Maintenance** | Rebuild the shape index, recount size, and the archive's own clear control |
 
 ### The three exports
 
 | Export | Contents | Size | Use when |
 |---|---|---|---|
-| **Shape Digest** | Every endpoint's structural change history | KB | Something broke, or you want to know what the game changed |
+| **Shape Digest** | Each endpoint's token vocabulary and structural events | KB | Something broke, or you want to know what the game changed |
 | **Download Selection** | Chosen endpoints × chosen window | MB | Working on a specific feature |
 | **Full Archive** | Everything stored | Large | Bulk analysis, or archiving before a wipe |
 
@@ -177,56 +178,86 @@ zcat fifth-family-archive-*.ndjson.gz | grep 'type=smuggling' > smuggling.ndjson
 
 For every response, `fingerprint.ts` extracts a set of **structural** tokens — CSS class
 names, element ids, form field names, `data-*` attribute names, tag names, and for JSON,
-key paths with leaf *types* — and hashes them. A row is written to `endpointShapes` only
-when that hash is new for the endpoint.
+key paths with leaf *types*. Those tokens are folded into a per-endpoint **vocabulary**:
+one row per endpoint recording every token it has ever produced, and how often.
 
-The effect is that data churn is invisible and structure changes are loud:
+> **This replaced an earlier design, and the reason is worth keeping.** The first version
+> stored one row per distinct token *set* and treated "more than one set" as evidence the
+> game had changed. Measured against real traffic that was wrong in the most basic way. A
+> single endpoint routinely returns several unrelated structures —
+> `panel.php?type=smuggling` returns a market listing *or* a customs raid screen,
+> `travel.php` returns a city list, a travel confirmation, or an error — and any optional
+> element forks the set every time it toggles. A Street Intel cooldown timer blinked five
+> classes in and out between consecutive polls, producing six "shapes" that simply
+> alternated. The result: every endpoint reported as changed within an hour of first use,
+> with nothing actually wrong. **Multiplicity is not change.** A variant recurs; a change
+> happens once and persists.
 
-| Event | Registers as a change? |
-|---|---|
-| Prices shift on the 10-minute boundary | No |
-| A different number of market cards | No |
-| A new CSS class appears on a card | **Yes** |
-| A JSON field changes `number` → `string` | **Yes** |
-| An endpoint stops returning a class an adapter reads | **Yes** |
+A vocabulary cannot be fooled that way. A blinking timer contributes its classes once and
+is thereafter part of what the endpoint is known to emit.
 
-Panel responses are unwrapped before fingerprinting — every `panel.php` reply is
-`{ok, title, html}`, so fingerprinting the envelope alone would report the same three
-keys for every panel in the game and detect nothing.
+### What gets reported
 
-40 structurally identical responses produce **one** row, not 40. That is what keeps the
-digest small enough to be worth exporting separately.
+| Kind | Meaning | Weight |
+|---|---|---|
+| `removed-universal` | A token that appeared in **every** prior response stopped appearing | **Actionable** — this is what silently breaks an adapter |
+| `new-tokens` | A token never seen before showed up | Informational — often a new field, sometimes a rare variant's first appearance |
 
-### Reading a change
+Three rules keep this quiet:
 
-The digest diffs consecutive shapes per endpoint:
+- **Warmup.** Nothing is reported until an endpoint has been seen at least
+  `SHAPE_WARMUP_OBSERVATIONS` times *and* for `SHAPE_WARMUP_MS`. An endpoint's normal
+  repertoire is wider than it looks and has to be learned, not announced.
+- **Universality.** A token must have been present in *every* prior response before its
+  absence counts. Optional tokens never reach that bar — which is exactly why the
+  oscillating-cooldown case can no longer fire.
+- **Targeting.** A removal is only reported if it touches a small slice of the vocabulary
+  (`SHAPE_REMOVAL_MAX_FRACTION`). When a raid screen replaces a listing, every listing
+  token legitimately vanishes at once; a real field being dropped moves a handful. After
+  the first occurrence those tokens are no longer universal, so this can only ever
+  misjudge a variant's debut.
+
+### Reading the digest
 
 ```json
 {
   "endpoint": "GET /api/panel.php?type=smuggling",
-  "distinctShapes": 2,
-  "changes": [
-    { "at": "2026-07-22T09:14:03Z", "shapeHash": "3f2a...", "added": [], "removed": [] },
-    { "at": "2026-08-09T11:40:12Z", "shapeHash": "9c81...",
-      "added": [".sgl-c-tariff"], "removed": [".sgl-c-origin"] }
+  "observations": 4812,
+  "alwaysPresent": [".sgl-c-name", ".sgl-c-price", ".sgl-section"],
+  "sometimesPresent": [{ "token": ".sgl-raid-screen", "seenPct": 3 }],
+  "events": [
+    { "at": "2026-08-09T11:40:12Z", "kind": "removed-universal", "tokens": [".sgl-c-origin"] }
   ]
 }
 ```
 
-That reads directly as: on 9 August the game added a tariff element and dropped the
-origin element — so `smugglingPanelAdapter.ts`, which reads `.sgl-c-origin` to decide
-`isLocal`, is now broken, and there is a new field worth parsing.
+`alwaysPresent` is the set an adapter can safely key off. `sometimesPresent` is
+state-dependent and will be missing on perfectly normal responses — reading one of those
+without a null check is a latent bug. The event above says `.sgl-c-origin` stopped
+appearing on 9 August, so `smugglingPanelAdapter.ts`, which reads it to decide `isLocal`,
+is now broken.
 
-A shape change also logs a `console.warn` the moment it happens, so the signal does not
-wait for anyone to open the popup.
+An endpoint with an empty `events` array has been structurally stable.
 
----
+### Rebuilding
+
+**Maintenance → Rebuild Shape Index from Archive** replays every stored response through
+the current classifier. Two uses: getting an index that matches the current rules after
+the model changes, and skipping warmup — an index built from live traffic alone stays
+deliberately silent for hours on each endpoint, even when the archive already holds weeks
+of evidence.
+
+It is manual rather than automatic because every body must be decompressed and
+re-tokenized: cheap for a few thousand rows, not for a full 30-day archive. The rebuild
+shares its classifier with the live write path, so a replayed index is byte-identical to
+one built as traffic arrived.
 
 ## Working with an AI agent
 
 1. Export the **shape digest** — always cheap, and it frames everything else.
-2. If an endpoint shows `distinctShapes > 1`, the `added`/`removed` arrays usually
-   identify the break on their own.
+2. Look at `events`. A `removed-universal` entry names the exact tokens that stopped
+   appearing, which usually identifies the break on its own. An empty `events` array
+   means the endpoint has been structurally stable.
 3. For deeper work, export a **selection**: the one endpoint, last few days.
 4. Hand over both files plus the relevant adapter under
    `src/content/features/*/adapters/`.
@@ -308,6 +339,9 @@ All in `src/shared/constants.ts`:
 | `REQUEST_LOG_MAX_ROWS` | 120,000 | Hard row cap; raise for a true 90-day window |
 | `REQUEST_LOG_MAX_BODY_BYTES` | 512 KB | Bodies above this are stored truncated |
 | `REQUEST_LOG_SWEEP_INTERVAL_MINUTES` | 60 | How often retention runs |
+| `SHAPE_WARMUP_OBSERVATIONS` / `SHAPE_WARMUP_MS` | 25 / 6h | How well sampled an endpoint must be before anything is reported |
+| `SHAPE_UNIVERSAL_MIN_OBSERVATIONS` | 25 | Floor before a token counts as "always present" |
+| `SHAPE_REMOVAL_MAX_FRACTION` | 0.3 | Above this share of the vocabulary, a disappearance reads as a variant switch |
 
 To disable capture entirely, untick **Record Game Traffic** under Capture on the archive
 page. Existing rows are kept — toggling off is a pause, not a wipe.

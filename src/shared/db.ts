@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { CustomsEvent, District, DistrictVisit, PriceSnapshot, RiskObservation, Trade, TravelLeg } from './types';
-import type { EndpointShape, RequestLogEntry } from './requestLog/types';
+import type { EndpointProfile, RequestLogEntry } from './requestLog/types';
 
 const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
   trades: EntityTable<Trade, 'id'>;
@@ -11,7 +11,7 @@ const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
   travelLegs: EntityTable<TravelLeg, 'id'>;
   riskObservations: EntityTable<RiskObservation, 'id'>;
   requestLog: EntityTable<RequestLogEntry, 'id'>;
-  endpointShapes: EntityTable<EndpointShape, 'id'>;
+  endpointProfiles: EntityTable<EndpointProfile, 'id'>;
 };
 
 db.version(1).stores({
@@ -41,6 +41,19 @@ db.version(2).stores({
 db.version(3).stores({
   requestLog: '++id, timestamp, endpoint, [endpoint+timestamp]',
   endpointShapes: '++id, endpoint, lastSeen, [endpoint+shapeHash]',
+});
+
+// `endpointShapes` stored one row per distinct token *set* and treated a count
+// above one as evidence the game had changed. Against real traffic that fired on
+// every endpoint within an hour of first use: one endpoint legitimately returns
+// several structures (listing vs raid screen, city list vs travel confirmation vs
+// error), and optional elements forked the set every time they toggled. Setting
+// the store to null drops it outright rather than migrating — the rows were
+// counting the wrong thing, so none of their content is worth carrying over, and
+// `endpointProfiles` rebuilds from live traffic within a session.
+db.version(4).stores({
+  endpointShapes: null,
+  endpointProfiles: '++id, endpoint, lastSeen',
 });
 
 /** Wipes the derived, player-facing tables — everything behind the numbers shown in
@@ -75,8 +88,8 @@ export async function clearAllData(): Promise<void> {
 /** Clears the HTTP archive and its shape index, and nothing else. The archive's
  *  own reset — trades, prices, and every other derived table are left intact. */
 export async function clearRequestLog(): Promise<void> {
-  await db.transaction('rw', [db.requestLog, db.endpointShapes], async () => {
-    await Promise.all([db.requestLog.clear(), db.endpointShapes.clear()]);
+  await db.transaction('rw', [db.requestLog, db.endpointProfiles], async () => {
+    await Promise.all([db.requestLog.clear(), db.endpointProfiles.clear()]);
   });
 }
 

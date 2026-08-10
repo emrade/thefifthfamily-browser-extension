@@ -5,6 +5,7 @@ import { byteLength, compressText, BODY_ENCODING } from './compress';
 import { endpointKey, fingerprintResponse } from './fingerprint';
 import { redactBody, redactUrl } from './redact';
 import { addToStats } from './stats';
+import { foldObservation } from './profile';
 import type { RequestLogOrigin } from './types';
 
 export interface RecordRequestInput {
@@ -20,11 +21,6 @@ export interface RecordRequestInput {
    *  false and are capped here instead. */
   truncatedUpstream?: boolean;
 }
-
-/** How much of a response is kept verbatim on a shape row, purely as human
- *  context next to a token diff. Small on purpose — the full body is one lookup
- *  away in `requestLog`, and this field is repeated per shape. */
-const SAMPLE_CHARS = 2_000;
 
 /**
  * Writes one request/response pair into the archive and updates the shape index.
@@ -86,45 +82,39 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
   });
 
   await addToStats(rawSize, storedSize, input.timestamp);
-  await upsertShape(endpoint, hash, tokens, responseText, input.timestamp);
+  await updateProfile(endpoint, tokens, responseText, input.timestamp);
 }
 
-async function upsertShape(
+/**
+ * Reads the endpoint's profile, folds this observation in, and writes it back.
+ *
+ * The classification itself lives in `foldObservation` so that the offline
+ * rebuild over an existing archive produces a byte-identical index to the live
+ * path — an index that disagreed with itself depending on when it was built would
+ * be worse than no index.
+ */
+async function updateProfile(
   endpoint: string,
-  shapeHash: string,
   tokens: string[],
   responseText: string,
   timestamp: number,
 ): Promise<void> {
-  const existing = await db.endpointShapes.where('[endpoint+shapeHash]').equals([endpoint, shapeHash]).first();
+  const existing = (await db.endpointProfiles.where('endpoint').equals(endpoint).first()) ?? null;
+  const { profile, newEvents } = foldObservation(existing, endpoint, tokens, responseText, timestamp);
 
-  if (existing?.id != null) {
-    // Bumped in place rather than appended. An endpoint that never changes must
-    // cost one row for all time — if steady-state responses accumulated rows, the
-    // shape index would grow at the same rate as the archive and lose the property
-    // that makes it worth exporting separately.
-    await db.endpointShapes.update(existing.id, {
-      lastSeen: Math.max(existing.lastSeen, timestamp),
-      count: existing.count + 1,
-    });
-    return;
+  for (const event of newEvents) {
+    if (event.kind === 'removed-universal') {
+      console.warn(
+        LOG_PREFIX,
+        `${endpoint} stopped returning ${event.tokens.join(', ')} — an adapter reading these may now be broken`,
+      );
+    } else {
+      console.info(LOG_PREFIX, `new structure on ${endpoint}: ${event.tokens.slice(0, 6).join(', ')}`);
+    }
   }
 
-  await db.endpointShapes.add({
-    endpoint,
-    shapeHash,
-    firstSeen: timestamp,
-    lastSeen: timestamp,
-    count: 1,
-    tokens,
-    sample: responseText.slice(0, SAMPLE_CHARS),
-  });
-
-  const seenBefore = await db.endpointShapes.where('endpoint').equals(endpoint).count();
-  if (seenBefore > 1) {
-    // Not an error — this is the feature firing. Surfacing it in the console gives
-    // an immediate, live signal that the game changed, without waiting for anyone
-    // to open the popup or export anything.
-    console.warn(LOG_PREFIX, `response shape changed for ${endpoint} (now ${seenBefore} distinct shapes, new hash ${shapeHash})`);
-  }
+  // `put` rather than `update` — the fold returns a whole replacement profile, and
+  // Dexie's UpdateSpec types a partial with dotted key paths, which a full object
+  // doesn't satisfy. Carrying the existing id through makes this an overwrite.
+  await db.endpointProfiles.put(existing?.id != null ? { ...profile, id: existing.id } : profile);
 }

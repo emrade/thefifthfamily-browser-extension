@@ -1248,3 +1248,17 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+
+/* Informational counterpart to .ff-archive-alert. A new token is usually benign —
+   a new field, or a rare variant seen for the first time — so it gets a quiet
+   note rather than the amber alert treatment reserved for a dropped field. */
+.ff-archive-note {
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-md);
+  font-size: 10px;
+  color: var(--ff-ink-faint);
+  line-height: 1.5;
+}

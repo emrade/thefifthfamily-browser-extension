@@ -5,6 +5,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, RETENTION_CHOICES, type RequestLogPreferences } from '@/shared/requestLog/preferences';
 import { readStats, recomputeStats, resetStats, type RequestLogStats } from '@/shared/requestLog/stats';
 import { buildArchiveBlob, buildShapeDigest, listEndpoints, type EndpointSummary } from '@/shared/requestLog/exportRequestLog';
+import { rebuildProfiles } from '@/shared/requestLog/rebuild';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -21,7 +22,13 @@ const WINDOWS: { label: string; ms: number }[] = [
  *  answers a different question — not "how big" but "has anything changed". */
 interface ShapeSummary {
   endpoints: number;
-  changedEndpoints: string[];
+  /** Endpoints where a token that had appeared in every prior response stopped
+   *  appearing. The actionable signal: this is what breaks an adapter. */
+  brokenEndpoints: string[];
+  /** Endpoints that emitted something never seen before, after being well
+   *  sampled. Informational — often a new field, sometimes just a rare variant
+   *  showing up for the first time. */
+  newStructureEndpoints: string[];
 }
 
 function formatBytes(bytes: number): string {
@@ -68,27 +75,28 @@ export function RequestLogHome() {
   const [loaded, setLoaded] = useState(false);
 
   async function refresh() {
-    const [nextPrefs, nextStats, allShapes, nextEndpoints] = await Promise.all([
+    const [nextPrefs, nextStats, profiles, nextEndpoints] = await Promise.all([
       storage.getRequestLogPreferences(),
       readStats(),
-      db.endpointShapes.toArray(),
+      db.endpointProfiles.toArray(),
       listEndpoints(),
     ]);
     setEndpoints(nextEndpoints);
 
-    const byEndpoint = new Map<string, number>();
-    for (const shape of allShapes) {
-      byEndpoint.set(shape.endpoint, (byEndpoint.get(shape.endpoint) ?? 0) + 1);
-    }
-
     setPrefs(nextPrefs);
     setStats(nextStats);
     setShapes({
-      endpoints: byEndpoint.size,
-      // More than one recorded shape means the endpoint's response structure has
-      // changed at least once since capture began — the signal this whole index
-      // exists to surface.
-      changedEndpoints: [...byEndpoint.entries()].filter(([, count]) => count > 1).map(([endpoint]) => endpoint),
+      endpoints: profiles.length,
+      // Driven by recorded events, not by how many distinct structures an endpoint
+      // has produced. Counting structures was the original bug: one endpoint
+      // legitimately returns several (listing vs raid screen), so that measure
+      // flagged everything within an hour of first use.
+      brokenEndpoints: profiles
+        .filter((p) => p.events.some((e) => e.kind === 'removed-universal'))
+        .map((p) => p.endpoint),
+      newStructureEndpoints: profiles
+        .filter((p) => p.events.some((e) => e.kind === 'new-tokens'))
+        .map((p) => p.endpoint),
     });
     setLoaded(true);
   }
@@ -171,17 +179,27 @@ export function RequestLogHome() {
           : 'Nothing captured yet — open the game to start recording.'}
       </div>
 
-      {shapes.changedEndpoints.length > 0 && (
+      {shapes.brokenEndpoints.length > 0 && (
         <div class="ff-archive-alert">
           <strong>
-            {shapes.changedEndpoints.length} endpoint{shapes.changedEndpoints.length === 1 ? '' : 's'} changed shape
+            {shapes.brokenEndpoints.length} endpoint{shapes.brokenEndpoints.length === 1 ? '' : 's'} dropped a field
           </strong>
           <ul class="ff-archive-alert__list">
-            {shapes.changedEndpoints.slice(0, 5).map((endpoint) => (
+            {shapes.brokenEndpoints.slice(0, 5).map((endpoint) => (
               <li key={endpoint}>{endpoint}</li>
             ))}
           </ul>
-          <span class="ff-archive-alert__hint">Download the shape digest for the exact token diff.</span>
+          <span class="ff-archive-alert__hint">
+            Something that used to appear in every response stopped. An adapter reading it may be broken — the shape
+            digest names the exact tokens.
+          </span>
+        </div>
+      )}
+
+      {shapes.newStructureEndpoints.length > 0 && (
+        <div class="ff-archive-note">
+          {shapes.newStructureEndpoints.length} endpoint{shapes.newStructureEndpoints.length === 1 ? '' : 's'} returned
+          something new. Often a new field, sometimes a rare variant seen for the first time.
         </div>
       )}
 
@@ -302,6 +320,17 @@ export function RequestLogHome() {
       </button>
 
       <div class="ff-section-label">Maintenance</div>
+
+      {/* Replays the stored archive through the current classifier. Useful after a
+          change to how shapes are judged, and to skip the fresh warmup a live-built
+          index would otherwise have to serve on every endpoint. */}
+      <button
+        class="ff-archive-secondary"
+        disabled={busy !== null || stats.rows === 0}
+        onClick={() => run('rebuild', async () => { await rebuildProfiles(); await refresh(); })}
+      >
+        {busy === 'rebuild' ? 'Replaying archive…' : 'Rebuild Shape Index from Archive'}
+      </button>
 
       <button
         class="ff-archive-secondary"

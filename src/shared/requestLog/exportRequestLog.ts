@@ -1,7 +1,7 @@
 import { db } from '@/shared/db';
 import { decompressText } from './compress';
 import { readStats } from './stats';
-import type { EndpointShape } from './types';
+import type { EndpointProfile, StructuralEvent } from './types';
 
 /** Rows pulled per page while streaming. Small enough that only one page of
  *  inflated bodies is ever resident, which is what keeps a multi-GB logical
@@ -36,18 +36,13 @@ export interface EndpointSummary {
  * out still appears — correctly showing 0 rows rather than vanishing silently.
  */
 export async function listEndpoints(): Promise<EndpointSummary[]> {
-  const shapes = await db.endpointShapes.toArray();
-
-  const seen = new Map<string, number>();
-  for (const shape of shapes) {
-    seen.set(shape.endpoint, Math.max(seen.get(shape.endpoint) ?? 0, shape.lastSeen));
-  }
+  const profiles = await db.endpointProfiles.toArray();
 
   const summaries = await Promise.all(
-    [...seen.entries()].map(async ([endpoint, lastSeen]) => ({
-      endpoint,
-      lastSeen,
-      rows: await db.requestLog.where('endpoint').equals(endpoint).count(),
+    profiles.map(async (profile) => ({
+      endpoint: profile.endpoint,
+      lastSeen: profile.lastSeen,
+      rows: await db.requestLog.where('endpoint').equals(profile.endpoint).count(),
     })),
   );
 
@@ -193,74 +188,58 @@ export async function buildArchiveBlob(filter: ArchiveFilter = {}): Promise<Blob
   return new Response(compressed as unknown as BodyInit).blob();
 }
 
-export interface ShapeChange {
-  at: string;
-  shapeHash: string;
-  count: number;
-  /** Tokens present in this shape but not the endpoint's previous one. */
-  added: string[];
-  /** Tokens the previous shape had and this one dropped. */
-  removed: string[];
-}
-
 /**
  * The small export — the one actually meant to be pasted to an agent.
  *
- * Where the archive answers "what were the exact bytes", this answers "what
- * changed, and when", and it stays in the low KB over months because it holds one
- * entry per *structural change* rather than per request. Consecutive shapes of an
- * endpoint are diffed here rather than at write time so that the diff always
- * reflects the full recorded history, including shapes that predate a later one.
+ * Where the archive answers "what were the exact bytes", this answers "what does
+ * this endpoint normally emit, and has anything structurally notable happened".
+ * It stays in the low KB over months because it holds one entry per endpoint plus
+ * a bounded event list, rather than anything that grows with traffic.
  */
 export async function buildShapeDigest(): Promise<string> {
-  const shapes = await db.endpointShapes.toArray();
+  const profiles = await db.endpointProfiles.toArray();
 
-  const byEndpoint = new Map<string, EndpointShape[]>();
-  for (const shape of shapes) {
-    const list = byEndpoint.get(shape.endpoint) ?? [];
-    list.push(shape);
-    byEndpoint.set(shape.endpoint, list);
-  }
+  const endpoints = profiles
+    .map((profile) => {
+      const vocabulary = Object.entries(profile.tokens);
 
-  const endpoints = [...byEndpoint.entries()]
-    .map(([endpoint, list]) => {
-      const ordered = [...list].sort((a, b) => a.firstSeen - b.firstSeen);
+      // Split by how reliably each token shows up. An adapter should only ever key
+      // off the "always" set; anything in "sometimes" is state-dependent and will
+      // be absent on some perfectly normal response.
+      const always: string[] = [];
+      const sometimes: { token: string; seenPct: number }[] = [];
+      for (const [token, stat] of vocabulary) {
+        if (stat.count === profile.count) always.push(token);
+        else sometimes.push({ token, seenPct: Math.round((stat.count / profile.count) * 100) });
+      }
 
-      const changes: ShapeChange[] = ordered.map((shape, index) => {
-        const previous = index > 0 ? new Set(ordered[index - 1].tokens) : null;
-        const current = new Set(shape.tokens);
-        return {
-          at: new Date(shape.firstSeen).toISOString(),
-          shapeHash: shape.shapeHash,
-          count: shape.count,
-          added: previous ? shape.tokens.filter((t) => !previous.has(t)) : [],
-          removed: previous ? ordered[index - 1].tokens.filter((t) => !current.has(t)) : [],
-        };
-      });
-
-      const latest = ordered[ordered.length - 1];
       return {
-        endpoint,
-        distinctShapes: ordered.length,
-        totalResponses: ordered.reduce((sum, s) => sum + s.count, 0),
-        firstSeen: new Date(ordered[0].firstSeen).toISOString(),
-        lastSeen: new Date(Math.max(...ordered.map((s) => s.lastSeen))).toISOString(),
-        currentTokens: latest.tokens,
-        currentSample: latest.sample,
-        changes,
+        endpoint: profile.endpoint,
+        observations: profile.count,
+        firstSeen: new Date(profile.firstSeen).toISOString(),
+        lastSeen: new Date(profile.lastSeen).toISOString(),
+        alwaysPresent: always.sort(),
+        sometimesPresent: sometimes.sort((a, b) => b.seenPct - a.seenPct),
+        events: profile.events.map((event: StructuralEvent) => ({
+          at: new Date(event.at).toISOString(),
+          kind: event.kind,
+          tokens: event.tokens,
+          observationsAtTheTime: event.observations,
+        })),
+        sample: profile.sample,
       };
     })
-    // Endpoints that have changed most recently sort first: when this is read at
-    // all, it is nearly always to answer "what just broke", not to browse.
-    .sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
+    // Endpoints with something to report sort first, then by recency: when this is
+    // read at all, it is nearly always to answer "what just broke".
+    .sort((a, b) => b.events.length - a.events.length || (a.lastSeen < b.lastSeen ? 1 : -1));
 
   return JSON.stringify(
     {
       kind: 'ff-endpoint-shape-digest',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       note:
-        'Structural fingerprints of every observed game endpoint. Each entry under "changes" is a point where the response structure changed; "added"/"removed" list the CSS classes, JSON key paths, and form field names that appeared or disappeared. An endpoint with distinctShapes > 1 has changed since it was first seen.',
+        'Structural profile of every observed game endpoint. "alwaysPresent" tokens (CSS classes, JSON key paths, form field names) appeared in every single response and are safe for an adapter to key off; "sometimesPresent" are state-dependent, with the percentage of responses containing them. "events" lists structural changes detected after the endpoint was well sampled: kind "removed-universal" means a token that had always been present stopped appearing, which is what silently breaks a parser; kind "new-tokens" means something never seen before showed up. An endpoint with no events has been structurally stable.',
       endpoints,
     },
     null,

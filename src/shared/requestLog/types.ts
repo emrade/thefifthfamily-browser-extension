@@ -62,25 +62,62 @@ export interface RequestLogEntry {
   shapeHash: string;
 }
 
-export interface EndpointShape {
+/** Per-token bookkeeping inside an endpoint's vocabulary. `count` against the
+ *  profile's own `count` is what separates a structural token (present every
+ *  time) from an optional one (present sometimes). */
+export interface TokenStat {
+  firstSeen: number;
+  count: number;
+}
+
+export type StructuralEventKind =
+  /** A token appeared that this endpoint had never produced before. Informational:
+   *  after warmup it usually means a genuinely new field, but a rare variant seen
+   *  for the first time looks identical at the moment it happens. */
+  | 'new-tokens'
+  /** A token that had appeared in *every* prior observation stopped appearing.
+   *  This is the one worth acting on — it is what silently breaks an adapter. */
+  | 'removed-universal';
+
+export interface StructuralEvent {
+  at: number;
+  kind: StructuralEventKind;
+  tokens: string[];
+  /** Endpoint observation count when this fired, so a reader can judge how well
+   *  sampled the endpoint was at the time. */
+  observations: number;
+}
+
+/**
+ * One row per endpoint, holding the cumulative vocabulary of structural tokens it
+ * has ever produced.
+ *
+ * This replaces an earlier design that stored one row per distinct *token set*
+ * and treated "more than one set" as evidence the game had changed. Measured
+ * against a real capture that was wrong in the most basic way: a single endpoint
+ * routinely returns several unrelated structures, and optional elements fork the
+ * set every time they toggle. The result was a handful of endpoints reporting
+ * four to six "shapes" apiece, oscillating between the same two token sets, and
+ * an alert that fired on all of them within an hour of first use with nothing
+ * actually wrong.
+ *
+ * A vocabulary cannot be fooled that way. A blinking cooldown timer contributes
+ * its classes once and is thereafter part of what the endpoint is known to emit;
+ * only a token nobody has seen before, or the disappearance of one that used to
+ * be universal, is worth reporting.
+ */
+export interface EndpointProfile {
   id?: number;
   endpoint: string;
-  shapeHash: string;
-  /** When this shape was first observed. */
   firstSeen: number;
-  /** When it was last observed — bumped in place, so an unchanged endpoint costs
-   *  one row forever rather than one row per sighting. */
   lastSeen: number;
-  /** How many responses have matched this shape. A shape that appears once and
-   *  vanishes reads very differently from one that is the steady state. */
+  /** Total responses observed for this endpoint. */
   count: number;
-  /**
-   * The structural tokens themselves (CSS classes, JSON key paths, form field
-   * names). Diffing two of these is what turns "something changed" into "they
-   * added `sgl-c-tariff` and dropped `sgl-c-origin`".
-   */
-  tokens: string[];
-  /** A short verbatim excerpt of the first response with this shape, for context
-   *  when a token diff alone is ambiguous. */
+  /** The vocabulary: every token ever produced, with its own stats. */
+  tokens: Record<string, TokenStat>;
+  /** Structural events, newest last, capped at SHAPE_MAX_EVENTS. */
+  events: StructuralEvent[];
+  /** A short verbatim excerpt of the most recent response, for context when a
+   *  token list alone is ambiguous. */
   sample: string;
 }

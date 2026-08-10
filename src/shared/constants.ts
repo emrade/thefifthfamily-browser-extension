@@ -54,6 +54,37 @@ export const REQUEST_LOG_MAX_BODY_BYTES = 512 * 1024;
 // trims promptly on the next wake rather than in one large burst.
 export const REQUEST_LOG_SWEEP_INTERVAL_MINUTES = 60;
 
+// --- Structural change detection --------------------------------------------
+//
+// An endpoint is only judged against once enough of its normal behaviour has been
+// observed. Measured against a real capture, one endpoint routinely returns
+// several unrelated structures — `panel.php?type=smuggling` returns a market
+// listing or a customs raid screen, `travel.php` returns a city list, a travel
+// confirmation, or an error — and a cooldown timer blinks whole clusters of
+// classes in and out between consecutive polls. Every one of those is normal, so
+// anything seen during warmup is absorbed into the endpoint's vocabulary rather
+// than reported.
+export const SHAPE_WARMUP_OBSERVATIONS = 25;
+export const SHAPE_WARMUP_MS = 6 * 60 * 60 * 1000;
+
+// A token has to have appeared in *every* observation of an endpoint before its
+// disappearance counts as a removal. Optional and state-dependent tokens never
+// reach that bar, which is what stops the oscillating-cooldown case from firing.
+// The floor keeps a handful of early responses from making a token look
+// universal when it has barely been sampled.
+export const SHAPE_UNIVERSAL_MIN_OBSERVATIONS = 25;
+
+// Guards against a variant switch reading as a mass removal. When a raid screen
+// replaces a market listing, every listing token legitimately vanishes at once —
+// so a removal is only reported when it is *targeted*, i.e. a small slice of the
+// vocabulary. A real field being dropped moves a handful of tokens; a different
+// page moves nearly all of them.
+export const SHAPE_REMOVAL_MAX_FRACTION = 0.3;
+
+// Structural events kept per endpoint. Bounded so a pathological endpoint can't
+// grow its profile row without limit; the newest are kept.
+export const SHAPE_MAX_EVENTS = 50;
+
 // Opportunities rotate on their own per-card expiry timers (independent of the
 // player's own action cooldown), so catching a new medium-risk-or-better one needs
 // recurring polling, not a single check timed off one cooldown. 5 minutes comfortably
