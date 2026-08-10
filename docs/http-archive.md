@@ -31,6 +31,24 @@ find out is not a realistic way to spend an afternoon.
 
 The archive addresses the first. The shape index addresses the second.
 
+### The upgrade it was built for
+
+A third reason arrived while this was being built, and it shaped several decisions:
+the game shipped a **large upgrade on 2026-08-11** (downtime 14:00–21:00). Everything
+here — the adapters, the measured mechanics, the parsers — was written against the
+pre-upgrade game, so the questions that mattered were "what changed", "what broke", and
+"what does the new version send".
+
+That deadline is why two things exist in their current form. `endpoint-rewritten` was
+added because the detector, as first built, would have been *silent* through exactly
+that event: its variant guard suppresses changes touching most of an endpoint's
+vocabulary, which is what a rewrite looks like. And feature-health tracking was added
+because the shape index only ever infers breakage, while a parse failure is breakage.
+
+If you are reading this after the upgrade, the pre-upgrade baseline lives in whatever
+archive and digest exports were taken before it — retention will have long since evicted
+the originals.
+
 ---
 
 ## What is captured
@@ -328,6 +346,62 @@ cold does not need this document to interpret it.
 
 ---
 
+## When the game changes
+
+The whole point. A playbook, in the order the signals actually arrive.
+
+### Before — take a baseline
+
+Retention will evict the pre-change data long before you stop wanting it, so export and
+keep both **outside the browser**:
+
+- **Shape Digest** (KB) — `alwaysPresent` per endpoint is a machine-readable spec of the
+  game as it was. This is the single most useful artefact for a diff.
+- **Full Archive** — the raw bodies, for anything the digest summarises away.
+
+Take them as late as possible before the change, so they cover the most traffic.
+
+### As it lands — what fires, and when
+
+The signals arrive in a definite order, and knowing it saves chasing the slow one:
+
+| When | Signal | Where |
+|---|---|---|
+| Within minutes of first use | **Feature health banner** — "Trade Assistant, 47 failed parses, last worked 3h ago" | Home |
+| Immediately | `new-tokens` for anything unrecognised | Shape digest |
+| After ~40 responses on that endpoint | `endpoint-rewritten` | Archive page + digest |
+| Never, if nothing structural changed | Nothing at all | — |
+
+**Trust the health banner first.** It is direct: an adapter ran and the response did not
+fit. The shape events are inferred, are slower by design, and have produced false
+positives twice. They tell you *what* changed once you already know *that* something did.
+
+An endpoint that is entirely new won't appear in either for a while — it has no baseline
+to differ from. It will show up in the digest with its vocabulary once it warms up, which
+is exactly what you need to write a parser for it.
+
+### Diagnosing
+
+1. Export the **Shape Digest**. Compare against the baseline copy.
+2. For a broken feature, find its endpoint in the digest. `alwaysPresent` is the new
+   contract; anything in the old baseline's `alwaysPresent` that is missing is what the
+   adapter was relying on.
+3. Export a **Selection** for that endpoint over the last day — usually a few hundred KB.
+4. Hand an agent three things: the selection, the digest, and the adapter under
+   `src/content/features/*/adapters/`. That is enough to rewrite the parser against real
+   post-change responses rather than guesses.
+
+### Afterwards
+
+Once adapters are updated and parsing again, the health banner clears itself on the first
+success. The shape index needs no intervention — the new structure simply becomes the
+vocabulary. Run **Rebuild Shape Index from Archive** only if you want the index recomputed
+from stored bodies rather than accumulated live.
+
+Consider re-deriving the mechanics in [game-mechanics.md](./game-mechanics.md) as well: the
+risk fit, bribe rate, and sell multiplier were all measured against the pre-upgrade game
+and none of them are guaranteed to survive it.
+
 ## Architecture
 
 ```
@@ -412,12 +486,17 @@ All in `src/shared/constants.ts`:
 | Constant | Default | Effect |
 |---|---|---|
 | `REQUEST_LOG_RETENTION_DAYS` | 30 | Default age cutoff (per-install override on the archive page) |
-| `REQUEST_LOG_MAX_ROWS` | 120,000 | Hard row cap; raise for a true 90-day window |
+| `REQUEST_LOG_MAX_BYTES` | 100 MB | Size budget; oldest evicted first once over |
 | `REQUEST_LOG_MAX_BODY_BYTES` | 512 KB | Bodies above this are stored truncated |
 | `REQUEST_LOG_SWEEP_INTERVAL_MINUTES` | 60 | How often retention runs |
 | `SHAPE_WARMUP_OBSERVATIONS` / `SHAPE_WARMUP_MS` | 25 / 6h | How well sampled an endpoint must be before anything is reported |
 | `SHAPE_UNIVERSAL_MIN_OBSERVATIONS` | 400 | Observations required before "always present" is trusted |
-| `SHAPE_REMOVAL_MAX_FRACTION` | 0.3 | Above this share of the vocabulary, a disappearance reads as a variant switch |
+| `SHAPE_REMOVAL_MAX_FRACTION` | 0.3 | Above this share of the vocabulary, a disappearance is treated as a possible rewrite rather than a dropped field |
+| `SHAPE_REWRITE_CONFIRM_OBSERVATIONS` | 40 | Responses a mass disappearance must survive before it is called a rewrite |
+| `BROKEN_AFTER_CONSECUTIVE_FAILURES` | 3 | Failed parses before a feature is shown as broken (`featureHealth.ts`) |
+
+`REQUEST_LOG_MAX_ROWS` no longer exists. It was a row cap standing in for a size
+limit, calibrated against an assumed request rate that proved 14x too low.
 
 To disable capture entirely, untick **Record Game Traffic** under Capture on the archive
 page. Existing rows are kept — toggling off is a pause, not a wipe.
