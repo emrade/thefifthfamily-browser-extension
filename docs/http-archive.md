@@ -252,6 +252,27 @@ re-tokenized: cheap for a few thousand rows, not for a full 30-day archive. The 
 shares its classifier with the live write path, so a replayed index is byte-identical to
 one built as traffic arrived.
 
+Safe to run at any time, and idempotent. It only ever writes `endpointProfiles`; the
+archive itself is read-only to it, and trades, prices, and customs records are untouched.
+The one imperfection: a response recorded *while* a rebuild is running can be missed,
+since the rebuild picks its rows up front and rewrites the table at the end. That costs a
+single observation's worth of counting accuracy on one endpoint, and the next rebuild
+recovers it — the response is still in the archive either way.
+
+> **Possible refinement.** The button is a repair tool sitting among everyday actions, and
+> in normal operation it is never needed — live traffic keeps the index current. It could
+> be shown only when it would actually help, by comparing total observations across
+> profiles against the `requestLog` row count and surfacing it when the index lags well
+> behind the archive (the state after a migration, a classifier change, or drift):
+>
+> *Shape index covers 40 of 1,847 stored responses. Rebuild to catch it up.*
+>
+> Not worth doing while the current detector is unproven on live traffic — hiding the
+> recovery path behind an untested condition is the wrong order. Revisit once it has run
+> for a while. `rebuildProfiles()` should stay regardless of what the UI does with it: it
+> is the migration path for any future change to how shapes are classified, and the test
+> that it matches the live path is what proves the two share a classifier.
+
 ## Working with an AI agent
 
 1. Export the **shape digest** — always cheap, and it frames everything else.
