@@ -1,11 +1,12 @@
 import {
   SHAPE_MAX_EVENTS,
   SHAPE_REMOVAL_MAX_FRACTION,
+  SHAPE_REWRITE_CONFIRM_OBSERVATIONS,
   SHAPE_UNIVERSAL_MIN_OBSERVATIONS,
   SHAPE_WARMUP_MS,
   SHAPE_WARMUP_OBSERVATIONS,
 } from '@/shared/constants';
-import type { EndpointProfile, StructuralEvent, TokenStat } from './types';
+import type { EndpointProfile, PendingRemoval, StructuralEvent, TokenStat } from './types';
 
 /** How much of a response is kept verbatim on a profile, purely as human context
  *  next to a token list. Small on purpose — the full body is one lookup away in
@@ -72,6 +73,12 @@ export function foldObservation(
 
   const newEvents: StructuralEvent[] = [];
 
+  // Computed once, outside the `established` gate, because the rewrite watch below
+  // needs it too.
+  const removedUniversalRaw = Object.entries(existing.tokens)
+    .filter(([token, stat]) => stat.count === priorObservations && !seen.has(token))
+    .map(([token]) => token);
+
   if (established) {
     const newTokens = tokens.filter((token) => !(token in existing.tokens));
     if (newTokens.length) {
@@ -82,9 +89,7 @@ export function foldObservation(
     // so a token qualifies only if it was present every single previous time.
     // Optional tokens never reach that bar, which is what makes this immune to the
     // blinking-cooldown case that broke the previous design.
-    const removedUniversal = Object.entries(existing.tokens)
-      .filter(([token, stat]) => stat.count === priorObservations && !seen.has(token))
-      .map(([token]) => token);
+    const removedUniversal = removedUniversalRaw;
 
     // A variant switch drops nearly the whole vocabulary at once — a raid screen
     // shares almost nothing with a market listing. A real removal is targeted, so a
@@ -107,6 +112,42 @@ export function foldObservation(
     }
   }
 
+  // A mass disappearance is not dismissed outright — it is watched.
+  //
+  // Suppressing it entirely (the previous behaviour) left the index blind to a
+  // rewritten endpoint, which is the single event this whole index exists to
+  // catch: a rewrite drops most of its vocabulary at once, exactly like a raid
+  // screen replacing a market listing. The two are indistinguishable at the
+  // moment they happen and trivially distinguishable afterwards — the variant
+  // comes back, the rewrite does not.
+  const massRemoval =
+    established &&
+    removedUniversalRaw.length > Math.max(1, Math.floor(Object.keys(existing.tokens).length * SHAPE_REMOVAL_MAX_FRACTION));
+
+  let pendingRemoval: PendingRemoval | null = existing.pendingRemoval ?? null;
+
+  if (pendingRemoval) {
+    const returned = pendingRemoval.tokens.some((token) => seen.has(token));
+    if (returned) {
+      // It came back, so it was a variant all along. Drop the watch silently —
+      // this is the common case and is not worth reporting.
+      pendingRemoval = null;
+    } else {
+      pendingRemoval = { ...pendingRemoval, observationsSince: pendingRemoval.observationsSince + 1 };
+      if (pendingRemoval.observationsSince >= SHAPE_REWRITE_CONFIRM_OBSERVATIONS) {
+        newEvents.push({
+          at: timestamp,
+          kind: 'endpoint-rewritten',
+          tokens: pendingRemoval.tokens,
+          observations: priorObservations,
+        });
+        pendingRemoval = null;
+      }
+    }
+  } else if (massRemoval) {
+    pendingRemoval = { tokens: removedUniversalRaw, since: timestamp, observationsSince: 1 };
+  }
+
   const vocabulary = { ...existing.tokens };
   for (const token of tokens) {
     const stat = vocabulary[token];
@@ -120,6 +161,7 @@ export function foldObservation(
       count: priorObservations + 1,
       tokens: vocabulary,
       events: [...existing.events, ...newEvents].slice(-SHAPE_MAX_EVENTS),
+      pendingRemoval,
       sample: sample.slice(0, SAMPLE_CHARS),
     },
     newEvents,

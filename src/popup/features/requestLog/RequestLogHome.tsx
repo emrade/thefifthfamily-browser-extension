@@ -93,7 +93,7 @@ export function RequestLogHome() {
       // legitimately returns several (listing vs raid screen), so that measure
       // flagged everything within an hour of first use.
       brokenEndpoints: profiles
-        .filter((p) => p.events.some((e) => e.kind === 'removed-universal'))
+        .filter((p) => p.events.some((e) => e.kind === 'removed-universal' || e.kind === 'endpoint-rewritten'))
         .map((p) => p.endpoint),
       newStructureEndpoints: profiles
         .filter((p) => p.events.some((e) => e.kind === 'new-tokens'))
@@ -184,7 +184,7 @@ export function RequestLogHome() {
       {shapes.brokenEndpoints.length > 0 && (
         <div class="ff-archive-alert">
           <strong>
-            {shapes.brokenEndpoints.length} endpoint{shapes.brokenEndpoints.length === 1 ? '' : 's'} dropped a field
+            {shapes.brokenEndpoints.length} endpoint{shapes.brokenEndpoints.length === 1 ? '' : 's'} changed structure
           </strong>
           <ul class="ff-archive-alert__list">
             {shapes.brokenEndpoints.slice(0, 5).map((endpoint) => (
@@ -192,8 +192,8 @@ export function RequestLogHome() {
             ))}
           </ul>
           <span class="ff-archive-alert__hint">
-            Something that used to appear in every response stopped. An adapter reading it may be broken — the shape
-            digest names the exact tokens.
+            Something that used to appear in every response stopped, or an endpoint was rewritten wholesale. An
+            adapter reading it may be broken — the shape digest names the exact tokens.
           </span>
         </div>
       )}

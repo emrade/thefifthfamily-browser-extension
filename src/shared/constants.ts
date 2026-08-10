@@ -112,6 +112,18 @@ export const SHAPE_UNIVERSAL_MIN_OBSERVATIONS = 400;
 // page moves nearly all of them.
 export const SHAPE_REMOVAL_MAX_FRACTION = 0.3;
 
+// How many further observations a mass disappearance must survive before it is
+// reported as a rewrite rather than dismissed as a variant.
+//
+// This exists because the variant guard above, left alone, is blind to exactly
+// the event most worth catching. A rewritten endpoint drops most of its
+// vocabulary at once, which is indistinguishable *at that instant* from a raid
+// screen replacing a market listing — so the guard suppresses it and nothing is
+// reported. What separates them is what happens next: a variant resolves back
+// within minutes, a rewrite never does. 40 observations is comfortably longer
+// than any variant seen in real data, and short enough to notice within a day.
+export const SHAPE_REWRITE_CONFIRM_OBSERVATIONS = 40;
+
 // Structural events kept per endpoint. Bounded so a pathological endpoint can't
 // grow its profile row without limit; the newest are kept.
 export const SHAPE_MAX_EVENTS = 50;

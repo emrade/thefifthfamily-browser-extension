@@ -239,7 +239,7 @@ export async function buildShapeDigest(): Promise<string> {
       version: 2,
       exportedAt: new Date().toISOString(),
       note:
-        'Structural profile of every observed game endpoint. "alwaysPresent" tokens (CSS classes, JSON key paths, form field names) appeared in every single response and are safe for an adapter to key off; "sometimesPresent" are state-dependent, with the percentage of responses containing them. "events" lists structural changes detected after the endpoint was well sampled: kind "removed-universal" means a token that had always been present stopped appearing, which is what silently breaks a parser; kind "new-tokens" means something never seen before showed up. An endpoint with no events has been structurally stable.',
+        'Structural profile of every observed game endpoint. "alwaysPresent" tokens (CSS classes, JSON key paths, form field names) appeared in every single response and are safe for an adapter to key off; "sometimesPresent" are state-dependent, with the percentage of responses containing them. "events" lists structural changes detected after the endpoint was well sampled: kind "removed-universal" means a token that had always been present stopped appearing, which is what silently breaks a parser; kind "new-tokens" means something never seen before showed up; kind "endpoint-rewritten" means most of the vocabulary for that endpoint disappeared and stayed gone across many later responses, which is what a rewritten endpoint looks like as opposed to a passing variant. An endpoint with no events has been structurally stable.',
       endpoints,
     },
     null,

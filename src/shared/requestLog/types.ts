@@ -70,6 +70,14 @@ export interface TokenStat {
   count: number;
 }
 
+export interface PendingRemoval {
+  tokens: string[];
+  /** When the vocabulary first went missing. */
+  since: number;
+  /** Observations seen since, none of which brought the tokens back. */
+  observationsSince: number;
+}
+
 export type StructuralEventKind =
   /** A token appeared that this endpoint had never produced before. Informational:
    *  after warmup it usually means a genuinely new field, but a rare variant seen
@@ -77,7 +85,16 @@ export type StructuralEventKind =
   | 'new-tokens'
   /** A token that had appeared in *every* prior observation stopped appearing.
    *  This is the one worth acting on — it is what silently breaks an adapter. */
-  | 'removed-universal';
+  | 'removed-universal'
+  /** Most of an endpoint's vocabulary disappeared and did not come back.
+   *
+   *  Distinguished from `removed-universal` because the evidence is different in
+   *  kind. A wholesale disappearance is normally a *variant* — a raid screen
+   *  replacing a market listing shares almost no markup with it — so it is held
+   *  provisionally and only reported once the old vocabulary has failed to
+   *  reappear across many further observations. A variant recurs within minutes;
+   *  a rewritten endpoint never does. */
+  | 'endpoint-rewritten';
 
 export interface StructuralEvent {
   at: number;
@@ -117,6 +134,9 @@ export interface EndpointProfile {
   tokens: Record<string, TokenStat>;
   /** Structural events, newest last, capped at SHAPE_MAX_EVENTS. */
   events: StructuralEvent[];
+  /** A mass disappearance being watched to see whether it recurs. Cleared the
+   *  moment the missing vocabulary comes back. */
+  pendingRemoval?: PendingRemoval | null;
   /** A short verbatim excerpt of the most recent response, for context when a
    *  token list alone is ambiguous. */
   sample: string;

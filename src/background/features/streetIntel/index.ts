@@ -4,6 +4,7 @@ import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { ALARM_NAMES, GAME_ORIGIN, STREET_INTEL_POLL_INTERVAL_MS } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
+import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 /**
  * Arms the recurring poll the first time the player is seen using Street Intel —
@@ -39,8 +40,14 @@ async function pollNow(): Promise<void> {
     return;
   }
 
+  // Recorded here as well as in the content script: with the game tab closed the
+  // poller is the only thing running, and without this the feature would look
+  // stale simply because nobody had the page open.
+  recordParseSuccess('streetIntel');
+
   const opportunities = parseStreetIntelOpportunities(responseText);
   if (!opportunities) {
+    recordParseFailure('streetIntel');
     console.error(LOG_PREFIX, 'background street intel poll captured a response but failed to parse it');
     scheduleNextPoll();
     return;

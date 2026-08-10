@@ -4,6 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { parseSmugglingPanel } from './adapters/smugglingPanelAdapter';
 import { parseSmugglingAction } from './adapters/smugglingActionAdapter';
 import { parseTravelAction } from './adapters/travelAdapter';
+import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 export function handleCapturedRequest(req: CapturedRequest) {
   const url = new URL(req.url, window.location.origin);
@@ -12,9 +13,11 @@ export function handleCapturedRequest(req: CapturedRequest) {
   if (path.endsWith('/api/panel.php') && url.searchParams.get('type') === 'smuggling') {
     const result = parseSmugglingPanel(req.responseText);
     if (!result) {
+      recordParseFailure('tradeAssistant');
       console.error(LOG_PREFIX, 'smuggling panel captured but failed to parse', req.responseText.slice(0, 200));
       return;
     }
+    recordParseSuccess('tradeAssistant');
 
     if (result.kind === 'raid') {
       send({ type: 'customs-raid-detected', district: result.district, bribe: result.bribe, timestamp: req.timestamp });

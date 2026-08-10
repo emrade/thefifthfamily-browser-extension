@@ -224,10 +224,18 @@ is thereafter part of what the endpoint is known to emit.
 
 ### What gets reported
 
+Written with a specific event in mind: the game ships a large upgrade on
+**2026-08-11**, and the detector as first built was blind to exactly that. Its guard
+against variant switches (below) suppressed any change touching most of an endpoint's
+vocabulary — which is precisely what a rewritten endpoint looks like. `endpoint-rewritten`
+exists to close that hole.
+
+
 | Kind | Meaning | Weight |
 |---|---|---|
 | `removed-universal` | A token that appeared in **every** prior response stopped appearing | **Actionable** — this is what silently breaks an adapter |
 | `new-tokens` | A token never seen before showed up | Informational — often a new field, sometimes a rare variant's first appearance |
+| `endpoint-rewritten` | Most of the vocabulary disappeared **and stayed gone** for `SHAPE_REWRITE_CONFIRM_OBSERVATIONS` further responses | **Actionable** — the endpoint was rebuilt, and any adapter for it needs rewriting |
 
 Three rules keep this quiet:
 
@@ -241,11 +249,13 @@ Three rules keep this quiet:
   91%-present decoration clears a 25-observation bar about 1 time in 10. That is not
   hypothetical — it produced a false alarm on Street Intel within hours of shipping,
   naming `.si-card-modifier`, which was back to 91% presence by the next export.
-- **Targeting.** A removal is only reported if it touches a small slice of the vocabulary
-  (`SHAPE_REMOVAL_MAX_FRACTION`). When a raid screen replaces a listing, every listing
-  token legitimately vanishes at once; a real field being dropped moves a handful. After
-  the first occurrence those tokens are no longer universal, so this can only ever
-  misjudge a variant's debut.
+- **Targeting.** A `removed-universal` is only reported if it touches a small slice of the
+  vocabulary (`SHAPE_REMOVAL_MAX_FRACTION`). When a raid screen replaces a listing, every
+  listing token legitimately vanishes at once; a real field being dropped moves a handful.
+- **Provisional mass changes.** A wholesale disappearance is no longer discarded, it is
+  *watched*. If the missing vocabulary returns, it was a variant and the watch is dropped
+  silently. If it has not returned after 40 further observations, it is reported as
+  `endpoint-rewritten`. A variant resolves within minutes; a rewrite never does.
 
 ### Reading the digest
 
@@ -362,6 +372,21 @@ would mean inflating every gzipped body just to read the integer beside it — m
 counters ever drift.
 
 ---
+
+## Feature health
+
+Separate from the shape index, and more direct. Each adapter records whether it parsed
+successfully; three consecutive failures without a success mark the feature broken, and
+Home shows a red banner naming it and when it last worked.
+
+The shape index *infers* breakage from structure and has produced two false positives on
+live data. A parse failure is not an inference: the adapter ran, the response did not
+fit, and the feature is not recording. On upgrade day that is the signal to trust.
+
+Health updates are serialised onto one queue. Each is a read-then-write of a single
+storage key, and failures arrive in bursts when an upgrade lands — unserialised, 25
+failures were recorded as 2, which would have kept the feature under its "broken"
+threshold and suppressed the alert entirely.
 
 ## Relationship to "Clear All Data"
 

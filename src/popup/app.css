@@ -1262,3 +1262,40 @@ button {
   color: var(--ff-ink-faint);
   line-height: 1.5;
 }
+
+/* Feature-breakage banner on Home. Red rather than the archive's amber: amber is
+   "something changed, have a look", this is "a feature is not working right now". */
+.ff-health-alert {
+  padding: 11px 12px;
+  margin-bottom: 10px;
+  background: rgba(239, 68, 68, .07);
+  border: 1px solid rgba(239, 68, 68, .32);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
+}
+
+.ff-health-alert strong {
+  display: block;
+  font-size: 12px;
+  color: var(--ff-red);
+  margin-bottom: 6px;
+}
+
+.ff-health-alert__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ff-ink-muted);
+}
+
+.ff-health-alert__name { color: var(--ff-ink); }
+.ff-health-alert__detail { color: var(--ff-ink-faint); text-align: right; }
+
+.ff-health-alert__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+}

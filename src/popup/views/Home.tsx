@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'preact/hooks';
 import { LiveStats } from './LiveStats';
+import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
+import { LOG_PREFIX } from '@/shared/log';
 import { ArchiveIcon, CashIcon, ChevronRightIcon, FightClubIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
@@ -8,10 +11,50 @@ interface HomeProps {
   onOpenSettings: () => void;
 }
 
+function since(ms: number | null): string {
+  if (ms == null) return 'never';
+  const mins = Math.round((Date.now() - ms) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
+
 export function Home(props: HomeProps) {
+  const [health, setHealth] = useState<FeatureHealthMap>({});
+
+  useEffect(() => {
+    readFeatureHealth()
+      .then(setHealth)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read feature health', err));
+  }, []);
+
+  // Only broken features are listed. A healthy extension shows nothing here — this
+  // is meant to be invisible until the day the game changes underneath it, which
+  // is the only day it matters.
+  const broken = Object.entries(health).filter(([, h]) => isBroken(h));
+
   return (
     <>
       <LiveStats />
+
+      {broken.length > 0 && (
+        <div class="ff-health-alert">
+          <strong>{broken.length === 1 ? 'A feature has stopped working' : `${broken.length} features have stopped working`}</strong>
+          {broken.map(([id, h]) => (
+            <div class="ff-health-alert__row" key={id}>
+              <span class="ff-health-alert__name">{FEATURE_LABELS[id] ?? id}</span>
+              <span class="ff-health-alert__detail">
+                {h.consecutiveFailures} failed parses · last worked {since(h.lastSuccess)}
+              </span>
+            </div>
+          ))}
+          <span class="ff-health-alert__hint">
+            The game's responses no longer match what this extension expects. The HTTP Archive holds the new
+            responses — export a selection for the affected endpoint to see what changed.
+          </span>
+        </div>
+      )}
 
       <div class="ff-section-label">Features</div>
 

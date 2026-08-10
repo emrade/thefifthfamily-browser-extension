@@ -1,6 +1,7 @@
 import type { CapturedRequest } from '@/shared/messaging';
 import { sendMessage as send } from '@/shared/messaging';
 import { parseAttackHubHeroStats } from './adapters/attackHubAdapter';
+import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 export { initFightClubControls } from './targetControls';
 
@@ -18,5 +19,10 @@ export function handleCapturedRequest(req: CapturedRequest) {
   if (!url.pathname.endsWith('/api/panel.php') || url.searchParams.get('type') !== 'attack_hub') return;
 
   const heroStats = parseAttackHubHeroStats(req.responseText);
-  if (heroStats) send({ type: 'fight-stats', heroStats, timestamp: req.timestamp });
+  if (heroStats) {
+    send({ type: 'fight-stats', heroStats, timestamp: req.timestamp });
+    recordParseSuccess('fightClub');
+  } else {
+    recordParseFailure('fightClub');
+  }
 }

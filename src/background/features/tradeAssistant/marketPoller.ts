@@ -7,6 +7,7 @@ import { parseSmugglingPanelRegex } from './smugglingHtmlRegexParser';
 import { applySmugglingListing } from './applySmugglingListing';
 import { checkSellOpportunity } from './sellOpportunity';
 import * as riskEngine from './riskEngine';
+import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 /**
  * Background market-timeline polling — the plan doc's "fast-follow, not v1" item.
@@ -57,6 +58,11 @@ export async function pollNow(opts: { skipTravellingCheck?: boolean } = {}): Pro
     return;
   }
 
+  // Recorded here as well as in the content script: with the game tab closed the
+  // poller is the only thing running, and without this the feature would look
+  // stale simply because nobody had the page open.
+  recordParseSuccess('tradeAssistant');
+
   let responseText: string;
   try {
     const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, { credentials: 'include' });
@@ -69,6 +75,7 @@ export async function pollNow(opts: { skipTravellingCheck?: boolean } = {}): Pro
 
   const result = parseSmugglingPanelRegex(responseText);
   if (!result) {
+    recordParseFailure('tradeAssistant');
     console.error(LOG_PREFIX, 'background market poll captured a response but failed to parse it');
     scheduleNextPoll(null);
     return;
