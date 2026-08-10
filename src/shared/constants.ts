@@ -77,11 +77,33 @@ export const SHAPE_WARMUP_OBSERVATIONS = 25;
 export const SHAPE_WARMUP_MS = 6 * 60 * 60 * 1000;
 
 // A token has to have appeared in *every* observation of an endpoint before its
-// disappearance counts as a removal. Optional and state-dependent tokens never
-// reach that bar, which is what stops the oscillating-cooldown case from firing.
-// The floor keeps a handful of early responses from making a token look
-// universal when it has barely been sampled.
-export const SHAPE_UNIVERSAL_MIN_OBSERVATIONS = 25;
+// disappearance counts as a removal, and the endpoint must have been sampled at
+// least this many times before that claim is trusted at all.
+//
+// The floor was 25 and that was far too low — it produced a false alarm on live
+// data within hours. "Present in all N so far" is weak evidence when N is small:
+// a token that genuinely appears with probability p looks universal with
+// probability p^N.
+//
+//        p |        N=25       N=200       N=400
+//     -----|------------------------------------
+//     0.91 |    9.5e-02    6.4e-09    4.1e-17
+//     0.95 |    2.8e-01    3.5e-05    1.2e-09
+//     0.99 |    7.8e-01    1.3e-01    1.8e-02
+//
+// Street Intel's `.si-card-modifier` sits at 91%. At N=25 it had roughly a 1-in-10
+// chance of looking universal on its own, and that endpoint carries about seven
+// such optional decorations — so a false positive was close to certain. It fired
+// at exactly 25 observations, and the token was back to 91% presence by the next
+// export.
+//
+// 400 also covers the harder case of a token present 99% of the time, which 200
+// would still misjudge 13% of the time. The cost is detection latency on quiet
+// endpoints, which is the right trade: this answers "what changed recently",
+// not "page me now", and a false alarm costs more than a slow true one. The real
+// detection to date — stats.php dropping the whole `battle_pass` object when the
+// pass expired — fired at 1,038 observations and is unaffected.
+export const SHAPE_UNIVERSAL_MIN_OBSERVATIONS = 400;
 
 // Guards against a variant switch reading as a mass removal. When a raid screen
 // replaces a market listing, every listing token legitimately vanishes at once —

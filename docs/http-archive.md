@@ -234,9 +234,13 @@ Three rules keep this quiet:
 - **Warmup.** Nothing is reported until an endpoint has been seen at least
   `SHAPE_WARMUP_OBSERVATIONS` times *and* for `SHAPE_WARMUP_MS`. An endpoint's normal
   repertoire is wider than it looks and has to be learned, not announced.
-- **Universality.** A token must have been present in *every* prior response before its
-  absence counts. Optional tokens never reach that bar — which is exactly why the
-  oscillating-cooldown case can no longer fire.
+- **Universality.** A token must have been present in *every* prior response, across at
+  least `SHAPE_UNIVERSAL_MIN_OBSERVATIONS` (400) of them, before its absence counts.
+  Both halves matter. "Present in all N so far" is weak evidence when N is small: a
+  token appearing with probability p looks universal with probability p^N, so a
+  91%-present decoration clears a 25-observation bar about 1 time in 10. That is not
+  hypothetical — it produced a false alarm on Street Intel within hours of shipping,
+  naming `.si-card-modifier`, which was back to 91% presence by the next export.
 - **Targeting.** A removal is only reported if it touches a small slice of the vocabulary
   (`SHAPE_REMOVAL_MAX_FRACTION`). When a raid screen replaces a listing, every listing
   token legitimately vanishes at once; a real field being dropped moves a handful. After
@@ -387,7 +391,7 @@ All in `src/shared/constants.ts`:
 | `REQUEST_LOG_MAX_BODY_BYTES` | 512 KB | Bodies above this are stored truncated |
 | `REQUEST_LOG_SWEEP_INTERVAL_MINUTES` | 60 | How often retention runs |
 | `SHAPE_WARMUP_OBSERVATIONS` / `SHAPE_WARMUP_MS` | 25 / 6h | How well sampled an endpoint must be before anything is reported |
-| `SHAPE_UNIVERSAL_MIN_OBSERVATIONS` | 25 | Floor before a token counts as "always present" |
+| `SHAPE_UNIVERSAL_MIN_OBSERVATIONS` | 400 | Observations required before "always present" is trusted |
 | `SHAPE_REMOVAL_MAX_FRACTION` | 0.3 | Above this share of the vocabulary, a disappearance reads as a variant switch |
 
 To disable capture entirely, untick **Record Game Traffic** under Capture on the archive
