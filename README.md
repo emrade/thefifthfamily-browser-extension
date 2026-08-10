@@ -11,8 +11,11 @@ More features will land alongside it over time (see `docs/`) — the popup is bu
 - **Customs risk tracking** — records every bribe/run/surrender outcome against the district's displayed risk at the time, building toward an *actual* catch-rate model
 - **Travel arrival notifications** — OS notification the moment a trip completes, confirmed against the server rather than a blind timer
 - **Live player stats** — cash, bank, energy/stamina/nerve/vitality, and current location at a glance in the popup
+- **HTTP archive** — records every game request locally (gzipped, 30-day default), with filtered exports and a shape index that flags the moment an endpoint's response structure changes
 
-See `docs/trade-assistant-plan.md` for the full feature plan, confirmed API shapes, and data model.
+See `docs/trade-assistant-plan.md` for the full feature plan, confirmed API shapes, and data model,
+`docs/game-mechanics.md` for mechanics measured from captured data, and
+`docs/http-archive.md` for the request archive.
 
 ## Loading the Extension Locally
 
@@ -67,6 +70,7 @@ src/
 │       └── TradeAssistantHome.tsx      # Feature entry point (dashboard is a later phase)
 ├── shared/
 │   ├── types.ts, messaging.ts, db.ts (Dexie), storage.ts, constants.ts
+│   └── requestLog/                     # HTTP archive: capture, gzip, shape index, exports
 └── design/
     └── tokens.css                      # CSS custom property design system
 ```

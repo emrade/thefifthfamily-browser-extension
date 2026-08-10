@@ -1,6 +1,7 @@
 import { NotificationSettings } from './NotificationSettings';
 import { PageFeatureSettings } from './PageFeatureSettings';
 import { ExportDataButton } from './ExportDataButton';
+import { RequestLogSettings } from './RequestLogSettings';
 import { ResetDataButton } from './ResetDataButton';
 
 export function Settings() {
@@ -8,6 +9,7 @@ export function Settings() {
     <>
       <NotificationSettings />
       <PageFeatureSettings />
+      <RequestLogSettings />
 
       <div class="ff-section-label">Data</div>
       <ExportDataButton />

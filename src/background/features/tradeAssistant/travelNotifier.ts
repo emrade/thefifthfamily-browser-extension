@@ -4,6 +4,7 @@ import { notify } from '@/shared/notify';
 import * as marketPoller from './marketPoller';
 import { ALARM_NAMES, ARRIVAL_CONFIRM_RETRIES, ARRIVAL_CONFIRM_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
+import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { RawStatsPayload } from '@/shared/types';
 
@@ -67,7 +68,7 @@ async function confirmArrival(retriesLeft = ARRIVAL_CONFIRM_RETRIES) {
   if (!pending) return;
 
   try {
-    const res = await fetch(`${GAME_ORIGIN}/api/stats.php`, { credentials: 'include' });
+    const res = await loggedFetch(`${GAME_ORIGIN}/api/stats.php`, { credentials: 'include' });
     const json = await res.json();
     if (json?.ok && Number(json.stats?.current_city) === pending.destinationCityId && !json.status?.travelling) {
       await notifyArrived(pending.destinationName);

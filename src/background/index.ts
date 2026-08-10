@@ -4,6 +4,8 @@ import { handleMessage as handleFightClub } from './features/fightClub';
 import { handleMessage as handleStreetIntel, handlePollAlarm as handleStreetIntelPollAlarm } from './features/streetIntel';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
+import { enqueueRecord } from '@/shared/requestLog/queue';
+import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retention';
 
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
@@ -18,6 +20,10 @@ async function handleMessage(msg: ExtensionMessage) {
 // killed for idling) — cheap no-op after the first run since it just checks a count.
 ensureSeedData().catch((err) => console.error(LOG_PREFIX, 'ensureSeedData failed', err));
 
+// Same "runs on every wake, cheap no-op after the first" shape as ensureSeedData —
+// it only creates the alarm if one isn't already registered.
+ensureSweepAlarm().catch((err) => console.error(LOG_PREFIX, 'ensureSweepAlarm failed', err));
+
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
 // pending raid", then later clear it; check "is there an open trade", then later
@@ -30,6 +36,28 @@ ensureSeedData().catch((err) => console.error(LOG_PREFIX, 'ensureSeedData failed
 let messageQueue: Promise<void> = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
+  // Archive writes are split off onto their own queue rather than joining the
+  // ordered feature queue above. They need serializing among themselves (the shape
+  // index does a read-then-write), but they must not sit in front of feature work:
+  // one arrives for *every* request the game makes, and each costs a gzip plus two
+  // IndexedDB round-trips. Chaining them here would add that latency to every
+  // price snapshot and trade. The archive is observational and can lag; the
+  // features driving the popup cannot.
+  if (msg.type === 'request-log') {
+    enqueueRecord({
+      method: msg.method,
+      url: msg.url,
+      requestBody: msg.requestBody,
+      responseText: msg.responseText,
+      truncatedUpstream: msg.truncated,
+      status: msg.status,
+      durationMs: msg.durationMs,
+      origin: 'page',
+      timestamp: msg.timestamp,
+    });
+    return false;
+  }
+
   messageQueue = messageQueue.then(() =>
     handleMessage(msg).catch((err) => console.error(LOG_PREFIX, 'handleMessage failed for', msg.type, err)),
   );
@@ -40,4 +68,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleTravelAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleTravelAlarm failed', err));
   handleMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleMarketPollAlarm failed', err));
   handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
+  handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
 });

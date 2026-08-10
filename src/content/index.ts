@@ -1,6 +1,9 @@
 import type { CapturedRequest } from '@/shared/messaging';
+import { sendMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
+import { STORAGE_KEYS } from '@/shared/constants';
+import { DEFAULT_REQUEST_LOG_PREFERENCES } from '@/shared/requestLog/preferences';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
@@ -24,12 +27,52 @@ const INSTALL_FLAG = '__ffCapturedRequestListenerInstalled';
 if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
   (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
 
+  // Read once at load and kept current via onChanged, rather than awaited per
+  // request. Every captured request would otherwise pay a chrome.storage round-trip
+  // before it could be forwarded, on a path that fires for every call the game
+  // makes. Starting from the default (enabled) means captures during the first
+  // moments of page load aren't dropped while the real value is still in flight.
+  let requestLogEnabled = DEFAULT_REQUEST_LOG_PREFERENCES.enabled;
+  storage.getRequestLogPreferences().then((prefs) => {
+    requestLogEnabled = prefs.enabled;
+  });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[STORAGE_KEYS.REQUEST_LOG_PREFERENCES]) return;
+    const next = changes[STORAGE_KEYS.REQUEST_LOG_PREFERENCES].newValue as { enabled?: boolean } | undefined;
+    requestLogEnabled = next?.enabled ?? DEFAULT_REQUEST_LOG_PREFERENCES.enabled;
+  });
+
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data as Partial<CapturedRequest> | undefined;
     if (!data || data.source !== 'ff-network-hook') return;
 
-    for (const handle of handlers) handle(data as CapturedRequest);
+    const captured = data as CapturedRequest;
+
+    // Feature adapters see only the `/api/` + `/actions/` paths they were written
+    // for. They each re-check the exact pathname anyway, so this gate is an
+    // optimization rather than a correctness guard — but without it every image
+    // and fragment fetch would be run past four adapters for nothing.
+    if (captured.tracked) {
+      for (const handle of handlers) handle(captured);
+    }
+
+    // The archive, by contrast, deliberately takes everything same-origin: an
+    // endpoint no adapter knows about yet is exactly the kind of thing worth
+    // having a record of once it turns out to matter.
+    if (requestLogEnabled) {
+      sendMessage({
+        type: 'request-log',
+        method: captured.method,
+        url: captured.url,
+        requestBody: captured.requestBody,
+        responseText: captured.responseText,
+        truncated: captured.truncated,
+        status: captured.status,
+        durationMs: captured.durationMs,
+        timestamp: captured.timestamp,
+      });
+    }
   });
 
   // Gated by the player's own Settings toggles — each in-page feature only starts

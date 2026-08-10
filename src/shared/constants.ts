@@ -11,13 +11,48 @@ export const STORAGE_KEYS = {
   FIGHT_CLUB_STATS: 'ff_fight_club_stats',
   FIGHT_CLUB_FILTER: 'ff_fight_club_filter',
   PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
+  REQUEST_LOG_PREFERENCES: 'ff_request_log_preferences',
 } as const;
 
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
   MARKET_POLL: 'ff-market-poll',
   STREET_INTEL_POLL: 'ff-street-intel-poll',
+  REQUEST_LOG_SWEEP: 'ff-request-log-sweep',
 } as const;
+
+// --- Request log retention ---------------------------------------------------
+//
+// Sizing is grounded in this account's own measured traffic rather than a guess:
+// the 2026-07-22 → 2026-08-08 export holds 9,135 price snapshots over 17 days
+// (~537 `panel.php` views/day), and the two background pollers add a further
+// 144/day (market, 10-min) + 288/day (street intel, 5-min). With player-driven
+// actions that lands around 1,500 requests/day.
+//
+// Bodies are gzipped before they are stored (see requestLog/compress.ts). Panel
+// responses are HTML fragments carrying a large inlined <style> block that is
+// byte-identical on every response, so they compress by roughly 10× — which is
+// what makes a 30-day window affordable (~75 MB) where storing raw text would not
+// have been (~750 MB). Shorten this if you would rather trade history for space.
+export const REQUEST_LOG_RETENTION_DAYS = 30;
+
+// Secondary safety valve, independent of age. Age-based retention alone assumes
+// traffic stays near the measured rate; a runaway loop or a much heavier play
+// session could blow past the storage budget well inside the 30-day window. When
+// the table exceeds this, the oldest rows are dropped until it is back under,
+// regardless of how recent they are.
+export const REQUEST_LOG_MAX_ROWS = 120_000;
+
+// Bodies above this are stored truncated (with `truncated: true` on the row) so a
+// single unexpectedly huge response can't exhaust memory in the page hook or blow
+// the structured-clone budget on the way to the background worker. Comfortably
+// above any observed panel response, which run tens of KB.
+export const REQUEST_LOG_MAX_BODY_BYTES = 512 * 1024;
+
+// Hourly. The sweep is a cheap indexed range-delete, and running it well more
+// often than the retention window means a browser left closed for days still
+// trims promptly on the next wake rather than in one large burst.
+export const REQUEST_LOG_SWEEP_INTERVAL_MINUTES = 60;
 
 // Opportunities rotate on their own per-card expiry timers (independent of the
 // player's own action cooldown), so catching a new medium-risk-or-better one needs

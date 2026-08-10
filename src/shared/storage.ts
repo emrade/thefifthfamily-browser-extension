@@ -2,6 +2,7 @@ import type { FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, Pe
 import { STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
+import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
 
 async function get<T>(key: string, fallback: T): Promise<T> {
   const result = await chrome.storage.local.get(key);
@@ -54,6 +55,15 @@ export const storage = {
     return { ...DEFAULT_PAGE_FEATURE_PREFERENCES, ...stored };
   },
   setPageFeaturePreferences: (v: PageFeaturePreferences) => set(STORAGE_KEYS.PAGE_FEATURE_PREFERENCES, v),
+
+  // Same merge-with-defaults treatment as the two above, so a preference added in
+  // a later version resolves rather than coming back undefined — which for
+  // `retentionDays` would mean a NaN cutoff and a sweep that deletes everything.
+  getRequestLogPreferences: async (): Promise<RequestLogPreferences> => {
+    const stored = await get<Partial<RequestLogPreferences>>(STORAGE_KEYS.REQUEST_LOG_PREFERENCES, {});
+    return { ...DEFAULT_REQUEST_LOG_PREFERENCES, ...stored };
+  },
+  setRequestLogPreferences: (v: RequestLogPreferences) => set(STORAGE_KEYS.REQUEST_LOG_PREFERENCES, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

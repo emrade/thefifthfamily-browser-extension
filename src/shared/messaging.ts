@@ -8,10 +8,21 @@ import { LOG_PREFIX } from './log';
  */
 export interface CapturedRequest {
   source: 'ff-network-hook';
-  method: 'GET' | 'POST';
+  /** Widened from `'GET' | 'POST'` when the hook started capturing every
+   *  same-origin call for the archive: the two endpoints the adapters parse are
+   *  GET/POST, but nothing guarantees that of an endpoint we haven't seen yet. */
+  method: string;
   url: string;
+  /** True only for `/api/` and `/actions/` paths. Feature adapters run on these;
+   *  the archive takes every capture regardless. */
+  tracked: boolean;
   requestBody: string | null;
   responseText: string;
+  /** Set when the body exceeded REQUEST_LOG_MAX_BODY_BYTES and was cut short in
+   *  the page, before crossing the message boundary. */
+  truncated: boolean;
+  status: number | null;
+  durationMs: number | null;
   timestamp: number;
 }
 
@@ -43,7 +54,25 @@ export type ExtensionMessage =
   // features/streetIntel) the first time it's needed. Carries no data of its own;
   // the poll re-fetches the panel itself on every cycle rather than working off
   // whatever this particular view happened to show.
-  | { type: 'street-intel-viewed'; timestamp: number };
+  | { type: 'street-intel-viewed'; timestamp: number }
+  // Raw archive write. Unlike every other message here this one carries unparsed
+  // bytes, because that is the point — the archive's value is in holding exactly
+  // what the server sent, including from endpoints no adapter understands yet.
+  // Handled off the ordered feature queue in background/index.ts.
+  | {
+      type: 'request-log';
+      method: string;
+      url: string;
+      requestBody: string | null;
+      responseText: string;
+      /** Forwarded from the hook. Without it the flag would be lost: the body is
+       *  capped in the page, so by the time the background worker measures it, it
+       *  is under the limit and looks complete. */
+      truncated: boolean;
+      status: number | null;
+      durationMs: number | null;
+      timestamp: number;
+    };
 
 /**
  * Every content-script feature adapter sends its parsed ExtensionMessage the same

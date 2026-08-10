@@ -11,8 +11,16 @@
  */
 
 import { LOG_PREFIX } from '@/shared/log';
+import { REQUEST_LOG_MAX_BODY_BYTES } from '@/shared/constants';
 
 const TRACKED_PATH = /^\/(api|actions)\//;
+
+export interface ResolvedCapture {
+  href: string;
+  /** True for the `/api/` and `/actions/` paths the feature adapters parse. The
+   *  archive takes everything same-origin; only feature dispatch is gated on this. */
+  tracked: boolean;
+}
 
 /**
  * The game calls at least some of its endpoints with bare relative URLs — confirmed
@@ -20,25 +28,53 @@ const TRACKED_PATH = /^\/(api|actions)\//;
  * slash. A regex tested against that raw string would never match `/api/` or
  * `/actions/` (no slash before "api"). Resolving against location first normalizes
  * relative, absolute-path, and full-URL forms alike before we ever test the pattern.
+ *
+ * Cross-origin requests are dropped outright. They are not the game's own API, and
+ * capturing them would put third-party traffic into a file that is meant to be
+ * exported and shared.
  */
-function resolveTrackedPath(rawUrl: string): string | null {
+function resolveCapture(rawUrl: string): ResolvedCapture | null {
   try {
     const resolved = new URL(rawUrl, window.location.href);
-    return TRACKED_PATH.test(resolved.pathname) ? resolved.href : null;
+    if (resolved.origin !== window.location.origin) return null;
+    return { href: resolved.href, tracked: TRACKED_PATH.test(resolved.pathname) };
   } catch {
     return null;
   }
 }
 
-function post(method: 'GET' | 'POST', url: string, requestBody: string | null, responseText: string) {
+/**
+ * Bodies are capped here, at the earliest possible point, rather than in the
+ * background worker. An oversized response would otherwise be held as a string in
+ * the page, copied through structured clone across two message hops, and only then
+ * discarded — so trimming late would pay the entire memory cost anyway.
+ */
+function capBody(text: string): { text: string; truncated: boolean } {
+  if (text.length <= REQUEST_LOG_MAX_BODY_BYTES) return { text, truncated: false };
+  return { text: text.slice(0, REQUEST_LOG_MAX_BODY_BYTES), truncated: true };
+}
+
+function post(
+  method: string,
+  capture: ResolvedCapture,
+  requestBody: string | null,
+  responseText: string,
+  status: number | null,
+  startedAt: number,
+) {
+  const { text, truncated } = capBody(responseText);
   window.postMessage(
     {
       source: 'ff-network-hook',
-      method,
-      url,
+      method: method.toUpperCase(),
+      url: capture.href,
+      tracked: capture.tracked,
       requestBody,
-      responseText,
-      timestamp: Date.now(),
+      responseText: text,
+      truncated,
+      status,
+      durationMs: Date.now() - startedAt,
+      timestamp: startedAt,
     },
     window.location.origin,
   );
@@ -62,18 +98,23 @@ function installFetchHook() {
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const startedAt = Date.now();
     const response = await originalFetch(input, init);
 
     try {
       const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      const resolvedUrl = resolveTrackedPath(rawUrl);
-      if (resolvedUrl) {
-        const method = ((init?.method ?? 'GET').toUpperCase() as 'GET' | 'POST');
+      const capture = resolveCapture(rawUrl);
+      if (capture) {
+        // `init.method` misses the method when the caller passes a Request object
+        // instead of a URL + init pair, which is legal and which the game may use
+        // for any endpoint the adapters don't already cover.
+        const method =
+          init?.method ?? (typeof input === 'object' && 'method' in input ? (input as Request).method : 'GET');
         const requestBody = await formDataToString(init?.body);
         const cloned = response.clone();
         cloned.text()
-          .then((text) => post(method, resolvedUrl, requestBody, text))
-          .catch((err) => console.error(LOG_PREFIX, 'failed to read response body for', resolvedUrl, err));
+          .then((text) => post(method, capture, requestBody, text, response.status, startedAt))
+          .catch((err) => console.error(LOG_PREFIX, 'failed to read response body for', capture.href, err));
       }
     } catch (err) {
       // Never let capture failures break the page's own network calls — but still
@@ -100,15 +141,27 @@ function installXhrHook() {
 
   OriginalXHR.prototype.send = function (this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
     const self = this as unknown as { __ffMethod?: string; __ffUrl?: string };
-    const method = (self.__ffMethod ?? 'GET') as 'GET' | 'POST';
+    const method = self.__ffMethod ?? 'GET';
     const rawUrl = self.__ffUrl ?? '';
-    const resolvedUrl = resolveTrackedPath(rawUrl);
+    const capture = resolveCapture(rawUrl);
+    const startedAt = Date.now();
 
-    if (resolvedUrl) {
+    if (capture) {
       this.addEventListener('loadend', () => {
+        // `responseText` throws if responseType was set to anything non-text
+        // (blob/arraybuffer/json). Harmless for the endpoints the adapters parse,
+        // but now that every same-origin XHR is captured, a single such call would
+        // otherwise throw inside the game's own loadend handling.
+        let responseText: string;
+        try {
+          responseText = this.responseText;
+        } catch {
+          return;
+        }
+
         formDataToString(body)
-          .then((requestBody) => post(method, resolvedUrl, requestBody, this.responseText))
-          .catch((err) => console.error(LOG_PREFIX, 'XHR hook error for', resolvedUrl, err));
+          .then((requestBody) => post(method, capture, requestBody, responseText, this.status, startedAt))
+          .catch((err) => console.error(LOG_PREFIX, 'XHR hook error for', capture.href, err));
       });
     }
 

@@ -2,6 +2,7 @@ import { storage } from '@/shared/storage';
 import { notify } from '@/shared/notify';
 import { ALARM_NAMES, GAME_ORIGIN, MARKET_POLL_BUFFER_MS, MARKET_POLL_FALLBACK_INTERVAL_MS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
+import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { parseSmugglingPanelRegex } from './smugglingHtmlRegexParser';
 import { applySmugglingListing } from './applySmugglingListing';
 import { checkSellOpportunity } from './sellOpportunity';
@@ -58,7 +59,7 @@ export async function pollNow(opts: { skipTravellingCheck?: boolean } = {}): Pro
 
   let responseText: string;
   try {
-    const res = await fetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, { credentials: 'include' });
+    const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, { credentials: 'include' });
     responseText = await res.text();
   } catch (err) {
     console.error(LOG_PREFIX, 'background market poll fetch failed', err);

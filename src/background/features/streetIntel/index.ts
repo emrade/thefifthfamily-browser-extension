@@ -1,5 +1,6 @@
 import { notify } from '@/shared/notify';
 import { LOG_PREFIX } from '@/shared/log';
+import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { ALARM_NAMES, GAME_ORIGIN, STREET_INTEL_POLL_INTERVAL_MS } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
@@ -30,7 +31,7 @@ function scheduleNextPoll() {
 async function pollNow(): Promise<void> {
   let responseText: string;
   try {
-    const res = await fetch(`${GAME_ORIGIN}/api/panel.php?type=street_intel&_t=${Date.now()}`, { credentials: 'include' });
+    const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=street_intel&_t=${Date.now()}`, { credentials: 'include' });
     responseText = await res.text();
   } catch (err) {
     console.error(LOG_PREFIX, 'background street intel poll fetch failed', err);

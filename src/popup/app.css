@@ -1051,3 +1051,166 @@ button {
   background: var(--ff-border);
   border-radius: 2px;
 }
+
+/* --- HTTP Archive (Settings) ------------------------------------------- */
+
+.ff-select {
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-sm);
+  color: var(--ff-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.ff-archive-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ff-archive-stat {
+  padding: 9px 6px;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.ff-archive-stat__value {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--ff-ink);
+  line-height: 1.2;
+}
+
+.ff-archive-stat__label {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--ff-ink-faint);
+}
+
+.ff-archive-window {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ff-ink-faint);
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+/* Deliberately styled as an alert rather than a neutral row: a shape change means
+   an adapter may already be silently mis-parsing, which is the one thing in this
+   panel worth interrupting the player for. */
+.ff-archive-alert {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(245, 158, 11, .07);
+  border: 1px solid rgba(245, 158, 11, .3);
+  border-radius: var(--radius-md);
+  font-size: 10.5px;
+  color: var(--ff-ink-muted);
+  line-height: 1.5;
+}
+
+.ff-archive-alert strong {
+  display: block;
+  color: var(--ff-gold-bright);
+  margin-bottom: 4px;
+}
+
+.ff-archive-alert__list {
+  margin: 0 0 4px;
+  padding-left: 14px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ff-ink-faint);
+  word-break: break-all;
+}
+
+.ff-archive-alert__hint {
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+}
+
+.ff-archive-secondary {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ff-ink-faint);
+  cursor: pointer;
+  text-align: center;
+  transition: color .15s;
+}
+
+.ff-archive-secondary:hover { color: var(--ff-ink); }
+
+.ff-export-trigger:disabled,
+.ff-reset-trigger:disabled,
+.ff-archive-secondary:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.ff-archive-picker {
+  padding: 10px 12px;
+  margin-top: 4px;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-md);
+}
+
+.ff-archive-picker__title {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ff-ink-faint);
+  margin-bottom: 8px;
+}
+
+.ff-archive-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ff-ink-muted);
+}
+
+.ff-archive-endpoint:hover { color: var(--ff-ink); }
+
+/* Long endpoint keys must not push the row count out of view, so the name is the
+   only flexible column and truncates from the end. */
+.ff-archive-endpoint__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ff-archive-endpoint__rows {
+  flex: none;
+  color: var(--ff-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ff-archive-picker__window {
+  width: 100%;
+  margin-top: 8px;
+}

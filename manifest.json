@@ -6,7 +6,8 @@
   "permissions": [
     "alarms",
     "notifications",
-    "storage"
+    "storage",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "https://www.thefifthfamily.com/*"
