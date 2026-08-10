@@ -35,9 +35,34 @@ The archive addresses the first. The shape index addresses the second.
 
 ## What is captured
 
-**Every same-origin `fetch` and XHR to `thefifthfamily.com`** — not just the five
-endpoints the adapters parse. That is deliberate: an endpoint no adapter knows about yet
-is exactly the thing worth having a record of once it turns out to matter.
+**Every same-origin `fetch` and XHR to `thefifthfamily.com`**, minus a short exclusion
+list — not just the five endpoints the adapters parse. That is deliberate: an endpoint no
+adapter knows about yet is exactly the thing worth having a record of once it turns out
+to matter.
+
+### Capture policy
+
+Measured traffic is ~21,726 requests/day. Most of it is client-side polling that carries
+no game rule, so `policy.ts` thins it (see that file for the measurement it is sized
+against):
+
+| Endpoint | /day | Payload | Policy |
+|---|---|---|---|
+| `stats.php` | 9,502 | Full player state | **Throttled to 1/min** → 1,440/day |
+| `chat.php` | 6,078 | `{messages:[], online:120}` | Excluded |
+| `get_announcements.php` | 2,775 | `{announcements:[]}` — always empty | Excluded |
+| `feed.php` | 1,069 | Other players' activity | Excluded |
+| `milestones_check.php` | 596 | `{has_unclaimed:false, count:0}` | Excluded |
+
+Net effect: **21,726 → ~3,150 rows/day**, so a 30-day window is ~94,000 rows.
+
+Two things this deliberately does not do. It never edits a body — throttling thins the
+sampling *rate*, and whatever is kept is kept whole. And it never affects the feature
+adapters: excluded endpoints are still captured by the network hook and still reach the
+parsers, so nothing here can break Trade Assistant or Fight Club.
+
+Excluding an endpoint also removes rows already archived for it, on the next sweep —
+otherwise a policy change would take a full retention window to take effect.
 
 Both sources are covered:
 
@@ -99,11 +124,12 @@ hourly, so the archive trims steadily rather than in one large burst after a lon
 
 Two things qualify that number:
 
-- **A 120,000-row cap** (`REQUEST_LOG_MAX_ROWS`) runs behind the age limit as a safety
-  valve, because age alone assumes traffic stays near its measured rate — a retry loop or
-  a much heavier session could blow the disk budget well inside 30 days. At ~1,500
-  requests/day the cap fills in roughly 80 days, so **selecting 90 days will in practice
-  yield about 80**. At 30 days (~45,000 rows) it never binds.
+- **A 100 MB budget** (`REQUEST_LOG_MAX_BYTES`) runs behind the age limit, evicting
+  oldest-first. Bytes are the resource that actually runs out. This replaced a
+  120,000-row cap that was calibrated against an assumed 1,500 requests/day — measured
+  traffic is **21,726/day**, fourteen times that, so the row cap evicted after 5.5 days
+  and made the retention setting meaningless. The archive page shows usage against the
+  budget, so drift is visible rather than inferred.
 - **The shape index is never swept.** It is a few KB, and it is most valuable exactly
   when it outlives the bodies that produced it. Knowing an endpoint changed two months
   ago costs nothing and is the whole question the index exists to answer.

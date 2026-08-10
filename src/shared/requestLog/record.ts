@@ -3,6 +3,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { REQUEST_LOG_MAX_BODY_BYTES } from '@/shared/constants';
 import { byteLength, compressText, BODY_ENCODING } from './compress';
 import { endpointKey, fingerprintResponse } from './fingerprint';
+import { isExcluded, throttleIntervalFor } from './policy';
 import { redactBody, redactUrl } from './redact';
 import { addToStats } from './stats';
 import { foldObservation } from './profile';
@@ -38,6 +39,26 @@ export interface RecordRequestInput {
  * queue already exists to prevent for trades and bribes.
  */
 export async function recordRequest(input: RecordRequestInput): Promise<void> {
+  // Applied here rather than only at the capture site so background poller fetches
+  // are governed by the same policy as page traffic.
+  if (isExcluded(input.url)) return;
+
+  const endpoint = endpointKey(input.method, input.url);
+
+  const minInterval = throttleIntervalFor(input.url);
+  if (minInterval != null) {
+    // Checked against the database rather than an in-memory timestamp: an MV3
+    // service worker is killed whenever it idles, so a cached "last archived at"
+    // would reset constantly and let a throttled endpoint through far more often
+    // than intended. This is one indexed seek on [endpoint+timestamp].
+    const since = input.timestamp - minInterval;
+    const recent = await db.requestLog
+      .where('[endpoint+timestamp]')
+      .between([endpoint, since], [endpoint, Infinity], false, true)
+      .count();
+    if (recent > 0) return;
+  }
+
   const rawSize = byteLength(input.responseText);
   // OR-ed with the upstream flag rather than derived from length alone. The page
   // hook caps bodies before they cross the message boundary, so a body it already
@@ -46,8 +67,6 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
   const truncated = input.truncatedUpstream === true || rawSize > REQUEST_LOG_MAX_BODY_BYTES;
   const responseText =
     rawSize > REQUEST_LOG_MAX_BODY_BYTES ? input.responseText.slice(0, REQUEST_LOG_MAX_BODY_BYTES) : input.responseText;
-
-  const endpoint = endpointKey(input.method, input.url);
 
   // Fingerprinted before truncation is applied to the *stored* copy but from the
   // truncated text, so the hash always describes exactly the bytes kept alongside

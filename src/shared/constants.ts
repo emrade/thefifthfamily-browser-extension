@@ -36,12 +36,21 @@ export const ALARM_NAMES = {
 // have been (~750 MB). Shorten this if you would rather trade history for space.
 export const REQUEST_LOG_RETENTION_DAYS = 30;
 
-// Secondary safety valve, independent of age. Age-based retention alone assumes
-// traffic stays near the measured rate; a runaway loop or a much heavier play
-// session could blow past the storage budget well inside the 30-day window. When
-// the table exceeds this, the oldest rows are dropped until it is back under,
-// regardless of how recent they are.
-export const REQUEST_LOG_MAX_ROWS = 120_000;
+// Secondary constraint, independent of age: a size budget. Bytes are the resource
+// that actually runs out, and the row cap this replaces was a proxy calibrated
+// against a request rate that turned out to be wrong by 14x — measured traffic is
+// ~21,700 requests/day, not the 1,500 assumed, so a 120,000-row cap evicted after
+// 5.5 days and made the retention setting meaningless.
+//
+// 100 MB is sized from that measurement rather than picked for headroom. With the
+// capture policy applied (see requestLog/policy.ts) the archive takes ~3,150
+// rows/day, so 30 days is ~94,000 rows; those average about 1 KB stored once
+// gzipped — a stats response compresses to roughly 400 bytes, a panel to a few KB,
+// and stats dominate by count. That lands near 92 MB for a full window.
+//
+// The archive page reports usage against this, so if real traffic drifts the
+// number to change is visible rather than inferred.
+export const REQUEST_LOG_MAX_BYTES = 100 * 1024 * 1024;
 
 // Bodies above this are stored truncated (with `truncated: true` on the row) so a
 // single unexpectedly huge response can't exhaust memory in the page hook or blow

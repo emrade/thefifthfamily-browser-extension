@@ -6,6 +6,7 @@ import { DEFAULT_REQUEST_LOG_PREFERENCES, RETENTION_CHOICES, type RequestLogPref
 import { readStats, recomputeStats, resetStats, type RequestLogStats } from '@/shared/requestLog/stats';
 import { buildArchiveBlob, buildShapeDigest, listEndpoints, type EndpointSummary } from '@/shared/requestLog/exportRequestLog';
 import { rebuildProfiles } from '@/shared/requestLog/rebuild';
+import { REQUEST_LOG_MAX_BYTES } from '@/shared/constants';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -162,10 +163,11 @@ export function RequestLogHome() {
         </div>
         <div class="ff-archive-stat">
           <div class="ff-archive-stat__value">{formatBytes(stats.storedBytes)}</div>
-          {/* Just "on disk" — the compression figure moved to the line below, since
-              at three-across the longer label wrapped and left this tile taller than
-              its neighbours. */}
-          <div class="ff-archive-stat__label">on disk</div>
+          {/* Shown against the budget rather than alone. The budget is the thing that
+              actually evicts data, so if real traffic drifts away from what it was
+              sized for, that is visible here instead of having to be inferred from a
+              coverage window quietly shrinking. */}
+          <div class="ff-archive-stat__label">of {formatBytes(REQUEST_LOG_MAX_BYTES)}</div>
         </div>
         <div class="ff-archive-stat">
           <div class="ff-archive-stat__value">{shapes.endpoints}</div>

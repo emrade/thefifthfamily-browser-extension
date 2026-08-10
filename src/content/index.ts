@@ -4,6 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { DEFAULT_REQUEST_LOG_PREFERENCES } from '@/shared/requestLog/preferences';
+import { isExcluded } from '@/shared/requestLog/policy';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
@@ -60,7 +61,11 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     // The archive, by contrast, deliberately takes everything same-origin: an
     // endpoint no adapter knows about yet is exactly the kind of thing worth
     // having a record of once it turns out to matter.
-    if (requestLogEnabled) {
+    // Excluded endpoints are filtered here as well as in the background worker.
+    // The worker is authoritative, but chat.php and the announcement poll alone
+    // account for roughly 40% of all requests, and there is no reason to pay a
+    // structured-clone of every response body just to discard it on arrival.
+    if (requestLogEnabled && !isExcluded(captured.url)) {
       sendMessage({
         type: 'request-log',
         method: captured.method,
