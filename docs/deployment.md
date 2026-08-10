@@ -146,8 +146,19 @@ npm run release
 ```
 
 That single command builds and signs in one step. A new `.xpi` appears in
-`web-ext-artifacts/` when done. Bump `"version"` in `manifest.json` first — Mozilla
-rejects a re-upload at the same version number.
+`web-ext-artifacts/` when done. Bump `"version"` in **both** `manifest.json` and
+`package.json` first — Mozilla rejects a re-upload at the same version number.
+
+`npm run release` runs `npm run preflight` before anything else, which refuses to
+sign if `web-ext-artifacts/` already holds an `.xpi` for the current version, and
+tells you the next free patch number.
+
+That check exists because the quiet failure is worse than the rejected upload: it
+is easy to keep committing against a version that has already shipped, in which
+case the fixes never reach the signed build and the bug they fixed looks like it
+is still there. `web-ext-artifacts/` is the source of truth for what has actually
+been signed — `package.json` only records what was intended, and git history says
+nothing about uploads.
 
 ### Install the update in Firefox
 
