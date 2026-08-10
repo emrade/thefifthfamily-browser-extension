@@ -160,6 +160,23 @@ is still there. `web-ext-artifacts/` is the source of truth for what has actuall
 been signed — `package.json` only records what was intended, and git history says
 nothing about uploads.
 
+### Release tags
+
+After a successful sign, `scripts/tag-release.mjs` tags the commit as `vX.Y.Z`.
+
+This is not bookkeeping for its own sake. Before it existed, the only record that
+a version had shipped was an `.xpi` filename and a commit message, and neither
+survives a rebase — the commit recording the 0.10.1 release was dropped from
+`main` by a rebase run to tidy commit ordering, *after* 0.10.1 had been signed and
+installed, and survived only in the reflog. A tag records which source produced a
+given signed artifact and keeps that commit permanently reachable.
+
+**Never rewrite history that contains a released version.** If you need to reorder
+commits, do it before signing, not after. `git tag -n1` lists what has shipped.
+
+`v0.10.0` and `v0.10.1` were tagged retroactively; `v0.10.1` deliberately points at
+a commit that is not on `main`, because that is genuinely where it was built from.
+
 ### Install the update in Firefox
 
 Firefox won't auto-install updates for unlisted extensions — you push them manually:
