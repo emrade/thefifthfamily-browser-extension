@@ -1055,15 +1055,53 @@ button {
 /* --- HTTP Archive (Settings) ------------------------------------------- */
 
 .ff-select {
+  display: block;
+  width: 100%;
   background: var(--ff-bg);
   border: 1px solid var(--ff-border);
   border-radius: var(--radius-sm);
   color: var(--ff-ink);
   font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 4px 6px;
+  font-size: 10.5px;
+  padding: 7px 8px;
   cursor: pointer;
 }
+
+.ff-select:hover { border-color: var(--ff-border-strong); }
+
+/* A labelled control that stacks label -> hint -> control, unlike .ff-toggle-row
+   which lays its control out as a flex sibling of the text.
+   That row is sized around a fixed 34px toggle: its text column is `flex: 1` with
+   `min-width: 0`, so a control with a wide intrinsic width (a <select> reporting
+   its widest <option>, plus the native dropdown arrow) wins the space contest and
+   collapses the label to a sliver — at popup width the title wrapped to one word
+   per line. Stacking sidesteps the contest entirely and gives the control the full
+   360px, which reads better on a narrow popup regardless. */
+.ff-field {
+  width: 100%;
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--radius-md);
+}
+
+.ff-field__label {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--ff-ink);
+}
+
+.ff-field__hint {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+  margin-top: 1px;
+  line-height: 1.4;
+}
+
+.ff-field__control { margin-top: 8px; }
 
 .ff-archive-stats {
   display: grid;
@@ -1210,7 +1248,3 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.ff-archive-picker__window {
-  width: 100%;
-  margin-top: 8px;
-}

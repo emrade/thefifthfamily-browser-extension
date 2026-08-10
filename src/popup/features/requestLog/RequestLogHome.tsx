@@ -56,7 +56,7 @@ function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-export function RequestLogSettings() {
+export function RequestLogHome() {
   const [prefs, setPrefs] = useState<RequestLogPreferences>(DEFAULT_REQUEST_LOG_PREFERENCES);
   const [stats, setStats] = useState<RequestLogStats | null>(null);
   const [shapes, setShapes] = useState<ShapeSummary | null>(null);
@@ -94,7 +94,7 @@ export function RequestLogSettings() {
   }
 
   useEffect(() => {
-    refresh().catch((err) => console.error(LOG_PREFIX, 'failed to load request log settings', err));
+    refresh().catch((err) => console.error(LOG_PREFIX, 'failed to load the request log view', err));
   }, []);
 
   async function run(label: string, action: () => Promise<void>) {
@@ -147,13 +147,51 @@ export function RequestLogSettings() {
 
   return (
     <>
-      <div class="ff-section-label">HTTP Archive</div>
+      <div class="ff-archive-stats">
+        <div class="ff-archive-stat">
+          <div class="ff-archive-stat__value">{stats.rows.toLocaleString()}</div>
+          <div class="ff-archive-stat__label">requests</div>
+        </div>
+        <div class="ff-archive-stat">
+          <div class="ff-archive-stat__value">{formatBytes(stats.storedBytes)}</div>
+          {/* Just "on disk" — the compression figure moved to the line below, since
+              at three-across the longer label wrapped and left this tile taller than
+              its neighbours. */}
+          <div class="ff-archive-stat__label">on disk</div>
+        </div>
+        <div class="ff-archive-stat">
+          <div class="ff-archive-stat__value">{shapes.endpoints}</div>
+          <div class="ff-archive-stat__label">endpoints</div>
+        </div>
+      </div>
+
+      <div class="ff-archive-window">
+        {stats.rows > 0
+          ? `Covering ${formatDate(stats.oldestTimestamp)} – ${formatDate(stats.newestTimestamp)}${savedPct > 0 ? ` · ${savedPct}% saved by compression` : ''}`
+          : 'Nothing captured yet — open the game to start recording.'}
+      </div>
+
+      {shapes.changedEndpoints.length > 0 && (
+        <div class="ff-archive-alert">
+          <strong>
+            {shapes.changedEndpoints.length} endpoint{shapes.changedEndpoints.length === 1 ? '' : 's'} changed shape
+          </strong>
+          <ul class="ff-archive-alert__list">
+            {shapes.changedEndpoints.slice(0, 5).map((endpoint) => (
+              <li key={endpoint}>{endpoint}</li>
+            ))}
+          </ul>
+          <span class="ff-archive-alert__hint">Download the shape digest for the exact token diff.</span>
+        </div>
+      )}
+
+      <div class="ff-section-label">Capture</div>
 
       <label class="ff-toggle-row">
         <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Record Game Traffic</div>
           <div class="ff-toggle-row__status">
-            Stores every request the game makes, compressed, so mechanics can be re-derived and changes spotted.
+            Stores every request the game makes, compressed. Turning this off pauses capture; nothing is deleted.
           </div>
         </div>
         <input
@@ -164,13 +202,15 @@ export function RequestLogSettings() {
         />
       </label>
 
-      <label class="ff-toggle-row">
-        <div class="ff-toggle-row__text">
-          <div class="ff-toggle-row__title">Keep History For</div>
-          <div class="ff-toggle-row__status">Older requests are deleted automatically. Shape history is always kept.</div>
-        </div>
+      {/* Stacked rather than side-by-side like the toggle row above. A <select> has a
+          wide intrinsic width, so as a flex sibling it starves the label column and
+          forces it to wrap one word per line at popup width — the toggle row is built
+          for a fixed 34px control, not a dropdown. */}
+      <div class="ff-field">
+        <div class="ff-field__label">Keep History For</div>
+        <div class="ff-field__hint">Older requests are deleted automatically. Shape history is always kept.</div>
         <select
-          class="ff-select"
+          class="ff-select ff-field__control"
           value={String(prefs.retentionDays)}
           onChange={(e) => savePrefs({ ...prefs, retentionDays: Number((e.target as HTMLSelectElement).value) })}
         >
@@ -178,55 +218,13 @@ export function RequestLogSettings() {
             <option key={days} value={String(days)}>{days} days</option>
           ))}
         </select>
-      </label>
-
-      <div class="ff-archive-stats">
-        <div class="ff-archive-stat">
-          <div class="ff-archive-stat__value">{stats.rows.toLocaleString()}</div>
-          <div class="ff-archive-stat__label">requests</div>
-        </div>
-        <div class="ff-archive-stat">
-          <div class="ff-archive-stat__value">{formatBytes(stats.storedBytes)}</div>
-          <div class="ff-archive-stat__label">on disk{savedPct > 0 ? ` · ${savedPct}% saved` : ''}</div>
-        </div>
-        <div class="ff-archive-stat">
-          <div class="ff-archive-stat__value">{shapes.endpoints}</div>
-          <div class="ff-archive-stat__label">endpoints</div>
-        </div>
       </div>
 
-      <div class="ff-archive-window">
-        {stats.rows > 0 ? `Covering ${formatDate(stats.oldestTimestamp)} – ${formatDate(stats.newestTimestamp)}` : 'Nothing captured yet — open the game to start recording.'}
-      </div>
-
-      {shapes.changedEndpoints.length > 0 && (
-        <div class="ff-archive-alert">
-          <strong>{shapes.changedEndpoints.length} endpoint{shapes.changedEndpoints.length === 1 ? '' : 's'} changed shape</strong>
-          <ul class="ff-archive-alert__list">
-            {shapes.changedEndpoints.slice(0, 5).map((endpoint) => (
-              <li key={endpoint}>{endpoint}</li>
-            ))}
-          </ul>
-          <span class="ff-archive-alert__hint">Download the shape digest for the exact token diff.</span>
-        </div>
-      )}
-
-      <button
-        class="ff-export-trigger"
-        disabled={busy !== null}
-        onClick={() =>
-          run('shape digest', async () => {
-            const json = await buildShapeDigest();
-            download(new Blob([json], { type: 'application/json' }), `fifth-family-shapes-${timestamp()}.json`);
-          })
-        }
-      >
-        {busy === 'shape digest' ? 'Preparing…' : 'Download Shape Digest (small)'}
-      </button>
+      <div class="ff-section-label">Export</div>
 
       {endpoints.length > 0 && (
         <div class="ff-archive-picker">
-          <div class="ff-archive-picker__title">Export Selected Endpoints</div>
+          <div class="ff-archive-picker__title">Select Endpoints</div>
 
           {endpoints.map((summary) => (
             <label class="ff-archive-endpoint" key={summary.endpoint}>
@@ -246,7 +244,7 @@ export function RequestLogSettings() {
           ))}
 
           <select
-            class="ff-select ff-archive-picker__window"
+            class="ff-select ff-field__control"
             value={String(windowMs)}
             onChange={(e) => setWindowMs(Number((e.target as HTMLSelectElement).value))}
           >
@@ -279,6 +277,19 @@ export function RequestLogSettings() {
 
       <button
         class="ff-export-trigger"
+        disabled={busy !== null}
+        onClick={() =>
+          run('shape digest', async () => {
+            const json = await buildShapeDigest();
+            download(new Blob([json], { type: 'application/json' }), `fifth-family-shapes-${timestamp()}.json`);
+          })
+        }
+      >
+        {busy === 'shape digest' ? 'Preparing…' : 'Download Shape Digest (small)'}
+      </button>
+
+      <button
+        class="ff-export-trigger"
         disabled={busy !== null || stats.rows === 0}
         onClick={() =>
           run('archive', async () => {
@@ -290,6 +301,8 @@ export function RequestLogSettings() {
         {busy === 'archive' ? 'Compressing…' : `Download Full Archive (${formatBytes(stats.storedBytes)})`}
       </button>
 
+      <div class="ff-section-label">Maintenance</div>
+
       <button
         class="ff-archive-secondary"
         disabled={busy !== null}
@@ -298,10 +311,10 @@ export function RequestLogSettings() {
         {busy === 'recount' ? 'Recounting…' : 'Recount Archive Size'}
       </button>
 
-      {/* The archive's own reset, kept here rather than folded into "Clear All Data".
-          That button clears the player's game history; this clears a developer-facing
-          recording with its own retention and exports, and conflating the two would
-          mean wiping months of capture as a side effect of resetting a trade ledger. */}
+      {/* The archive's own reset, kept out of Settings → Clear All Data. That button
+          clears the player's game history; this clears a developer-facing recording
+          with its own retention and exports, and conflating the two would mean wiping
+          months of capture as a side effect of resetting a trade ledger. */}
       {confirmingClear ? (
         <div class="ff-reset-confirm">
           <span>
@@ -317,7 +330,7 @@ export function RequestLogSettings() {
                 run('clear', async () => {
                   await clearRequestLog();
                   // Counters describe the tables just emptied, so they have to be
-                  // zeroed in the same breath or the popup reports a full archive
+                  // zeroed in the same breath or the view reports a full archive
                   // against nothing.
                   await resetStats();
                   setConfirmingClear(false);
