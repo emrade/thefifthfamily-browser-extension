@@ -15,15 +15,27 @@ for the old (pre-upgrade) model this replaces.
 
 ## What changed
 
-In the player's own words: pets now do the travelling. You withdraw cash, pick a pet,
-buy items into your stash while physically standing in their origin district, load them
-onto the pet, send it to a destination, and it delivers and sells automatically —
-no manual travel required. Each district now sells **3** contraband items (was 1), and
-**border seizure no longer happens** on pet (courier) shipments — the risk meter still
-renders in the panel, but it appears to gate only the old hand-carry path, which the
-pet system has functionally replaced. Confirmed from data: zero `customs_bribe`/
-`customs_run`/`customs_surrender` actions anywhere in the archive after the rollout
-(2026-08-11 22:xx UTC) — 10 occurred before it, none since, across 92k requests.
+Manual travel-and-carry smuggling still works — it's not gone, it's just the weaker of
+two now-parallel paths. The panel's own copy calls it out directly: "Hand-Carry
+Markets... Not couriers · they pay a flat ×1.20", with its own Border Seizure Risk
+meter, sitting alongside the new pet system as a collapsed section a player can still
+use. In the player's own words: it's still there, but the profit from travelling and
+carrying cargo yourself is small next to sending a full roster of high-capacity pets,
+so pets are now the primary path, not the only one.
+
+The pet (courier) side: withdraw cash, pick a pet, buy items into your stash while
+physically standing in their origin district, load them onto the pet, send it to a
+destination, and it delivers and sells automatically — no manual travel required for
+that leg. Each district now sells **3** contraband items (was 1) — true for both paths,
+since it's the same underlying black-market catalog.
+
+**Border seizure no longer happens on pet shipments** — confirmed from data: zero
+`customs_bribe`/`customs_run`/`customs_surrender` actions anywhere in the archive after
+the rollout (2026-08-11 22:xx UTC), 10 before it, none since, across 92k requests. That
+absence lines up with player experience (pets stopped getting seized) but the archive
+can't confirm whether hand-carry runs still risk it — none were attempted post-rollout
+to check. Treat "hand-carry still has border seizure risk" as the panel's own claim,
+not independently confirmed, until someone runs that path again with logging on.
 
 ## The new economy, confirmed
 
