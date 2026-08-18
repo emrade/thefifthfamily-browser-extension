@@ -134,8 +134,7 @@ unlike the old model's message-regex scraping.
       whatever the market is doing" from the Hand-Carry Markets note). A `.sv2-dfoot`
       note explains why a cell can't be picked yet ("Load cargo first" / "Level 121
       required"). The whole picker rotates on a countdown shown separately ("Routes
-      rotate in 16m 54s") — roughly hourly, per the pet-picker's own wording, though
-      the exact interval isn't independently confirmed.
+      rotate in 16m 54s") — confirmed exactly **60 minutes** by the player.
     - `onclick="Game.smugV2Cancel(<shipment_id>)"` — maps to the `v2_cancel` action.
   - **In transit**: the Shipment section instead shows a live ETA
     (`.sv2-eta`/`.sv2-tick`, `data-seconds`) and a summary of what's loaded — this is
@@ -156,29 +155,33 @@ unlike the old model's message-regex scraping.
 
 Resolved since the first draft of this doc: the destination picker's structure and
 per-pet capacity/speed are both now confirmed above, straight from the player checking
-the live UI. What's left:
+the live UI. Two more resolved by the player's own direct knowledge, no capture needed:
+**the destination rotation is confirmed exactly 60 minutes** (not just "roughly hourly"
+inferred from one countdown), and `cancel` for travel is explicitly out of scope — the
+player doesn't cancel trips and it has no bearing on smuggling either way, so
+`travelAdapter.ts`'s unverified guess at the action name is a non-issue, not a gap.
 
-- **Full item_id catalog.** Only the 3 items native to the capturing account's current
-  district exposed a real `buyContraband(id)` handler in this export (ids 20/21/22,
-  Arms District). The other 27 need either a capture from each district, or accumulating
-  `item_id` values from `buy` action request bodies over time. Not urgent — no action
-  needed beyond playing normally and re-exporting later.
-- **`cancel` action name for travel.** `travelAdapter.ts` guesses the old `/api/travel.php`
-  action name `cancel` survived the rename to `/actions/travel_proto.php` unchanged —
-  zero cancel calls appear in this export to confirm it. Harmless if wrong (falls through
-  to a no-op), but worth confirming before relying on it.
-- **What the `.sv2-dstate` badge (`+7`, `+2`) on a destination cell means.** Seen on
-  both an unlocked and a locked cell, so it isn't purely an eligibility signal. Possibly
-  a Family Favor/reputation bonus for that route — `v2_offload` responses do carry a
-  `families` array (empty in every capture so far) and a stray "· Family Favor earned"
-  suffix was seen once on a `sell` message — but nothing directly ties the badge number
-  to that yet. Doesn't block automation (the picker already tells you which cells are
-  pickable and what they pay), just unexplained.
-- **Whether the rotation interval is exactly hourly.** The pet-picker screen says "one
-  of the two districts open this hour"; the one countdown captured read 16m 54s
-  remaining. Consistent with an hourly rotation, not independently timed across two
-  rotations to confirm the period is exactly 60 minutes and not, say, randomized within
-  a range.
+What's actually left:
+
+- **Full item_id catalog — 12 of 30 confirmed, all reachable ones.** The player has 3
+  districts unlocked; the archive already has complete item data for everywhere
+  currently accessible (Downtown, The Strip, The Docks all fully mapped — 20/21/22 for
+  Arms District came from captures before that account's current district set). The
+  other 18 ids sit behind level-gated districts that unlock over months of normal play,
+  not something to chase or wait on. Per the "don't hardcode" rule above, this was never
+  going to be a fixed table anyway — whatever's unlocked shows up live. Not a gap so
+  much as a fact about how far the account has progressed.
+- **What the `.sv2-dstate` badge (`+7`, `+2`) on a destination cell means — narrowed,
+  not solved.** `v2_offload` responses do carry real reputation data now: `families` is
+  an object, not the empty array first assumed — `{"volkskaya": 5}` alongside a message
+  suffixed "Family Favor earned", where Volkskaya is the loaded item's own owning family
+  per the black-market catalog's `.sv2-fam-pill`. So the mechanic is real and confirmed:
+  selling nets favor with the item's family. What's still unconfirmed is whether the
+  picker's `+N` badge *is* that same number shown as a preview — the badge is visible
+  even before anything is loaded ("Load cargo first"), so if it's a preview it can't be
+  keyed off the specific items in that shipment; more likely it's tied to which family
+  controls the destination district itself. Doesn't block automation (the picker already
+  says what's pickable and what it pays), just not nailed down.
 
 ## Bundled cleanup (not yet done — scope for the same pass)
 
