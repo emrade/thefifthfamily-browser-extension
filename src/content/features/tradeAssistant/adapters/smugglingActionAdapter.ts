@@ -43,7 +43,12 @@ export function parseSmugglingAction(
 
 function parseBuy(json: any, params: URLSearchParams, timestamp: number): ExtensionMessage | null {
   if (!json.ok) return null;
-  const qty = Number(params.get('qty'));
+  // Prefer the response's own `qty` (the amount actually granted) over the request's
+  // `qty` (the amount asked for) — the two now diverge whenever a buy is capacity-capped
+  // (see `was_capped`/`cap_remaining`, new since the pet-cargo system), in which case the
+  // request qty would silently overstate what was actually bought. Responses that predate
+  // this field don't carry it, so requested qty remains the fallback for those.
+  const qty = Number(json.qty ?? params.get('qty'));
   const message: string = json.message ?? '';
   const nameMatch = message.match(/Secured\s+\d+\s+(.+?)!/);
   if (!nameMatch || !Number.isFinite(qty) || qty <= 0) return null;

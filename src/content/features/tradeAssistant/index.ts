@@ -3,7 +3,7 @@ import { sendMessage as send } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { parseSmugglingPanel } from './adapters/smugglingPanelAdapter';
 import { parseSmugglingAction } from './adapters/smugglingActionAdapter';
-import { parseTravelAction } from './adapters/travelAdapter';
+import { parseTravelAction, TRACKED_TRAVEL_ACTIONS } from './adapters/travelAdapter';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 export function handleCapturedRequest(req: CapturedRequest) {
@@ -51,9 +51,18 @@ export function handleCapturedRequest(req: CapturedRequest) {
     return;
   }
 
-  if (path.endsWith('/api/travel.php') && req.method === 'POST') {
+  if (path.endsWith('/actions/travel_proto.php') && req.method === 'POST') {
     const message = parseTravelAction(req.requestBody, req.responseText, req.timestamp);
-    if (message) send(message);
+    if (message) {
+      send(message);
+      recordParseSuccess('tradeAssistant');
+    } else if (req.requestBody && TRACKED_TRAVEL_ACTIONS.has(new URLSearchParams(req.requestBody).get('action') ?? '')) {
+      // A recognised action (get_state/start_trip) that still failed to parse is a
+      // real signal — anything else (an untracked action, or `cancel`, whose name
+      // survived the rename unverified) is routine, same as the smuggling-action
+      // branch above.
+      recordParseFailure('tradeAssistant');
+    }
     return;
   }
 }

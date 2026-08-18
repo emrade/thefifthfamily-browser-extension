@@ -17,12 +17,22 @@ function pollNowOnArrival() {
 }
 
 export async function scheduleArrival(msg: Extract<ExtensionMessage, { type: 'travel-started' }>) {
-  const district = await db.districts.get(msg.destinationCityId);
-  const destinationName = district?.name ?? `City #${msg.destinationCityId}`;
+  // `/actions/travel_proto.php` reports the destination by name, not id (see
+  // travelAdapter.ts) — background resolves it here since it's the side that owns
+  // the district table. A name that doesn't resolve (districts not synced yet) means
+  // arrival can't be matched against stats.php's numeric `current_city` later, so
+  // there's nothing safe to schedule.
+  const district = await db.districts.where('name').equals(msg.destinationCityName).first();
+  if (!district) {
+    console.error(LOG_PREFIX, 'travel-started for unknown district', msg.destinationCityName);
+    return;
+  }
+  const destinationCityId = district.id;
+  const destinationName = district.name;
   const arrivesAt = msg.timestamp + msg.travelTimeSeconds * 1000;
 
   await storage.setPendingTravel({
-    destinationCityId: msg.destinationCityId,
+    destinationCityId,
     destinationName,
     method: msg.method,
     startedAt: msg.timestamp,
@@ -40,12 +50,12 @@ export async function scheduleArrival(msg: Extract<ExtensionMessage, { type: 'tr
   const duplicate = await db.travelLegs
     .where('timestamp')
     .equals(msg.timestamp)
-    .filter((leg) => leg.destinationCityId === msg.destinationCityId && leg.method === msg.method)
+    .filter((leg) => leg.destinationCityId === destinationCityId && leg.method === msg.method)
     .first();
   if (duplicate) return;
 
-  const cost = msg.method === 'taxi' ? (district?.travelCostTaxi ?? 0) : 0;
-  await db.travelLegs.add({ timestamp: msg.timestamp, destinationCityId: msg.destinationCityId, method: msg.method, cost });
+  const cost = msg.method === 'taxi' ? district.travelCostTaxi : 0;
+  await db.travelLegs.add({ timestamp: msg.timestamp, destinationCityId, method: msg.method, cost });
 }
 
 export async function cancelPending() {

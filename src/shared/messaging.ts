@@ -46,7 +46,10 @@ export type ExtensionMessage =
   | { type: 'customs-raid-detected'; district: string; bribe: number; timestamp: number }
   | { type: 'customs-resolved'; resolution: 'bribe' | 'run' | 'surrender'; caught: boolean; cargoLost: boolean; jailSeconds: number | null; bribeAmount: number | null; timestamp: number }
   | { type: 'player-stats'; snapshot: RawStatsPayload }
-  | { type: 'travel-started'; destinationCityId: number; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
+  // Carries the destination by name, not id — `/actions/travel_proto.php` (the
+  // endpoint this is parsed from) reports it that way, and resolving to an id needs
+  // the district table, which only background has. See travelAdapter.ts.
+  | { type: 'travel-started'; destinationCityName: string; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
   | { type: 'travel-cancelled'; timestamp: number }
   | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number }
   // Fired on any sign the player is actively using Street Intel — a panel view or a
