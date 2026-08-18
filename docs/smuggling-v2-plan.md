@@ -45,11 +45,27 @@ not independently confirmed, until someone runs that path again with logging on.
 `get_state` captures overwrite it), but worth knowing if anyone reads that constant
 expecting a complete list.
 
-**Pets have names, not just ids** — George, Wild Boar, Blue Crab, Red-Tailed Hawk, House
-Cat, Moray Eel, Fox, Pigeon confirmed in one account's fleet. Whether capacity/speed
-varies by pet is unconfirmed (see gaps below) but the variety of names/art strongly
-suggests it does — the user's read is that profit varies by district and item, which is
-confirmed (see per-district pricing below); whether it *also* varies by pet is open.
+**Pets have names, tiers, capacity, and speed — all confirmed, and all different per
+pet.** From the pet-picker screen ("No Courier Out — Pick a courier, load its cargo,
+then send it to one of the two districts open this hour"):
+
+| Pet | Tier | Capacity | Travel time penalty |
+|---|---|---|---|
+| George | Heavy Freight | 30 | +160% |
+| Wild Boar | Heavy Freight | 23 | +160% |
+| Blue Crab | Slow Freight | 14 | +150% |
+| Red-Tailed Hawk | Express | 10 | +60% |
+| House Cat | Balanced | 8 | +82% |
+
+(Moray Eel, Fox, Pigeon also confirmed to exist in-fleet but not yet seen on this
+screen with stats.) Each pet has its own 0/10 **training** track: "+10 more
+STR/DEF/AGI/DEX (any mix) for the next milestone" raises both capacity and speed
+(e.g. George at 10/10 training: 33 capacity at +136% instead of 30 at +160%) — "same
+stats it fights with — raise them in the Menagerie" (`panel.php?type=menagerie`,
+already a tracked-but-unbuilt endpoint in the archive). Travel time penalty is a
+multiplier on the district-pair's base time — `v2_depart`'s `travel_mod` field (`1.6`
+for Pigeon in one capture) is exactly this number, confirming the fleet-strip stat and
+the actual departure math agree.
 
 ## API reference (CONFIRMED)
 
@@ -73,40 +89,83 @@ separate endpoints.
 event — it names pet, origin, destination, and net profit in one structured object,
 unlike the old model's message-regex scraping.
 
-**Panel views** (all `GET /api/panel.php?type=smuggling...`):
+**Panel views** — one endpoint, three states, confirmed:
 
-- `?type=smuggling` (base, no `smug_tab`) — now just a tab-switcher stub, no real
-  content. This is what broke the old `smugglingPanelAdapter.ts`.
-- `?smug_tab=proto&type=smuggling` — the real dashboard. Contains:
-  - **Fleet strip** (`.sv2-fl` buttons): one per shipment/pet, `onclick="Game.smugV2Focus(<shipment_id>)"` — note this is the **shipment id**, not the pet id used in `v2_draft`'s `user_pet_id`. Pet name and current status text (`.sv2-fl-txt b`/`span`), ETA countdown (`.sv2-fl-eta`, `data-seconds`). A `.sv2-fl.new` "New delivery" button (`smugV2Focus(-1)`) starts a fresh shipment.
-  - **Your Stash** (`.sv2-card` under that heading): unshipped items bought but not yet loaded onto a pet.
-  - **Black Market Inventory** (`.sv2-grid#sv2-contraband-grid`): all 30 items, each a `.sv2-card` with `data-sv2-here="1"/"0"`, item name (`.sv2-card-name`), owning family (`.sv2-fam-pill`), origin district (`.sv2-origin-pill`), price (`.sv2-card-price`), owned qty (`.sv2-card-stash`), and — only when buyable (`data-sv2-here="1"`) — `onclick="Game.buyContraband(<item_id>)"`.
-- `?smug_tab=proto&sv2_focus=<shipment_id>&type=smuggling` — per-shipment detail (used after `smugV2Focus`). Confirmed to render for an in-transit shipment; the loading screen for an *open, not-yet-departed* shipment (where the destination picker and per-item load buttons should live) was not captured cleanly in this export — see gaps below.
+- `GET /api/panel.php?type=smuggling` (base, no `smug_tab`) — now just a tab-switcher
+  stub, no real content. This is what broke the old `smugglingPanelAdapter.ts`.
+- `GET /api/panel.php?type=smuggling&smug_tab=proto` — the real dashboard. **This one
+  URL is all a parser needs** — the `sv2_focus` query param seen in `Game.smugV2Focus()`
+  onclick handlers turns out to be client-side UI state, not a distinct request: clicking
+  a fleet button (e.g. "Send George") fires `v2_draft` and then re-fetches this exact
+  same `smug_tab=proto` URL, which now embeds the shipment's loading UI because a draft
+  exists server-side. Confirmed directly — a captured "Send George" click showed the
+  triggered request as plain `...&smug_tab=proto&_t=...`, no `sv2_focus` in sight. The
+  response takes one of three shapes depending on shipment state:
+  - **Idle** (no open shipment): fleet strip + stash + market catalog only.
+  - **Drafting** (a shipment opened, not yet departed) — adds a Shipment section:
+    - Assigned-courier banner (`.sv2-load`): pet name, tier, capacity (`.sv2-load-n`
+      "Carries"), travel-time penalty (`.sv2-load-n` "Travel time").
+    - Manifest (`.sv2-man-*`): `N / capacity` loaded so far, empty-state prompt if
+      nothing loaded yet.
+    - "In Your Stash" list: each unshipped item with a
+      `onclick="Game.smugV2Load(<shipment_id>,<item_id>,<qty>,'<item name>')"` Load
+      button — `qty` here is the full stash count, i.e. the UI offers to load
+      everything in one click, not incrementally.
+    - **Destination picker** (`.sv2-dest.two` — always exactly 2 cells, confirmed by
+      the pet-picker's own copy: "send it to one of the two districts open this hour"):
+      one `.sv2-dcell` per open destination, `.locked` if under-levelled. Each cell:
+      district name (`.sv2-dname`), a `.sv2-dstate` badge (`+7`, `+2` — meaning not yet
+      confirmed, see open questions below), `Base` / `With courier` travel times
+      (`.sv2-drow .sv2-dval`), and `Sale Rate` (`.sv2-dval.mult`, seen fixed at `×1.20`
+      on every open cell so far — matches "couriers always sell at a flat ×1.20,
+      whatever the market is doing" from the Hand-Carry Markets note). A `.sv2-dfoot`
+      note explains why a cell can't be picked yet ("Load cargo first" / "Level 121
+      required"). The whole picker rotates on a countdown shown separately ("Routes
+      rotate in 16m 54s") — roughly hourly, per the pet-picker's own wording, though
+      the exact interval isn't independently confirmed.
+    - `onclick="Game.smugV2Cancel(<shipment_id>)"` — maps to the `v2_cancel` action.
+  - **In transit**: the Shipment section instead shows a live ETA
+    (`.sv2-eta`/`.sv2-tick`, `data-seconds`) and a summary of what's loaded — this is
+    the shape already in the API reference table above (`v2_depart`'s response).
+  - **Fleet strip** (`.sv2-fl` buttons, present in all three states): one per open
+    shipment, `onclick="Game.smugV2Focus(<shipment_id>)"` (the **shipment id**, not the
+    pet id used in `v2_draft`'s `user_pet_id`). Pet name and status text
+    (`.sv2-fl-txt b`/`span`), ETA countdown (`.sv2-fl-eta`, `data-seconds`) once
+    departed. A `.sv2-fl.new` "New delivery" button (`smugV2Focus(-1)`) starts a fresh
+    draft.
+  - **Black Market Inventory** (`.sv2-grid#sv2-contraband-grid`, present in all three
+    states): all 30 items, each a `.sv2-card` with `data-sv2-here="1"/"0"`, item name
+    (`.sv2-card-name`), owning family (`.sv2-fam-pill`), origin district
+    (`.sv2-origin-pill`), price (`.sv2-card-price`), owned qty (`.sv2-card-stash`), and
+    — only when buyable (`data-sv2-here="1"`) — `onclick="Game.buyContraband(<item_id>)"`.
 
 ## Gaps — needs a deliberate capture, not guessing
 
-- **The destination picker.** The user describes seeing "the list of destinations open
-  at that time, they change every 1 hour or so" after picking a pet. No response in the
-  archive contains a real (non-CSS-only) `.sv2-dcell`/`.sv2-dest` element — every
-  `sv2_focus` capture landed on either `-1` (pet picker) or an already-in-transit
-  shipment. Likely cause: my search matched `sv2_focus` against `user_pet_id`, but the
-  URL param is actually the **shipment_id** (see above) — a capture taken with
-  `sv2_focus=<the shipment_id from a v2_draft response>` should land on the loading
-  screen. Worth one deliberate capture: open Smuggling → New Delivery → pick a pet →
-  export the archive immediately after, before loading/departing.
+Resolved since the first draft of this doc: the destination picker's structure and
+per-pet capacity/speed are both now confirmed above, straight from the player checking
+the live UI. What's left:
+
 - **Full item_id catalog.** Only the 3 items native to the capturing account's current
   district exposed a real `buyContraband(id)` handler in this export (ids 20/21/22,
   Arms District). The other 27 need either a capture from each district, or accumulating
-  `item_id` values from `buy` action request bodies over time.
-- **Per-pet capacity/speed.** Unconfirmed whether different pets (George vs Pigeon vs
-  Wild Boar, etc.) carry different cargo capacity or travel speed multipliers — the
-  fleet strip doesn't show it, and no two pets were compared loading the same route in
-  this export. `v2_depart`'s `travel_mod` (seen as `1.6` for Pigeon → Downtown) hints
-  pets do differ, but that's one data point.
+  `item_id` values from `buy` action request bodies over time. Not urgent — no action
+  needed beyond playing normally and re-exporting later.
 - **`cancel` action name for travel.** `travelAdapter.ts` guesses the old `/api/travel.php`
   action name `cancel` survived the rename to `/actions/travel_proto.php` unchanged —
   zero cancel calls appear in this export to confirm it. Harmless if wrong (falls through
   to a no-op), but worth confirming before relying on it.
+- **What the `.sv2-dstate` badge (`+7`, `+2`) on a destination cell means.** Seen on
+  both an unlocked and a locked cell, so it isn't purely an eligibility signal. Possibly
+  a Family Favor/reputation bonus for that route — `v2_offload` responses do carry a
+  `families` array (empty in every capture so far) and a stray "· Family Favor earned"
+  suffix was seen once on a `sell` message — but nothing directly ties the badge number
+  to that yet. Doesn't block automation (the picker already tells you which cells are
+  pickable and what they pay), just unexplained.
+- **Whether the rotation interval is exactly hourly.** The pet-picker screen says "one
+  of the two districts open this hour"; the one countdown captured read 16m 54s
+  remaining. Consistent with an hourly rotation, not independently timed across two
+  rotations to confirm the period is exactly 60 minutes and not, say, randomized within
+  a range.
 
 ## Bundled cleanup (not yet done — scope for the same pass)
 
@@ -153,10 +212,16 @@ the game rather than only observing it:
 
 - **What decides the route** (which pet, which items, which destination) — a fixed
   player-configured rule, or a profit-ranking built from the black-market catalog +
-  `run_report` history once that data starts flowing again?
+  `run_report` history once that data starts flowing again? With capacity/speed now
+  known per pet and sale rate fixed at ×1.20 for every destination, the per-run math is
+  actually simple: profit per unit is the same regardless of which of the two open
+  destinations gets picked (modulo the still-unexplained `+N` badge), so the real lever
+  is *which pet* (bigger capacity moves more cargo, at a steeper time cost) and *which
+  item* (cheapest-per-unit at full pet capacity maximizes units moved per withdrawal),
+  not route selection.
 - **Safety rails** — a spend cap, a "don't run while I'm actively on the page" guard, and
   how failures (a `v2_load` rejected mid-sequence, a session/CSRF expiry) should stop the
   loop rather than retry into something worse.
 
-Not resolved here — this doc is the map, not the decision. Once the destination-picker
-gap above is filled in, this is buildable.
+Not resolved here — this doc is the map, not the decision. Every piece of the flow is now
+confirmed from real traffic; nothing left in this doc blocks starting to build.
