@@ -3,10 +3,11 @@
 Status: **draft — scoping only, nothing in this doc is implemented yet.** This exists to
 capture what the 2026-08-11 upgrade actually changed about Smuggling, from real
 captured traffic, so building pet automation later starts from facts instead of
-re-deriving them from scratch. Sections marked `CONFIRMED` come from the archive
-export (`fifth-family-archive-2026-08-18T13-30-14-218Z.ndjson.gz`, 92k requests).
-Sections marked `NEEDS CAPTURE` are gaps — things the archive doesn't show, that need
-a deliberate capture session before they can be built against.
+re-deriving them from scratch. Sections marked `CONFIRMED` come from archive exports
+(`fifth-family-archive-2026-08-18T13-30-14-218Z.ndjson.gz`, then a follow-up
+`...T15-24-03-028Z.ndjson.gz` spanning 2026-08-11 through 2026-08-18, ~92k and ~95k
+requests respectively). Sections marked `NEEDS CAPTURE` are gaps — things the archive
+doesn't show, that need a deliberate capture session before they can be built against.
 
 See `docs/http-archive.md` for how to pull a fresh export, and `docs/trade-assistant-plan.md`
 for the old (pre-upgrade) model this replaces.
@@ -45,27 +46,39 @@ not independently confirmed, until someone runs that path again with logging on.
 `get_state` captures overwrite it), but worth knowing if anyone reads that constant
 expecting a complete list.
 
-**Pets have names, tiers, capacity, and speed — all confirmed, and all different per
-pet.** From the pet-picker screen ("No Courier Out — Pick a courier, load its cargo,
-then send it to one of the two districts open this hour"):
+**Pets have names, tiers, capacity, and speed — all confirmed directly from archived
+responses**, not inferred from a screenshot (an earlier draft of this doc read this off
+a UI screenshot and mislabeled it `CONFIRMED`; it's now pulled from the `.sv2-load-*`
+banner in 717 real `smug_tab=proto` captures — the full roster, not just the one pet
+visible in any single screenshot):
 
 | Pet | Tier | Capacity | Travel time penalty |
 |---|---|---|---|
-| George | Heavy Freight | 30 | +160% |
-| Wild Boar | Heavy Freight | 23 | +160% |
-| Blue Crab | Slow Freight | 14 | +150% |
+| George | Heavy freight | 30 | +160% |
+| Wild Boar | Heavy freight | 23 | +160% |
+| Blue Crab | Slow freight | 14 | +150% |
+| Raccoon | Small hauler | 6 | +110% |
 | Red-Tailed Hawk | Express | 10 | +60% |
 | House Cat | Balanced | 8 | +82% |
+| Moray Eel | Light courier | 7 | +80% |
+| Fox | Runner | 5 | +55% |
+| Pigeon | Tiny express | 2 | +60% |
 
-(Moray Eel, Fox, Pigeon also confirmed to exist in-fleet but not yet seen on this
-screen with stats.) Each pet has its own 0/10 **training** track: "+10 more
-STR/DEF/AGI/DEX (any mix) for the next milestone" raises both capacity and speed
-(e.g. George at 10/10 training: 33 capacity at +136% instead of 30 at +160%) — "same
-stats it fights with — raise them in the Menagerie" (`panel.php?type=menagerie`,
-already a tracked-but-unbuilt endpoint in the archive). Travel time penalty is a
-multiplier on the district-pair's base time — `v2_depart`'s `travel_mod` field (`1.6`
-for Pigeon in one capture) is exactly this number, confirming the fleet-strip stat and
-the actual departure math agree.
+Nine pets total, every tier name distinct — this is a real capacity/speed spectrum, not
+flavor text on top of one stat block. Each pet has its own 0/10 **training** track, and
+the panel always shows the *server-predicted* result of reaching it — for George:
+"+10 more STR/DEF/AGI/DEX (any mix) for the next milestone... then carries 33 at +136%
+travel time" (instead of 30 at +160%). That number comes from the server, not a guess,
+but it's a prediction embedded in the response, not an observed transition — every pet
+in the archive sits at a fixed 0/10 or 1/10 the entire 7-day window, so no capture
+actually shows a capacity value change from one response to the next. What acquires and
+advances pets is confirmed separately, via `POST /actions/menagerie.php`: `buy_pet`
+("Acquired Wild Boar") adds a new pet to the roster, `train_pet`/`feed_pet` ("+10
+points"/"+1 point") advance the 0/10 bar — "same stats it fights with — raise them in
+the Menagerie" (`panel.php?type=menagerie`, itself a tracked-but-unbuilt endpoint in the
+archive). Travel time penalty is a multiplier on the district-pair's base time —
+`v2_depart`'s `travel_mod` field (`1.6` for Pigeon in one capture) is exactly this
+number, confirming the fleet-strip stat and the actual departure math agree.
 
 ## API reference (CONFIRMED)
 
@@ -205,6 +218,20 @@ withdraw (bank.php)
   → v2_offload
   → repeat
 ```
+
+One design rule settled already, not left open: **the pet roster, capacity, and speed
+table earlier in this doc is reference material for us, not something automation should
+hardcode.** Confirmed from `POST /actions/menagerie.php` — `buy_pet` ("Acquired Wild
+Boar") is how a new pet enters the roster, `train_pet`/`feed_pet` ("+10 points"/"+1
+point") are how a pet's capacity/speed milestone advances — neither is reflected
+anywhere client-side; both just change what the server renders into the next
+`smug_tab=proto` response. So automation should always read pet stats from the *latest*
+captured panel response, keyed by pet name, never from a fixed table. Done that way, a
+new pet from `buy_pet` or a capacity bump from crossing a training milestone shows up on
+the very next panel view with no code change and no manual "rescan" step — the same
+applies to newly-unlocked districts via `get_state`'s `cities` list and newly-buyable
+items via the black-market grid's `data-sv2-here` flag, both already read live rather
+than from `SEED_DISTRICTS` or a hardcoded catalog.
 
 Two design questions worth deciding before writing any of this, since this is qualitatively
 different from everything shipped so far — it would be the first feature that *acts* in
