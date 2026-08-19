@@ -16,6 +16,11 @@ export const PAGE_FEATURE_DEFINITIONS = [
     label: 'Street Intel Highlights',
     description: 'Highlights the best-value job, risky-but-lucrative jobs, and the best scout odds on the Street Intel page.',
   },
+  {
+    id: 'courierPanel',
+    label: 'Pet Courier Panel',
+    description: 'A floating panel on the Smuggling page with a Run button and last-run summary, so running couriers doesn’t need the popup open.',
+  },
 ] as const;
 
 export type PageFeatureId = (typeof PAGE_FEATURE_DEFINITIONS)[number]['id'];

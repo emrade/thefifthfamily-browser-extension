@@ -68,6 +68,12 @@ export type ExtensionMessage =
   // fire-and-forget `void` every other message gets, so the popup can await the
   // result directly instead of polling storage for it.
   | { type: 'courier-run-requested' }
+  // Same shape of exception as 'courier-run-requested' above — returns a
+  // Promise<CourierStatus> rather than firing and forgetting. Read-only (unlike a
+  // run, never spends anything), so unlike the run button this is safe to call
+  // opportunistically — e.g. the in-page floating panel refreshing itself whenever
+  // it's opened, not just on an explicit action.
+  | { type: 'courier-status-requested' }
   // Fired on any sign the player is actively using Street Intel — a panel view or a
   // resolved attempt — just to arm background's recurring poll (see background/
   // features/streetIntel) the first time it's needed. Carries no data of its own;

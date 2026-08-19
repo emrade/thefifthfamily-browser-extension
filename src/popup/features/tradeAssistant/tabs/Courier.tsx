@@ -2,20 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { db } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
+import { STOP_REASON_LABEL, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
 import type { CourierRunSummary, PetRosterEntry } from '@/shared/types';
-
-const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>, string> = {
-  'daily-cap-reached': "Today's profit cap is reached — resumes after the midnight reset.",
-  'insufficient-funds': 'Not enough cash + bank to load even one pet.',
-  'no-idle-pets': 'No idle pets right now — everything is already out or in transit.',
-  'no-destination-available': "Neither of this hour's two open destinations is available — try again after the next rotation.",
-  'session-error': 'Stopped early — the game rejected a request (stale session or token). Reload the game tab, view Smuggling once, then run again.',
-  'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
-};
-
-function formatMoney(n: number): string {
-  return `$${n.toLocaleString()}`;
-}
 
 export function Courier() {
   const [lastRun, setLastRun] = useState<CourierRunSummary | null>(null);
@@ -56,13 +44,7 @@ export function Courier() {
         your on-hand cash falls short.
       </div>
 
-      <div class="ff-courier-summary__row">
-        {roster === null
-          ? 'Loading known pets…'
-          : roster.length === 0
-            ? "0 pets known yet — with all your pets idle, view the Smuggling panel once in-game (this popup doesn't need to be open) to populate this."
-            : `${roster.length} pet${roster.length === 1 ? '' : 's'} known: ${roster.map((p) => p.name).join(', ')}`}
-      </div>
+      <div class="ff-courier-summary__row">{describeRoster(roster)}</div>
 
       <button class="ff-export-trigger" disabled={running} onClick={handleRun}>
         {running ? 'Running…' : 'Run'}
@@ -80,7 +62,7 @@ export function Courier() {
               <div class="ff-courier-summary__row-head">Offloaded</div>
               {lastRun.offloaded.map((o) => (
                 <div key={o.petName} class="ff-courier-summary__row">
-                  {o.petName} — {formatMoney(o.profit)} profit
+                  {o.petName} — {formatCourierMoney(o.profit)} profit
                 </div>
               ))}
             </>
@@ -98,7 +80,7 @@ export function Courier() {
           )}
 
           {lastRun.cashWithdrawn > 0 && (
-            <div class="ff-courier-summary__row">Withdrew {formatMoney(lastRun.cashWithdrawn)} from the bank.</div>
+            <div class="ff-courier-summary__row">Withdrew {formatCourierMoney(lastRun.cashWithdrawn)} from the bank.</div>
           )}
 
           {lastRun.skipped.length > 0 && (

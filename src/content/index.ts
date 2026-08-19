@@ -9,6 +9,7 @@ import { handleCapturedRequest as handlePlayerStats } from './features/playerSta
 import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
 import { handleCapturedRequest as handleStreetIntel, initStreetIntelHighlights } from './features/streetIntel';
+import { initCourierPanel } from './features/tradeAssistant/courierPanel';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -108,6 +109,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.streetIntelHighlights) {
       initStreetIntelHighlights();
+    }
+    if (prefs.courierPanel) {
+      initCourierPanel();
     }
   });
 }

@@ -342,3 +342,12 @@ export interface CourierRunSummary {
   stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | null;
   errors: string[];
 }
+
+/** Read-only snapshot for a UI surface to render without triggering a run — the
+ *  popup's Couriers tab reads `db.petRoster`/`storage` directly (same origin,
+ *  already has access), but the in-page floating panel runs on the *game's*
+ *  origin and has to ask background for this the same way it asks for a run. */
+export interface CourierStatus {
+  roster: PetRosterEntry[];
+  lastRun: CourierRunSummary | null;
+}

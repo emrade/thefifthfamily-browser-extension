@@ -8,7 +8,9 @@ import { LOG_PREFIX } from '@/shared/log';
 import { enqueueRecord } from '@/shared/requestLog/queue';
 import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retention';
 import { setCsrfToken } from './csrfToken';
-import { upsertRoster } from '@/shared/petRoster';
+import { upsertRoster, getRoster } from '@/shared/petRoster';
+import { storage } from '@/shared/storage';
+import type { CourierStatus } from '@/shared/types';
 
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
@@ -58,6 +60,15 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
   // instead of polling storage for a result that a closed popup would miss anyway.
   if (msg.type === 'courier-run-requested') {
     return runCourierBatch();
+  }
+
+  // Read-only counterpart, for a UI surface (the in-page floating panel) that
+  // can't reach `db`/`storage` directly the way the popup does, since it runs on
+  // the game's own origin.
+  if (msg.type === 'courier-status-requested') {
+    return Promise.all([getRoster(), storage.getLastCourierRun()]).then(
+      ([roster, lastRun]): CourierStatus => ({ roster, lastRun }),
+    );
   }
 
   // Archive writes are split off onto their own queue rather than joining the
