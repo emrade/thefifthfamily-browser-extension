@@ -1,4 +1,4 @@
-import type { District, FightClubHeroStats, RawStatsPayload } from './types';
+import type { CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload } from './types';
 import { LOG_PREFIX } from './log';
 
 /**
@@ -51,7 +51,23 @@ export type ExtensionMessage =
   // the district table, which only background has. See travelAdapter.ts.
   | { type: 'travel-started'; destinationCityName: string; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
   | { type: 'travel-cancelled'; timestamp: number }
+  // The freshest CSRF token seen on any captured POST body — cached by background
+  // for the pet-courier automation's own outgoing action calls. Sent on every
+  // observed token, not just changes; background only writes to storage when the
+  // value actually differs, so the redundant sends cost a cheap comparison, not a
+  // storage write. See docs/smuggling-v2-plan.md's "CSRF" note.
+  | { type: 'csrf-observed'; token: string }
+  // Opportunistic — only sent when a `smug_tab=proto` capture happened to show the
+  // full roster (zero active shipments; see docs/smuggling-v2-plan.md). Most
+  // captures produce an empty array and aren't sent at all.
+  | { type: 'pet-roster-observed'; entries: PetRosterEntry[] }
   | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number }
+  // Sent from the popup, not a content-script adapter — the one exception to this
+  // union's usual "parsed capture" shape. background/index.ts special-cases it,
+  // returning a Promise<CourierRunSummary> from the listener rather than the
+  // fire-and-forget `void` every other message gets, so the popup can await the
+  // result directly instead of polling storage for it.
+  | { type: 'courier-run-requested' }
   // Fired on any sign the player is actively using Street Intel — a panel view or a
   // resolved attempt — just to arm background's recurring poll (see background/
   // features/streetIntel) the first time it's needed. Carries no data of its own;

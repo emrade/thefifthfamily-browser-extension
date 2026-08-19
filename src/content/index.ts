@@ -43,12 +43,29 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     requestLogEnabled = next?.enabled ?? DEFAULT_REQUEST_LOG_PREFERENCES.enabled;
   });
 
+  // The freshest `_csrf` seen on any captured POST body — background caches this
+  // for the pet-courier automation's own outgoing action calls. Read here, not in a
+  // feature adapter, because it isn't tied to any one endpoint: any action request
+  // carries a current token, and the automation needs whichever was seen most
+  // recently regardless of which feature happened to trigger it. Not gated by the
+  // request-log preference below — automation needs this whether or not archiving
+  // is on.
+  let lastCsrfToken: string | null = null;
+
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data as Partial<CapturedRequest> | undefined;
     if (!data || data.source !== 'ff-network-hook') return;
 
     const captured = data as CapturedRequest;
+
+    if (captured.requestBody) {
+      const token = new URLSearchParams(captured.requestBody).get('_csrf');
+      if (token && token !== lastCsrfToken) {
+        lastCsrfToken = token;
+        sendMessage({ type: 'csrf-observed', token });
+      }
+    }
 
     // Feature adapters see only the `/api/` + `/actions/` paths they were written
     // for. They each re-check the exact pathname anyway, so this gate is an

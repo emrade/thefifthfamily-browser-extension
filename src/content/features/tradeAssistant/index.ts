@@ -2,6 +2,7 @@ import type { CapturedRequest } from '@/shared/messaging';
 import { sendMessage as send } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { parseSmugglingPanel } from './adapters/smugglingPanelAdapter';
+import { parseSmugglingV2Panel } from './adapters/smugglingV2PanelAdapter';
 import { parseSmugglingAction } from './adapters/smugglingActionAdapter';
 import { parseTravelAction, TRACKED_TRAVEL_ACTIONS } from './adapters/travelAdapter';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
@@ -9,6 +10,21 @@ import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 export function handleCapturedRequest(req: CapturedRequest) {
   const url = new URL(req.url, window.location.origin);
   const path = url.pathname;
+
+  if (path.endsWith('/api/panel.php') && url.searchParams.get('type') === 'smuggling' && url.searchParams.get('smug_tab') === 'proto') {
+    const snapshot = parseSmugglingV2Panel(req.responseText);
+    if (!snapshot) {
+      recordParseFailure('tradeAssistant');
+      return;
+    }
+    recordParseSuccess('tradeAssistant');
+    // Most captures don't show the roster at all (see the adapter's own doc
+    // comment) — only send when there's actually something to persist.
+    if (snapshot.roster.length > 0) {
+      send({ type: 'pet-roster-observed', entries: snapshot.roster });
+    }
+    return;
+  }
 
   if (path.endsWith('/api/panel.php') && url.searchParams.get('type') === 'smuggling') {
     const result = parseSmugglingPanel(req.responseText);

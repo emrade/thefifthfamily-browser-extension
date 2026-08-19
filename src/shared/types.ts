@@ -257,3 +257,88 @@ export interface FightClubFilterPrefs {
   sort: 'default' | 'rating_asc' | 'respect_asc';
   maxRating: number | null;
 }
+
+/**
+ * A pet's own `user_pet_id` plus its capacity/speed stats — see
+ * docs/smuggling-v2-plan.md's "Pet roster discovery" note. Only learnable from a
+ * `smug_tab=proto` response when the account has zero active shipments; persisted
+ * once learned so the courier automation doesn't need that rare state on every run.
+ */
+export interface PetRosterEntry {
+  userPetId: number;
+  name: string;
+  tier: string;
+  capacity: number;
+  travelPenaltyPct: number;
+  lastSeen: number;
+}
+
+/** One entry in the fleet strip — a pet with an *active* shipment, whatever state
+ *  it's in. Doesn't carry capacity/tier; that only shows on the assigned-courier
+ *  banner (`SmugglingV2Snapshot.assignedCourier`) once that shipment is focused. */
+export interface FleetEntry {
+  shipmentId: number;
+  petName: string;
+  status: 'drafting' | 'moving' | 'ready-to-offload';
+  etaSeconds: number | null;
+}
+
+/** One card in the Black Market Inventory grid — present for all 30 catalog items
+ *  regardless of district, `buyableHere` reflecting only whether the player is
+ *  currently standing in that item's origin district. */
+export interface BlackMarketItem {
+  itemId: number;
+  name: string;
+  family: string;
+  originDistrict: string;
+  price: number;
+  buyableHere: boolean;
+  stash: number;
+}
+
+/** One of the (always exactly two) open destination cells shown once a shipment
+ *  draft exists. `stateBadge` is the unexplained `+N` — see the "narrowed, not
+ *  solved" gap in docs/smuggling-v2-plan.md. */
+export interface DestinationOption {
+  district: string;
+  locked: boolean;
+  baseMinutes: number;
+  courierMinutes: number;
+  saleRateMult: number;
+  stateBadge: string | null;
+}
+
+/** The currently-open shipment's assigned pet, when a draft exists — capacity/speed
+ *  here are that specific pet's stats, confirming (and feeding) the persisted
+ *  PetRosterEntry for whichever pet this is. */
+export interface AssignedCourier {
+  shipmentId: number;
+  petName: string;
+  capacity: number;
+  travelPenaltyPct: number;
+  manifestCount: number;
+}
+
+/** Everything `smugglingV2PanelAdapter.ts` can pull from one `smug_tab=proto`
+ *  response. `roster` and `destinations` are frequently empty — see each field's
+ *  own doc comment for when they're populated. */
+export interface SmugglingV2Snapshot {
+  fleet: FleetEntry[];
+  roster: PetRosterEntry[];
+  blackMarket: BlackMarketItem[];
+  destinations: DestinationOption[];
+  assignedCourier: AssignedCourier | null;
+  dailyProfitCapRemaining: number | null;
+}
+
+/** What one click of "Run" actually did — shown in the popup and kept as "last run"
+ *  even after the popup closes and reopens. */
+export interface CourierRunSummary {
+  timestamp: number;
+  offloaded: { petName: string; profit: number }[];
+  sent: { petName: string; item: string; qty: number; destination: string }[];
+  skipped: { petName: string; reason: string }[];
+  cashWithdrawn: number;
+  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'session-error' | null;
+  errors: string[];
+}

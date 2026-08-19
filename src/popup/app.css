@@ -1248,6 +1248,38 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Pet Couriers ───────────────────────────────────────── */
+
+.ff-courier-summary {
+  margin-top: 12px;
+}
+
+.ff-courier-summary__timestamp {
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+  margin-bottom: 8px;
+}
+
+.ff-courier-summary__row-head {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ff-ink-faint);
+  margin: 10px 0 4px;
+}
+
+.ff-courier-summary__row {
+  font-size: 10.5px;
+  color: var(--ff-ink-muted);
+  padding: 3px 0;
+  line-height: 1.4;
+}
+
+.ff-courier-summary__row--error {
+  color: var(--ff-red);
+}
+
 
 /* Informational counterpart to .ff-archive-alert. A new token is usually benign —
    a new field, or a rare variant seen for the first time — so it gets a quiet

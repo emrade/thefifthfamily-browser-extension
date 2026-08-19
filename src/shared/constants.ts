@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   FIGHT_CLUB_FILTER: 'ff_fight_club_filter',
   PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
   REQUEST_LOG_PREFERENCES: 'ff_request_log_preferences',
+  LAST_COURIER_RUN: 'ff_last_courier_run',
 } as const;
 
 export const ALARM_NAMES = {

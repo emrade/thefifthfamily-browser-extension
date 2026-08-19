@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CustomsEvent, District, DistrictVisit, PriceSnapshot, RiskObservation, Trade, TravelLeg } from './types';
+import type { CustomsEvent, District, DistrictVisit, PetRosterEntry, PriceSnapshot, RiskObservation, Trade, TravelLeg } from './types';
 import type { EndpointProfile, RequestLogEntry } from './requestLog/types';
 
 const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
@@ -12,6 +12,7 @@ const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
   riskObservations: EntityTable<RiskObservation, 'id'>;
   requestLog: EntityTable<RequestLogEntry, 'id'>;
   endpointProfiles: EntityTable<EndpointProfile, 'id'>;
+  petRoster: EntityTable<PetRosterEntry, 'userPetId'>;
 };
 
 db.version(1).stores({
@@ -54,6 +55,13 @@ db.version(3).stores({
 db.version(4).stores({
   endpointShapes: null,
   endpointProfiles: '++id, endpoint, lastSeen',
+});
+
+// Keyed on the game's own `user_pet_id` rather than an auto-incrementing id — it's
+// already a stable, unique identifier, and keying on it directly makes "have we seen
+// this pet before" a plain `.get()` instead of a filtered scan.
+db.version(5).stores({
+  petRoster: 'userPetId, name',
 });
 
 /** Wipes the derived, player-facing tables — everything behind the numbers shown in

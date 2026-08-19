@@ -1,15 +1,17 @@
 import { useState } from 'preact/hooks';
 import { Overview } from './tabs/Overview';
 import { Market } from './tabs/Market';
+import { Courier } from './tabs/Courier';
 import { Calculator } from './tabs/Calculator';
 import { Analytics } from './tabs/Analytics';
 import { RiskDatabase } from './tabs/RiskDatabase';
 
-type Tab = 'overview' | 'market' | 'calculator' | 'analytics' | 'riskdb';
+type Tab = 'overview' | 'market' | 'courier' | 'calculator' | 'analytics' | 'riskdb';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'market', label: 'Market' },
+  { id: 'courier', label: 'Couriers' },
   { id: 'calculator', label: 'Calculator' },
   { id: 'analytics', label: 'Analytics' },
   { id: 'riskdb', label: 'Risk DB' },
@@ -34,6 +36,7 @@ export function TradeAssistantHome() {
 
       {tab === 'overview' && <Overview />}
       {tab === 'market' && <Market />}
+      {tab === 'courier' && <Courier />}
       {tab === 'calculator' && <Calculator />}
       {tab === 'analytics' && <Analytics />}
       {tab === 'riskdb' && <RiskDatabase />}

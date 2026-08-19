@@ -1,4 +1,4 @@
-import type { FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
+import type { CourierRunSummary, FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
@@ -64,6 +64,9 @@ export const storage = {
     return { ...DEFAULT_REQUEST_LOG_PREFERENCES, ...stored };
   },
   setRequestLogPreferences: (v: RequestLogPreferences) => set(STORAGE_KEYS.REQUEST_LOG_PREFERENCES, v),
+
+  getLastCourierRun: () => get<CourierRunSummary | null>(STORAGE_KEYS.LAST_COURIER_RUN, null),
+  setLastCourierRun: (v: CourierRunSummary) => set(STORAGE_KEYS.LAST_COURIER_RUN, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };
