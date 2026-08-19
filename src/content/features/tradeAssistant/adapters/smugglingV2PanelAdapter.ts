@@ -172,7 +172,10 @@ function parseAssignedCourier(doc: Document): AssignedCourier | null {
     petName: textOf(banner.querySelector('.sv2-load-name')),
     capacity: numberFrom(textOf(nums[0]?.querySelector('b') ?? null)),
     travelPenaltyPct: numberFrom(textOf(nums[1]?.querySelector('b') ?? null)),
-    manifestCount: numberFrom(textOf(doc.querySelector('.sv2-man-count'))),
+    // `.sv2-man-count` renders as "X / Y" (loaded / capacity) — numberFrom's
+    // digit-only strip would otherwise concatenate both sides into one bogus
+    // number (e.g. "30 / 30" -> 3030), so pull just the leading count.
+    manifestCount: Number(textOf(doc.querySelector('.sv2-man-count')).match(/^\d+/)?.[0] ?? 0),
   };
 }
 
@@ -196,6 +199,22 @@ function parseHiddenCargo(doc: Document): { current: number; max: number } | nul
   const monitors = Array.from(doc.querySelectorAll('.sv2-monitor'));
   const cargo = monitors.find((m) => textOf(m.querySelector('.sv2-m-lbl')).includes('Hidden Cargo'));
   if (!cargo) return null;
-  const match = textOf(cargo.querySelector('.sv2-m-val')).match(/(\d+)\s*\/\s*(\d+)/);
-  return match ? { current: Number(match[1]), max: Number(match[2]) } : null;
+
+  const valText = textOf(cargo.querySelector('.sv2-m-val'));
+  const ratio = valText.match(/(\d+)\s*\/\s*(\d+)/);
+  if (ratio) return { current: Number(ratio[1]), max: Number(ratio[2]) };
+
+  // Overflow state, confirmed real: cancelling or unloading a shipment returns
+  // its cargo to the stash without clamping to the cap, so the stash can end up
+  // holding *more* than its own max — "load a pet, buy more, then unload it"
+  // reliably reproduces this. The monitor then reads "30 held" instead of a
+  // ratio, with a warning nearby ("Only 21 can ship per run — 9 stays in your
+  // stash") that's the only place `max` still appears in this state.
+  const held = valText.match(/(\d+)\s*held/);
+  if (held) {
+    const capMatch = textOf(cargo).match(/Only (\d+) can ship/);
+    if (capMatch) return { current: Number(held[1]), max: Number(capMatch[1]) };
+  }
+
+  return null;
 }

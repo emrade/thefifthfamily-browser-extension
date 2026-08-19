@@ -175,7 +175,10 @@ function parseAssignedCourier(html: string): AssignedCourier | null {
 
   const nameMatch = chunk.match(/sv2-load-name">([^<]+)</);
   const nums = [...chunk.matchAll(/sv2-load-n"><b[^>]*>([^<]+)</g)].map((m) => m[1]);
-  const manifestMatch = html.match(/sv2-man-count[^"]*">([^<]+)</);
+  // Text is "X / Y" (loaded / capacity) — capture only the leading count, since
+  // numberFrom's digit-only strip would otherwise concatenate both sides into one
+  // bogus number (e.g. "30 / 30" -> 3030).
+  const manifestMatch = html.match(/sv2-man-count[^"]*">\s*(\d+)/);
 
   return {
     shipmentId: Number(cancelMatch[1]),
@@ -204,6 +207,21 @@ function parseHiddenCargo(html: string): { current: number; max: number } | null
   const idx = html.indexOf('Hidden Cargo');
   if (idx === -1) return null;
   const window = html.slice(idx, idx + 300);
-  const match = window.match(/sv2-m-val[^>]*>\s*(\d+)\s*<span[^>]*>\s*\/\s*(\d+)/);
-  return match ? { current: Number(match[1]), max: Number(match[2]) } : null;
+
+  const ratio = window.match(/sv2-m-val[^>]*>\s*(\d+)\s*<span[^>]*>\s*\/\s*(\d+)/);
+  if (ratio) return { current: Number(ratio[1]), max: Number(ratio[2]) };
+
+  // Overflow state, confirmed real: cancelling/unloading a shipment returns its
+  // cargo to the stash without clamping to the cap, so the stash can end up
+  // holding *more* than its own max. The monitor then reads "30 held" instead of
+  // a ratio, with a warning nearby ("Only 21 can ship per run — 9 stays in your
+  // stash") that's the only place `max` still appears in this state — search a
+  // wider window since the warning sits outside the monitor tile itself.
+  const held = window.match(/sv2-m-val[^>]*>\s*(\d+)\s*<span[^>]*>\s*held/);
+  if (held) {
+    const capMatch = html.slice(idx, idx + 600).match(/Only (\d+) can ship/);
+    if (capMatch) return { current: Number(held[1]), max: Number(capMatch[1]) };
+  }
+
+  return null;
 }
