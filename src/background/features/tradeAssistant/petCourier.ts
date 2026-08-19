@@ -35,11 +35,24 @@ class SystemicActionError extends Error {
   }
 }
 
+/**
+ * Deliberately matches the *live client's* actual URL, not a hardcoded guess —
+ * confirmed 2026-08-19 that the game dropped `smug_tab=proto` from normal use
+ * entirely; the bare URL now returns the full dashboard directly (see
+ * docs/smuggling-v2-plan.md). Explicitly requesting `smug_tab=proto` still might
+ * "work" in the sense of returning 200, but nothing confirms it behaves
+ * identically to what the real client gets now that the game stopped sending it —
+ * matching the client exactly removes that as a variable.
+ */
 async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
-  const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&smug_tab=proto&_t=${Date.now()}`, {
+  const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, {
     credentials: 'include',
   });
   return parseSmugglingV2PanelRegex(await res.text());
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Minimal stand-alone parse of `stats.php` for the two numbers this needs — not
@@ -110,6 +123,22 @@ async function postAction(path: string, params: Record<string, string | number>)
   return json;
 }
 
+/**
+ * Best-effort cleanup for a shipment that got drafted (and possibly loaded) but
+ * can't be completed — the game only allows one shipment "being loaded" at a time,
+ * so leaving this one open blocks every pet still queued behind it in this run,
+ * and every pet in the *next* run too (see the startup cleanup in
+ * `executeCourierBatch`). Only swallows an *ordinary* rejection (logs it, since
+ * the account may still be stuck and that's worth knowing) — a
+ * `SystemicActionError` here is just as real a signal as one from any other call,
+ * so it's left to propagate to the caller's own catch rather than being absorbed
+ * into a generic message it wouldn't recognise as "stop everything."
+ */
+async function cancelShipment(shipmentId: number, petName: string, summary: CourierRunSummary): Promise<void> {
+  const resp = await postAction('/actions/smuggling.php', { action: 'v2_cancel', shipment_id: shipmentId });
+  if (!resp?.ok) summary.errors.push(`could not cancel ${petName}'s stuck shipment — it may still be blocking new drafts`);
+}
+
 function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
   const buyable = blackMarket.filter((i) => i.buyableHere);
   if (buyable.length === 0) return null;
@@ -167,6 +196,19 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // Most runs won't have anything to learn here (the roster only shows once
     // shipments exist), which is exactly why the persisted mapping below matters.
     if (snapshot.roster.length > 0) await upsertRoster(snapshot.roster);
+
+    // A shipment left in `drafting` state means an earlier run (or this account,
+    // manually) got partway through loading a pet and never departed or cancelled
+    // it — and since the game only allows one shipment "being loaded" at a time,
+    // it silently blocks every draft attempt below with the exact same rejection,
+    // no matter which pet is tried. Cleared before anything else runs rather than
+    // discovered pet-by-pet the way it was the first time this happened.
+    const stuck = snapshot.fleet.find((f) => f.status === 'drafting');
+    if (stuck) {
+      await cancelShipment(stuck.shipmentId, stuck.petName, summary);
+      const fresh = await fetchPanel();
+      if (fresh) snapshot = fresh;
+    }
 
     // Free up pets and realize the previous run's profit before spending anything
     // new — also means the daily-cap check right after reflects today's true
@@ -272,17 +314,25 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     let destination: DestinationOption | null = null;
 
     for (const pet of included) {
+      // Tracked outside the try block so the `catch` below can clean up a draft
+      // that got this far before something later failed — the game only allows
+      // one shipment "being loaded" at a time (confirmed the hard way: leaving one
+      // stranded here blocked every pet queued after it with "You already have a
+      // delivery being loaded."). `shipmentId` stays null until `v2_draft`
+      // actually succeeds, so there's nothing to cancel if it never got that far.
+      let shipmentId: number | null = null;
       try {
         const draft = await postAction('/actions/smuggling.php', { action: 'v2_draft', user_pet_id: pet.userPetId });
         if (!draft?.ok) {
           summary.errors.push(`draft failed for ${pet.name}: ${draft?.error ?? 'unknown error'}`);
           continue;
         }
-        const shipmentId = Number(draft.shipment_id);
+        shipmentId = Number(draft.shipment_id);
 
         const buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: pet.capacity });
         if (!buy?.ok) {
           summary.errors.push(`buy failed for ${pet.name}: ${buy?.error ?? 'unknown error'}`);
+          await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
         const qty = Number(buy.qty ?? buy.qty_requested ?? pet.capacity);
@@ -290,27 +340,47 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: item.itemId, qty });
         if (!load?.ok) {
           summary.errors.push(`load failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
+          await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
 
         if (!destination) {
-          const afterDraft = await fetchPanel();
-          destination = afterDraft ? pickDestination(afterDraft.destinations) : null;
+          // One retry with a short pause before giving up — the panel is fetched
+          // fresh milliseconds after `v2_load` returns, and confirmed real captures
+          // show destinations only render once the load has actually registered
+          // server-side, so a single immediate check landing just ahead of that is
+          // plausible where a real player's own pace never would.
+          for (let attempt = 0; attempt < 2 && !destination; attempt++) {
+            if (attempt > 0) await sleep(1500);
+            const afterDraft = await fetchPanel();
+            destination = afterDraft ? pickDestination(afterDraft.destinations) : null;
+          }
           if (!destination) {
-            summary.errors.push(`no open destination available for ${pet.name}`);
-            continue;
+            // The destination pair is account-wide, not per-pet — every pet still
+            // queued behind this one would see the exact same two (still-locked)
+            // cells, so retrying per pet would just cancel each one in turn while
+            // repeating an already-known answer. Stopping here once, instead of
+            // once per remaining pet, was confirmed necessary the first time this
+            // ran: it produced the identical "no destination" outcome for every
+            // pet after the first, just discovered the slow way.
+            summary.errors.push(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
+            await cancelShipment(shipmentId, pet.name, summary);
+            summary.stoppedReason = 'no-destination-available';
+            return summary;
           }
         }
 
         const districtRow = await db.districts.where('name').equals(destination.district).first();
         if (!districtRow) {
           summary.errors.push(`unknown district "${destination.district}" — not in the local district table yet`);
+          await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
 
         const depart = await postAction('/actions/smuggling.php', { action: 'v2_depart', shipment_id: shipmentId, destination_city_id: districtRow.id });
         if (!depart?.ok) {
           summary.errors.push(`depart failed for ${pet.name}: ${depart?.error ?? 'unknown error'}`);
+          await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
 
@@ -321,12 +391,22 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
+        if (shipmentId !== null) await cancelShipment(shipmentId, pet.name, summary);
         summary.errors.push(`run failed for ${pet.name}: ${String(err)}`);
       }
     }
 
     return summary;
   } catch (err) {
+    // Catches anything thrown outside the per-pet loop's own handling — notably
+    // the startup stuck-draft cleanup, which isn't wrapped individually since a
+    // `SystemicActionError` there is exactly as real a stop-everything signal as
+    // one from inside the loop.
+    if (err instanceof SystemicActionError) {
+      summary.errors.push(err.message);
+      summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+      return summary;
+    }
     console.error(LOG_PREFIX, 'courier batch failed', err);
     summary.errors.push(String(err));
     return summary;

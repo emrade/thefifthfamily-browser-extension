@@ -8,6 +8,7 @@ const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>,
   'daily-cap-reached': "Today's profit cap is reached — resumes after the midnight reset.",
   'insufficient-funds': 'Not enough cash + bank to load even one pet.',
   'no-idle-pets': 'No idle pets right now — everything is already out or in transit.',
+  'no-destination-available': "Neither of this hour's two open destinations is available — try again after the next rotation.",
   'session-error': 'Stopped early — the game rejected a request (stale session or token). Reload the game tab, view Smuggling once, then run again.',
   'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
 };
