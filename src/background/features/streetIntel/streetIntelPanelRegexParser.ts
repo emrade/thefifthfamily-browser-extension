@@ -1,4 +1,5 @@
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import { parseDollarRange } from '@/shared/parseDollarRange';
 
 export interface StreetIntelOpportunity {
   id: number;
@@ -54,15 +55,21 @@ export function parseStreetIntelOpportunities(responseText: string): StreetIntel
     // (`<span>Title<span>...location...</span></span>`) — capture stops at
     // the first '<' so it grabs just the title, not the location text.
     const titleMatch = chunk.match(/cat-icon"[\s\S]*?<\/div>\s*<span>([^<]+)/);
-    const rewardMatch = chunk.match(/class="val"[^>]*>\$([\d,]+)\s*[–-]\s*\$([\d,]+)/);
+    // Captures the whole "$X[km]?–$Y[km]?" text rather than parsing digits
+    // inline — the `>\$` anchor is what actually picks out the reward stat
+    // specifically (the only `.val` in a card whose content starts with `$`
+    // directly; "Part / Crit" also holds dollar figures but nests them inside
+    // spans, so the char right after `>` there is `<`, not `$`).
+    const rewardMatch = chunk.match(/class="val"[^>]*>(\$[^<]+)</);
+    const reward = rewardMatch ? parseDollarRange(rewardMatch[1]) : null;
 
     opportunities.push({
       id: Number(idMatch[1]),
       title: titleMatch ? titleMatch[1].trim() : 'Unknown Opportunity',
       riskTier,
       legendary: classes.includes('legendary'),
-      rewardMin: rewardMatch ? Number(rewardMatch[1].replace(/,/g, '')) : 0,
-      rewardMax: rewardMatch ? Number(rewardMatch[2].replace(/,/g, '')) : 0,
+      rewardMin: reward?.min ?? 0,
+      rewardMax: reward?.max ?? 0,
     });
   }
 

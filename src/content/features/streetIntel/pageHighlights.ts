@@ -1,4 +1,5 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
+import { parseDollarRange } from '@/shared/parseDollarRange';
 
 /**
  * Marks up the live Street Intel page directly — no separate list anywhere the
@@ -64,9 +65,14 @@ const STYLE = `
 }
 `;
 
+// `.includes` rather than an exact match — the reward stat's label was renamed
+// from "Reward" to "Success Reward" in the same markup refresh that switched
+// reward figures to k/m notation (see parseDollarRange.ts), and an exact match
+// against 'reward' can no longer find it. Substring matching survives this kind
+// of label wording change without needing to know the exact current text.
 function statValue(card: Element, label: string): string {
   for (const stat of Array.from(card.querySelectorAll('.si-card-stat'))) {
-    if ((stat.querySelector('.lbl')?.textContent ?? '').trim().toLowerCase() === label) {
+    if ((stat.querySelector('.lbl')?.textContent ?? '').trim().toLowerCase().includes(label)) {
       return stat.querySelector('.val')?.textContent ?? '';
     }
   }
@@ -74,9 +80,8 @@ function statValue(card: Element, label: string): string {
 }
 
 function rewardMidpoint(text: string): number | null {
-  const match = text.match(/\$([\d,]+)\s*[–-]\s*\$([\d,]+)/);
-  if (!match) return null;
-  return (Number(match[1].replace(/,/g, '')) + Number(match[2].replace(/,/g, ''))) / 2;
+  const range = parseDollarRange(text);
+  return range ? (range.min + range.max) / 2 : null;
 }
 
 function staminaCost(text: string): number | null {
