@@ -553,6 +553,35 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         }
         shipmentId = Number(draft.shipment_id);
 
+        if (!destination) {
+          // Resolved once, right after the *first* pet's draft succeeds — before
+          // any drain/buy/load spending happens, not after. Confirmed from a real
+          // capture (George's manual draft, before any load) that the destination
+          // picker is already populated the instant a draft opens, with nothing
+          // loaded yet — so there's no reason to buy and load a pet's cargo first
+          // to find out the destinations are locked/unresolvable and the whole
+          // batch has to stop anyway. One retry with a short pause covers the
+          // unlikely case this account's own timing differs from that capture's.
+          for (let attempt = 0; attempt < 2 && !destination; attempt++) {
+            if (attempt > 0) await sleep(1500);
+            const afterDraft = await fetchPanel();
+            destination = afterDraft ? pickDestination(afterDraft.destinations) : null;
+          }
+          if (!destination) {
+            // The destination pair is account-wide, not per-pet — every pet still
+            // queued behind this one would see the exact same two (still-locked)
+            // cells, so retrying per pet would just cancel each one in turn while
+            // repeating an already-known answer. Stopping here once, instead of
+            // once per remaining pet, was confirmed necessary the first time this
+            // ran: it produced the identical "no destination" outcome for every
+            // pet after the first, just discovered the slow way.
+            pushError(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
+            await cancelShipment(shipmentId, pet.name, summary);
+            summary.stoppedReason = 'no-destination-available';
+            return summary;
+          }
+        }
+
         let qty = 0;
         const loadedItems = new Map<string, number>(); // item name -> qty, merges if the same item shows up from both draining and buying
 
@@ -614,32 +643,6 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           pushError(`could not load anything for ${pet.name}`);
           await cancelShipment(shipmentId, pet.name, summary);
           continue;
-        }
-
-        if (!destination) {
-          // One retry with a short pause before giving up — the panel is fetched
-          // fresh milliseconds after `v2_load` returns, and confirmed real captures
-          // show destinations only render once the load has actually registered
-          // server-side, so a single immediate check landing just ahead of that is
-          // plausible where a real player's own pace never would.
-          for (let attempt = 0; attempt < 2 && !destination; attempt++) {
-            if (attempt > 0) await sleep(1500);
-            const afterDraft = await fetchPanel();
-            destination = afterDraft ? pickDestination(afterDraft.destinations) : null;
-          }
-          if (!destination) {
-            // The destination pair is account-wide, not per-pet — every pet still
-            // queued behind this one would see the exact same two (still-locked)
-            // cells, so retrying per pet would just cancel each one in turn while
-            // repeating an already-known answer. Stopping here once, instead of
-            // once per remaining pet, was confirmed necessary the first time this
-            // ran: it produced the identical "no destination" outcome for every
-            // pet after the first, just discovered the slow way.
-            pushError(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
-            await cancelShipment(shipmentId, pet.name, summary);
-            summary.stoppedReason = 'no-destination-available';
-            return summary;
-          }
         }
 
         const districtRow = await db.districts.where('name').equals(destination.district).first();
