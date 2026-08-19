@@ -95,6 +95,18 @@ async function postAction(path: string, params: Record<string, string | number>)
     throw new SystemicActionError(`unexpected response shape from ${path} — the game may have changed this action's format`, 'shape');
   }
 
+  // A normal-shaped `{ok:false,"error":"..."}` rejection is otherwise
+  // indistinguishable from an ordinary business rejection (insufficient funds,
+  // wrong district, etc.) — no real CSRF rejection has ever actually been
+  // captured to confirm its exact wording, so this is a heuristic, not a
+  // certainty. But letting a stale-token rejection through unrecognised means the
+  // run just repeats the identical failure once per remaining pet, which is
+  // exactly the problem the shape/auth split above exists to avoid — so a
+  // plausible-looking one gets treated the same way rather than not at all.
+  if (json.ok === false && typeof json.error === 'string' && /csrf|token|session|unauthori[sz]ed|forbidden|not logged in/i.test(json.error)) {
+    throw new SystemicActionError(`"${json.error}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
+  }
+
   return json;
 }
 
