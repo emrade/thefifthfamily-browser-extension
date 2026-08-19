@@ -6,7 +6,7 @@ import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
 import { getCsrfToken } from '../../csrfToken';
 import { parseSmugglingV2PanelRegex } from './smugglingV2RegexParser';
-import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
  * Broadcasts one step of the run as it happens, so a UI surface watching (the
@@ -88,52 +88,80 @@ async function fetchCashAndDistrict(): Promise<{ cash: number; bank: number; dis
   return { cash: Number(json.stats.cash) || 0, bank: Number(json.stats.bank) || 0, districtName: district?.name ?? null };
 }
 
+/** Baseline gap enforced before every action call — this batch fires draft, buy,
+ *  load (repeatedly), and depart back-to-back for every pet with no pause at all,
+ *  which is exactly the shape of traffic a "Slow down!" rejection (confirmed real,
+ *  seen on a `v2_draft` call) suggests the server is rate-limiting. No confirmed
+ *  threshold exists to pace against, so this is a heuristic gap, not a tuned one —
+ *  worth revisiting if "Slow down!" still shows up with it in place. */
+const ACTION_PACING_MS = 600;
+
+/** Backoff schedule for a rejection that's confirmed rate-limiting, not an
+ *  ordinary business rejection — waiting and retrying the *same* call makes sense
+ *  here in a way it wouldn't for e.g. "insufficient funds", since nothing about
+ *  the request itself was wrong. Gives up after these three attempts and lets the
+ *  caller treat it as an ordinary rejection (push an error, move on) rather than
+ *  retrying forever against a limit that might not be lifting soon. */
+const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 4000, 8000];
+
 async function postAction(path: string, params: Record<string, string | number>): Promise<any> {
   const csrf = await getCsrfToken();
   if (!csrf) throw new SystemicActionError('no CSRF token observed yet — open the game tab and view any panel first, then run again', 'auth');
 
   const body = new URLSearchParams({ ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])), _csrf: csrf });
-  const res = await loggedFetch(`${GAME_ORIGIN}${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
 
-  let json: any;
-  try {
-    json = await res.json();
-  } catch {
-    // A request the game actually processed always comes back as clean JSON,
-    // `{ok:true|false, ...}` — this is the CSRF token being rejected (or the
-    // session having expired) far more often than it's anything specific to this
-    // one action, so it's treated as systemic rather than retried per pet.
-    throw new SystemicActionError(`non-JSON response from ${path} (status ${res.status}) — likely a stale session or CSRF token`, 'auth');
+  for (let attempt = 0; ; attempt++) {
+    await sleep(ACTION_PACING_MS);
+    const res = await loggedFetch(`${GAME_ORIGIN}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    let json: any;
+    try {
+      json = await res.json();
+    } catch {
+      // A request the game actually processed always comes back as clean JSON,
+      // `{ok:true|false, ...}` — this is the CSRF token being rejected (or the
+      // session having expired) far more often than it's anything specific to this
+      // one action, so it's treated as systemic rather than retried per pet.
+      throw new SystemicActionError(`non-JSON response from ${path} (status ${res.status}) — likely a stale session or CSRF token`, 'auth');
+    }
+
+    // `ok` missing or non-boolean means this isn't the response shape every real
+    // action response has confirmed so far — a genuine business rejection is always
+    // an explicit `ok:false`, never an absent field. Distinguishing this from that
+    // is the whole point: an actual game-shape change should stop the run with one
+    // clear message, not get retried once per remaining pet as if each were its own
+    // unrelated failure.
+    if (typeof json?.ok !== 'boolean') {
+      throw new SystemicActionError(`unexpected response shape from ${path} — the game may have changed this action's format`, 'shape');
+    }
+
+    // A normal-shaped `{ok:false,"error":"..."}` rejection is otherwise
+    // indistinguishable from an ordinary business rejection (insufficient funds,
+    // wrong district, etc.) — no real CSRF rejection has ever actually been
+    // captured to confirm its exact wording, so this is a heuristic, not a
+    // certainty. But letting a stale-token rejection through unrecognised means the
+    // run just repeats the identical failure once per remaining pet, which is
+    // exactly the problem the shape/auth split above exists to avoid — so a
+    // plausible-looking one gets treated the same way rather than not at all.
+    if (json.ok === false && typeof json.error === 'string' && /csrf|token|session|unauthori[sz]ed|forbidden|not logged in/i.test(json.error)) {
+      throw new SystemicActionError(`"${json.error}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
+    }
+
+    // Confirmed real ("Slow down!" on a v2_draft call) — retried in place with a
+    // growing pause rather than surfaced as this pet's own failure, since the
+    // rejection has nothing to do with this particular draft/buy/load/depart call.
+    if (json.ok === false && typeof json.error === 'string' && /slow down/i.test(json.error) && attempt < RATE_LIMIT_RETRY_DELAYS_MS.length) {
+      await sleep(RATE_LIMIT_RETRY_DELAYS_MS[attempt]);
+      continue;
+    }
+
+    return json;
   }
-
-  // `ok` missing or non-boolean means this isn't the response shape every real
-  // action response has confirmed so far — a genuine business rejection is always
-  // an explicit `ok:false`, never an absent field. Distinguishing this from that
-  // is the whole point: an actual game-shape change should stop the run with one
-  // clear message, not get retried once per remaining pet as if each were its own
-  // unrelated failure.
-  if (typeof json?.ok !== 'boolean') {
-    throw new SystemicActionError(`unexpected response shape from ${path} — the game may have changed this action's format`, 'shape');
-  }
-
-  // A normal-shaped `{ok:false,"error":"..."}` rejection is otherwise
-  // indistinguishable from an ordinary business rejection (insufficient funds,
-  // wrong district, etc.) — no real CSRF rejection has ever actually been
-  // captured to confirm its exact wording, so this is a heuristic, not a
-  // certainty. But letting a stale-token rejection through unrecognised means the
-  // run just repeats the identical failure once per remaining pet, which is
-  // exactly the problem the shape/auth split above exists to avoid — so a
-  // plausible-looking one gets treated the same way rather than not at all.
-  if (json.ok === false && typeof json.error === 'string' && /csrf|token|session|unauthori[sz]ed|forbidden|not logged in/i.test(json.error)) {
-    throw new SystemicActionError(`"${json.error}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
-  }
-
-  return json;
 }
 
 /**
@@ -172,14 +200,141 @@ function pickDestination(destinations: DestinationOption[]): DestinationOption |
   return open.reduce((best, d) => (d.courierMinutes < best.courierMinutes ? d : best));
 }
 
+/**
+ * Offloads every fleet entry that's arrived — shared between the full batch run
+ * and the standalone offload-only action (see `runOffloadBatch`), since collecting
+ * arrived shipments is identical work either way. Returns a stop reason if a
+ * systemic error hit partway through; ordinary per-shipment rejections are pushed
+ * as errors and don't stop the loop, since one pet's cargo failing to sell doesn't
+ * mean the next one's will too.
+ */
+async function offloadReady(
+  fleet: FleetEntry[],
+  pushOffloaded: (entry: CourierRunSummary['offloaded'][number]) => void,
+  pushError: (message: string) => void,
+): Promise<CourierRunSummary['stoppedReason']> {
+  for (const entry of fleet.filter((f) => f.status === 'ready-to-offload')) {
+    try {
+      const resp = await postAction('/actions/smuggling.php', { action: 'v2_offload', shipment_id: entry.shipmentId, qty: '' });
+      if (resp?.ok) {
+        pushOffloaded({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
+      } else {
+        pushError(`offload failed for ${entry.petName}: ${resp?.error ?? 'unknown error'}`);
+      }
+    } catch (err) {
+      if (err instanceof SystemicActionError) {
+        pushError(err.message);
+        return err.kind === 'auth' ? 'session-error' : 'shape-changed';
+      }
+      pushError(`offload failed for ${entry.petName}: ${String(err)}`);
+    }
+  }
+  return null;
+}
+
+/**
+ * Sweeps whatever cash is currently on hand into the bank — cash sitting on hand
+ * is what gets taken in a mugging, so this runs at the end of *every* batch
+ * (full run or offload-only), not just when a run itself earned or spent
+ * anything. Best-effort: a failure here doesn't change `stoppedReason` or fail
+ * the batch, since by this point the batch's own substantive work is already
+ * done (or already gave up) — this is just protecting whatever's left standing.
+ *
+ * The request shape mirrors the confirmed `withdraw` action 1:1
+ * (`action=withdraw&amount=...` — see docs/smuggling-v2-plan.md) on the
+ * assumption `bank.php` supports the mirror `action=deposit` the same way. This
+ * specific call has never actually been captured, so unlike everything else in
+ * this file, it's an inference from symmetry, not a confirmed shape — worth
+ * double-checking against a real response the first time it runs.
+ */
+async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
+  const funds = await fetchCashAndDistrict();
+  if (!funds || funds.cash <= 0) return;
+
+  try {
+    const resp = await postAction('/actions/bank.php', { action: 'deposit', amount: funds.cash.toLocaleString('en-US') });
+    if (resp?.ok) {
+      summary.cashDeposited = funds.cash;
+      emitProgress({ kind: 'deposited', amount: funds.cash });
+    } else {
+      const message = `deposit failed: ${resp?.error ?? 'unknown error'}`;
+      summary.errors.push(message);
+      emitProgress({ kind: 'error', message });
+    }
+  } catch (err) {
+    const message = err instanceof SystemicActionError ? err.message : `deposit failed: ${String(err)}`;
+    summary.errors.push(message);
+    emitProgress({ kind: 'error', message });
+  }
+}
+
 /** Persists the summary regardless of which path produced it, so a reopened popup
  *  can show "last run" even if the run happened (or crashed) while it was closed. */
 export async function runCourierBatch(): Promise<CourierRunSummary> {
   emitProgress({ kind: 'started' });
   const summary = await executeCourierBatch();
+  // Skipped when the session/CSRF itself is already known broken — the deposit
+  // call would just fail the exact same way and add a redundant error line.
+  if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
   await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
   emitProgress({ kind: 'finished' });
   return summary;
+}
+
+/** The lighter counterpart to `runCourierBatch` — just collects whatever's
+ *  arrived and banks the proceeds, without touching the buy/load/depart cycle.
+ *  Shares `executeCourierBatch`'s summary shape (mostly empty here) so both
+ *  surfaces can render either kind of run through the same display code. */
+export async function runOffloadBatch(): Promise<CourierRunSummary> {
+  emitProgress({ kind: 'started' });
+  const summary = await executeOffloadBatch();
+  if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
+  await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
+  emitProgress({ kind: 'finished' });
+  return summary;
+}
+
+async function executeOffloadBatch(): Promise<CourierRunSummary> {
+  const summary: CourierRunSummary = {
+    timestamp: Date.now(),
+    offloaded: [],
+    sent: [],
+    skipped: [],
+    cashWithdrawn: 0,
+    cashDeposited: 0,
+    stoppedReason: null,
+    errors: [],
+  };
+
+  const pushError = (message: string) => {
+    summary.errors.push(message);
+    emitProgress({ kind: 'error', message });
+  };
+  const pushOffloaded = (entry: CourierRunSummary['offloaded'][number]) => {
+    summary.offloaded.push(entry);
+    emitProgress({ kind: 'offloaded', ...entry });
+  };
+
+  try {
+    const snapshot = await fetchPanel();
+    if (!snapshot) {
+      pushError('could not read the smuggling panel');
+      return summary;
+    }
+
+    const stopReason = await offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    if (stopReason) summary.stoppedReason = stopReason;
+    return summary;
+  } catch (err) {
+    if (err instanceof SystemicActionError) {
+      pushError(err.message);
+      summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+      return summary;
+    }
+    console.error(LOG_PREFIX, 'offload batch failed', err);
+    pushError(String(err));
+    return summary;
+  }
 }
 
 async function executeCourierBatch(): Promise<CourierRunSummary> {
@@ -189,6 +344,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     sent: [],
     skipped: [],
     cashWithdrawn: 0,
+    cashDeposited: 0,
     stoppedReason: null,
     errors: [],
   };
@@ -265,22 +421,10 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // Free up pets and realize the previous run's profit before spending anything
     // new — also means the daily-cap check right after reflects today's true
     // remaining headroom.
-    for (const entry of snapshot.fleet.filter((f) => f.status === 'ready-to-offload')) {
-      try {
-        const resp = await postAction('/actions/smuggling.php', { action: 'v2_offload', shipment_id: entry.shipmentId, qty: '' });
-        if (resp?.ok) {
-          pushOffloaded({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
-        } else {
-          pushError(`offload failed for ${entry.petName}: ${resp?.error ?? 'unknown error'}`);
-        }
-      } catch (err) {
-        if (err instanceof SystemicActionError) {
-          pushError(err.message);
-          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
-          return summary;
-        }
-        pushError(`offload failed for ${entry.petName}: ${String(err)}`);
-      }
+    const offloadStop = await offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    if (offloadStop) {
+      summary.stoppedReason = offloadStop;
+      return summary;
     }
 
     if (summary.offloaded.length > 0) {

@@ -74,6 +74,12 @@ export type ExtensionMessage =
   // opportunistically — e.g. the in-page floating panel refreshing itself whenever
   // it's opened, not just on an explicit action.
   | { type: 'courier-status-requested' }
+  // Same request/response exception as 'courier-run-requested' — a lighter action
+  // that only collects arrived shipments (and sweeps cash to the bank), skipping
+  // the draft/buy/load/depart cycle entirely. Exists because offloading one pet at
+  // a time in-game is exactly the repetitive tapping this feature was built to
+  // remove, even on visits where the player doesn't want to spend on a full send.
+  | { type: 'courier-offload-requested' }
   // Broadcast (not awaited, no response expected) from background *during* a run
   // — the popup and the in-page floating panel both listen for this to show
   // progress live instead of going quiet until the final summary arrives. Purely

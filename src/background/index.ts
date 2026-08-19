@@ -1,5 +1,5 @@
 import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
-import { runCourierBatch } from './features/tradeAssistant/petCourier';
+import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petCourier';
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
 import { handleMessage as handleStreetIntel, handlePollAlarm as handleStreetIntelPollAlarm } from './features/streetIntel';
@@ -60,6 +60,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
   // instead of polling storage for a result that a closed popup would miss anyway.
   if (msg.type === 'courier-run-requested') {
     return runCourierBatch();
+  }
+
+  // Same request/response shape as 'courier-run-requested' above — a lighter
+  // action for a visit where the player just wants arrived shipments collected
+  // and cash banked, without committing to a full buy/load/depart cycle.
+  if (msg.type === 'courier-offload-requested') {
+    return runOffloadBatch();
   }
 
   // Read-only counterpart, for a UI surface (the in-page floating panel) that

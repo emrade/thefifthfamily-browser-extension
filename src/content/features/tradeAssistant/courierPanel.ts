@@ -14,9 +14,8 @@ import type { CourierRunSummary, CourierStatus } from '@/shared/types';
  * re-navigating through Trade Assistant → Couriers every time.
  *
  * Runs entirely over `chrome.runtime.sendMessage` — the same 'courier-run-requested'/
- * 'courier-status-requested' messages the popup uses — so this adds no new
- * execution path, only a second place to trigger the same one. `petCourier.ts`
- * itself is untouched.
+ * 'courier-offload-requested'/'courier-status-requested' messages the popup uses —
+ * so this adds no new execution path, only a second place to trigger the same ones.
  *
  * The panel's own visibility (not just its expand/collapse state) tracks whether
  * Smuggling is actually the panel currently on screen — the game is a single-page
@@ -80,20 +79,30 @@ const PANEL_CSS = `
 
 .ff-cp-roster { font-size: 10px; color: #8b8f9e; margin-bottom: 12px; line-height: 1.5; }
 
-.ff-cp-run {
-  display: block; width: 100%; padding: 10px; margin-bottom: 12px;
-  background: linear-gradient(135deg, rgba(201,168,76,0.30), rgba(201,168,76,0.12));
-  border: 1px solid rgba(201,168,76,0.5);
+.ff-cp-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+
+.ff-cp-run, .ff-cp-offload {
+  display: block; flex: 1; padding: 10px;
   border-radius: 8px;
-  color: #f4d160;
   font-weight: 800;
-  font-size: 11px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   cursor: pointer;
 }
+.ff-cp-run {
+  background: linear-gradient(135deg, rgba(201,168,76,0.30), rgba(201,168,76,0.12));
+  border: 1px solid rgba(201,168,76,0.5);
+  color: #f4d160;
+}
 .ff-cp-run:hover { background: linear-gradient(135deg, rgba(201,168,76,0.42), rgba(201,168,76,0.18)); }
-.ff-cp-run:disabled { opacity: 0.5; cursor: default; }
+.ff-cp-offload {
+  background: linear-gradient(135deg, rgba(96,165,250,0.22), rgba(96,165,250,0.08));
+  border: 1px solid rgba(96,165,250,0.4);
+  color: #9fc4fa;
+}
+.ff-cp-offload:hover { background: linear-gradient(135deg, rgba(96,165,250,0.32), rgba(96,165,250,0.14)); }
+.ff-cp-run:disabled, .ff-cp-offload:disabled { opacity: 0.5; cursor: default; }
 
 .ff-cp-summary-time { font-size: 9px; color: #6b6455; margin-bottom: 8px; }
 .ff-cp-alert {
@@ -111,7 +120,11 @@ const PANEL_CSS = `
 
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
-let running = false;
+// Which action (if any) is currently in flight — the offload-only path shares
+// the same live-progress/summary rendering as a full run (identical
+// `CourierRunSummary` shape, same broadcast), so one flag distinguishes them
+// rather than two independent booleans.
+let activeAction: 'run' | 'offload' | null = null;
 // Cleared at the start of each run, appended to live as `courier-run-progress`
 // broadcasts arrive — see petCourier.ts's `emitProgress`. Same "live view, final
 // summary takes over once resolved" split as the popup's Couriers tab.
@@ -136,6 +149,9 @@ function renderSummary(run: CourierRunSummary | null): string {
   if (run.cashWithdrawn > 0) {
     parts.push(`<div class="ff-cp-row">Withdrew ${formatCourierMoney(run.cashWithdrawn)}.</div>`);
   }
+  if (run.cashDeposited > 0) {
+    parts.push(`<div class="ff-cp-row">Deposited ${formatCourierMoney(run.cashDeposited)}.</div>`);
+  }
   if (run.skipped.length > 0) {
     parts.push('<div class="ff-cp-row-head">Skipped</div>');
     parts.push(...run.skipped.map((s) => `<div class="ff-cp-row">${s.petName} — ${s.reason}</div>`));
@@ -144,7 +160,7 @@ function renderSummary(run: CourierRunSummary | null): string {
     parts.push('<div class="ff-cp-row-head">Errors</div>');
     parts.push(...run.errors.map((e) => `<div class="ff-cp-row ff-cp-row--error">${e}</div>`));
   }
-  if (run.offloaded.length === 0 && run.sent.length === 0 && !run.stoppedReason && run.errors.length === 0) {
+  if (run.offloaded.length === 0 && run.sent.length === 0 && run.cashDeposited === 0 && !run.stoppedReason && run.errors.length === 0) {
     parts.push('<div class="ff-cp-row">Nothing to do.</div>');
   }
 
@@ -169,34 +185,44 @@ async function refresh() {
   }
 }
 
-async function handleRun() {
-  if (!panelEl || running) return;
-  running = true;
+async function handleAction(kind: 'run' | 'offload') {
+  if (!panelEl || activeAction) return;
+  activeAction = kind;
   liveLines = [];
-  const btn = panelEl.querySelector<HTMLButtonElement>('.ff-cp-run');
+  const runBtn = panelEl.querySelector<HTMLButtonElement>('.ff-cp-run');
+  const offloadBtn = panelEl.querySelector<HTMLButtonElement>('.ff-cp-offload');
   const summaryEl = panelEl.querySelector('.ff-cp-summary');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Running…';
+  if (runBtn) {
+    runBtn.disabled = true;
+    runBtn.textContent = kind === 'run' ? 'Running…' : 'Run';
+  }
+  if (offloadBtn) {
+    offloadBtn.disabled = true;
+    offloadBtn.textContent = kind === 'offload' ? 'Offloading…' : 'Offload All';
   }
   if (summaryEl) summaryEl.innerHTML = renderLive();
   try {
-    const summary = (await chrome.runtime.sendMessage({ type: 'courier-run-requested' })) as CourierRunSummary;
+    const messageType = kind === 'run' ? 'courier-run-requested' : 'courier-offload-requested';
+    const summary = (await chrome.runtime.sendMessage({ type: messageType })) as CourierRunSummary;
     if (summaryEl) summaryEl.innerHTML = renderSummary(summary);
-    await refresh(); // a run can learn new pets too
+    await refresh(); // either action can learn new pets too
   } catch (err) {
-    console.error(LOG_PREFIX, 'courier panel run failed', err);
+    console.error(LOG_PREFIX, `courier panel ${kind} failed`, err);
   } finally {
-    running = false;
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Run';
+    activeAction = null;
+    if (runBtn) {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run';
+    }
+    if (offloadBtn) {
+      offloadBtn.disabled = false;
+      offloadBtn.textContent = 'Offload All';
     }
   }
 }
 
 chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
-  if (msg.type !== 'courier-run-progress' || !running || !panelEl) return;
+  if (msg.type !== 'courier-run-progress' || !activeAction || !panelEl) return;
   const line = describeProgressEvent(msg.event);
   if (!line) return;
   liveLines.push(line);
@@ -224,14 +250,18 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-cp-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-cp-roster">Loading…</div>
-      <button class="ff-cp-run" type="button">Run</button>
+      <div class="ff-cp-actions">
+        <button class="ff-cp-run" type="button">Run</button>
+        <button class="ff-cp-offload" type="button">Offload All</button>
+      </div>
       <div class="ff-cp-summary"><div class="ff-cp-row">No runs yet.</div></div>
     </div>
   `;
 
   el.querySelector('.ff-cp-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-cp-close')?.addEventListener('click', () => setExpanded(false));
-  el.querySelector('.ff-cp-run')?.addEventListener('click', () => void handleRun());
+  el.querySelector('.ff-cp-run')?.addEventListener('click', () => void handleAction('run'));
+  el.querySelector('.ff-cp-offload')?.addEventListener('click', () => void handleAction('offload'));
 
   return el;
 }

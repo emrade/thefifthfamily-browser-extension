@@ -353,6 +353,11 @@ export interface CourierRunSummary {
   sent: { petName: string; items: { item: string; qty: number }[]; destination: string }[];
   skipped: { petName: string; reason: string }[];
   cashWithdrawn: number;
+  /** Whatever cash-on-hand got swept into the bank at the end of this run, so it's
+   *  not sitting exposed (the player's own worry: "so i don't get mugged and loose
+   *  money"). Attempted regardless of what else the run did — even a run that only
+   *  offloaded, or did nothing at all, still sweeps standing cash. */
+  cashDeposited: number;
   stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | null;
   errors: string[];
 }
@@ -371,6 +376,7 @@ export type CourierProgressEvent =
   | { kind: 'drafting'; petName: string }
   | { kind: 'sent'; petName: string; items: { item: string; qty: number }[]; destination: string }
   | { kind: 'skipped'; petName: string; reason: string }
+  | { kind: 'deposited'; amount: number }
   | { kind: 'error'; message: string }
   | { kind: 'finished' };
 

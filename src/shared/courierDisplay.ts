@@ -55,6 +55,8 @@ export function describeProgressEvent(event: CourierProgressEvent): string | nul
       return `Sent ${event.petName} — ${describeItems(event.items)} → ${event.destination}`;
     case 'skipped':
       return `Skipped ${event.petName} — ${event.reason}`;
+    case 'deposited':
+      return `Deposited ${formatCourierMoney(event.amount)} to the bank`;
     case 'error':
       return event.message;
   }

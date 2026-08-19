@@ -9,6 +9,10 @@ import type { CourierRunSummary, PetRosterEntry } from '@/shared/types';
 export function Courier() {
   const [lastRun, setLastRun] = useState<CourierRunSummary | null>(null);
   const [running, setRunning] = useState(false);
+  // Which action is in flight — the offload-only path shares `running`/`liveLines`
+  // display with a full run (same shape of summary, same live-progress broadcast),
+  // but the button labels need to know which one they themselves triggered.
+  const [offloading, setOffloading] = useState(false);
   const [roster, setRoster] = useState<PetRosterEntry[] | null>(null);
   // Cleared at the start of each run, appended to live as `courier-run-progress`
   // events arrive — see petCourier.ts's `emitProgress`. Purely a "what's
@@ -36,17 +40,18 @@ export function Courier() {
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
 
-  async function handleRun() {
-    setRunning(true);
+  async function handleAction(kind: 'courier-run-requested' | 'courier-offload-requested') {
+    const setBusy = kind === 'courier-run-requested' ? setRunning : setOffloading;
+    setBusy(true);
     setLiveLines([]);
     try {
-      const summary = (await chrome.runtime.sendMessage({ type: 'courier-run-requested' })) as CourierRunSummary;
+      const summary = (await chrome.runtime.sendMessage({ type: kind })) as CourierRunSummary;
       setLastRun(summary);
-      refreshRoster(); // a run can learn new pets too, same as any other panel view
+      refreshRoster(); // either action can learn new pets too, same as any other panel view
     } catch (err) {
-      console.error(LOG_PREFIX, 'courier run failed', err);
+      console.error(LOG_PREFIX, `courier ${kind} failed`, err);
     } finally {
-      setRunning(false);
+      setBusy(false);
     }
   }
 
@@ -56,18 +61,25 @@ export function Courier() {
       <div class="ff-archive-note">
         Offloads anything that's arrived, then loads and sends every idle pet — the priciest item you can afford in
         your current district, to whichever open destination isn't level-locked. Withdraws cash automatically if
-        your on-hand cash falls short.
+        your on-hand cash falls short, and banks whatever's left over afterward so it's not sitting exposed.
       </div>
 
       <div class="ff-courier-summary__row">{describeRoster(roster)}</div>
 
-      <button class="ff-export-trigger" disabled={running} onClick={handleRun}>
+      <button class="ff-export-trigger" disabled={running || offloading} onClick={() => handleAction('courier-run-requested')}>
         {running ? 'Running…' : 'Run'}
       </button>
+      <button
+        class="ff-export-trigger"
+        disabled={running || offloading}
+        onClick={() => handleAction('courier-offload-requested')}
+      >
+        {offloading ? 'Offloading…' : 'Offload All'}
+      </button>
 
-      {running && (
+      {(running || offloading) && (
         <div class="ff-courier-summary">
-          <div class="ff-section-label">Running</div>
+          <div class="ff-section-label">{running ? 'Running' : 'Offloading'}</div>
           {liveLines.length === 0 ? (
             <div class="ff-courier-summary__row">Starting…</div>
           ) : (
@@ -80,7 +92,7 @@ export function Courier() {
         </div>
       )}
 
-      {!running && lastRun && (
+      {!running && !offloading && lastRun && (
         <div class="ff-courier-summary">
           <div class="ff-section-label">Last run</div>
           <div class="ff-courier-summary__timestamp">{new Date(lastRun.timestamp).toLocaleString()}</div>
@@ -113,6 +125,10 @@ export function Courier() {
             <div class="ff-courier-summary__row">Withdrew {formatCourierMoney(lastRun.cashWithdrawn)} from the bank.</div>
           )}
 
+          {lastRun.cashDeposited > 0 && (
+            <div class="ff-courier-summary__row">Deposited {formatCourierMoney(lastRun.cashDeposited)} to the bank.</div>
+          )}
+
           {lastRun.skipped.length > 0 && (
             <>
               <div class="ff-courier-summary__row-head">Skipped</div>
@@ -135,9 +151,13 @@ export function Courier() {
             </>
           )}
 
-          {lastRun.offloaded.length === 0 && lastRun.sent.length === 0 && !lastRun.stoppedReason && lastRun.errors.length === 0 && (
-            <div class="ff-courier-summary__row">Nothing to do — no arrivals to collect and no idle pets to send.</div>
-          )}
+          {lastRun.offloaded.length === 0 &&
+            lastRun.sent.length === 0 &&
+            lastRun.cashDeposited === 0 &&
+            !lastRun.stoppedReason &&
+            lastRun.errors.length === 0 && (
+              <div class="ff-courier-summary__row">Nothing to do — no arrivals to collect and no idle pets to send.</div>
+            )}
         </div>
       )}
     </div>
