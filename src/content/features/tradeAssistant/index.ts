@@ -30,16 +30,6 @@ export function handleCapturedRequest(req: CapturedRequest) {
       return;
     }
     recordParseSuccess('tradeAssistant');
-    // A concise per-capture summary — this endpoint fires often (a real session
-    // sees it hundreds of times a day), so this stays at `log` rather than `error`
-    // and is meant to be filtered for (search devtools console for LOG_PREFIX),
-    // not read passively. Exists specifically so "did this actually parse, and
-    // did it see the roster" is checkable without adding a temporary debug patch
-    // every time it's in question.
-    console.log(
-      LOG_PREFIX,
-      `smuggling panel parsed: fleet=${snapshot.fleet.length} roster=${snapshot.roster.length} blackMarket=${snapshot.blackMarket.length} destinations=${snapshot.destinations.length}`,
-    );
     // Most captures don't show the roster at all (see the adapter's own doc
     // comment) — only send when there's actually something to persist.
     if (snapshot.roster.length > 0) {
