@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
+import { db } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
-import type { CourierRunSummary } from '@/shared/types';
+import type { CourierRunSummary, PetRosterEntry } from '@/shared/types';
 
 const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>, string> = {
   'daily-cap-reached': "Today's profit cap is reached — resumes after the midnight reset.",
@@ -18,9 +19,18 @@ function formatMoney(n: number): string {
 export function Courier() {
   const [lastRun, setLastRun] = useState<CourierRunSummary | null>(null);
   const [running, setRunning] = useState(false);
+  const [roster, setRoster] = useState<PetRosterEntry[] | null>(null);
+
+  function refreshRoster() {
+    db.petRoster
+      .toArray()
+      .then(setRoster)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to load pet roster', err));
+  }
 
   useEffect(() => {
     storage.getLastCourierRun().then(setLastRun).catch((err) => console.error(LOG_PREFIX, 'failed to load last courier run', err));
+    refreshRoster();
   }, []);
 
   async function handleRun() {
@@ -28,6 +38,7 @@ export function Courier() {
     try {
       const summary = (await chrome.runtime.sendMessage({ type: 'courier-run-requested' })) as CourierRunSummary;
       setLastRun(summary);
+      refreshRoster(); // a run can learn new pets too, same as any other panel view
     } catch (err) {
       console.error(LOG_PREFIX, 'courier run failed', err);
     } finally {
@@ -42,6 +53,14 @@ export function Courier() {
         Offloads anything that's arrived, then loads and sends every idle pet — the priciest item you can afford in
         your current district, to whichever open destination isn't level-locked. Withdraws cash automatically if
         your on-hand cash falls short.
+      </div>
+
+      <div class="ff-courier-summary__row">
+        {roster === null
+          ? 'Loading known pets…'
+          : roster.length === 0
+            ? "0 pets known yet — with all your pets idle, view the Smuggling panel once in-game (this popup doesn't need to be open) to populate this."
+            : `${roster.length} pet${roster.length === 1 ? '' : 's'} known: ${roster.map((p) => p.name).join(', ')}`}
       </div>
 
       <button class="ff-export-trigger" disabled={running} onClick={handleRun}>
