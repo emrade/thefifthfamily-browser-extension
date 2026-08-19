@@ -255,3 +255,59 @@ the game rather than only observing it:
 
 Not resolved here — this doc is the map, not the decision. Every piece of the flow is now
 confirmed from real traffic; nothing left in this doc blocks starting to build.
+
+## Execution model — built, and an alternative worth having side by side
+
+**Built (direct HTTP from background):** `petCourier.ts` reconstructs each action's
+POST itself (`v2_draft`, `buy`, `v2_load`, `v2_depart`, `v2_offload`, bank
+`withdraw`) via `loggedFetch`, using a CSRF token cached from whatever the content
+script last observed on a real player-driven request (`csrfToken.ts` — see the
+"CSRF" note earlier in this doc). Runs from the background service worker, so it
+doesn't depend on the game tab staying open or focused once triggered. Ships as the
+"Couriers" tab in the popup.
+
+The CSRF-caching design carries a real, unresolved uncertainty: nothing confirms
+whether the token would still be accepted if it rotates per-request server-side
+(checked — no response body anywhere in the archive ever returns a fresh one, and
+6,342 real POST actions across 7 days show only one non-JSON response, which is
+suggestive of a static per-session token but not proof). The implementation now
+fails fast and distinctly on this rather than guessing silently: `postAction`
+throws a `SystemicActionError` (kind `'auth'` for a missing/rejected token, `'shape'`
+for a response that parsed but doesn't look real) that aborts the whole run
+immediately with one clear message, instead of retrying the identical failure once
+per remaining pet.
+
+**Alternative (drive the game's own UI functions), documented but not yet built:**
+since the player's game tab is open anyway, calling the game's own `Game.*` methods
+directly — the same ones its buttons already call — sidesteps the CSRF question
+entirely (the game's own code handles its own token internally, same as a real
+click) at the cost of needing the tab open for the run's duration. Confirmed
+function signatures, pulled from real captured onclick handlers:
+
+| Step | Confirmed call |
+|---|---|
+| Draft | `Game.smugV2Draft(userPetId, name)` — e.g. `Game.smugV2Draft(1997,'House Cat')` |
+| Load | `Game.smugV2Load(shipmentId, itemId, qty, itemName)` |
+| Depart | `Game.smugV2Depart(shipmentId, destinationCityId, destinationName, courierMinutes)` — e.g. `Game.smugV2Depart(531,2,'The Docks',19)`. Notably includes the numeric destination city id directly, which the HTTP version has to resolve separately via `db.districts`. |
+| Offload | `Game.smugV2Offload(shipmentId, qty, qty)` — e.g. `Game.smugV2Offload(531,8,8)`. (There's also `Game.smugV2OffloadPartial(shipmentId, qty)` — a different action, not this one.) |
+| Withdraw | `Game.bankAction('withdraw', document.getElementById('bank-amount').value)` — reads a text input's value at click time, so this one isn't "just a function call" so much as "set an input, then call a function." |
+
+**Blocked on one real gap: buy.** `Game.buyContraband(itemId)` takes only the item
+id — no quantity. Since the real POST does carry `qty=`, that number has to come
+from somewhere else, and searching the archive for any input/quantity element near
+every `buyContraband` occurrence found nothing. The likely explanation is a
+quantity-confirm modal that opens on click and only fires a second, different
+function on submit — which is pure client-side DOM, so it would never appear in a
+captured network response no matter how much traffic gets recorded. This is
+genuinely unconfirmed, not just undocumented — building against a guessed function
+name here risks silently mis-buying with real cash, which is exactly what the rest
+of this doc has tried to avoid doing anywhere else.
+
+**To close this gap** (next step, not yet done): watch one real "Purchase" click —
+either the resulting modal's HTML directly, or the page's own JS source (DevTools →
+Debugger → search `buyContraband`) for whatever function the modal's own confirm
+button calls. Once that's confirmed, the UI-driven path can be built as a second,
+independent execution backend behind the same planning logic `petCourier.ts`
+already has (which pet, which item, which destination, how much to spend) — sharing
+the "what to do" decision and only swapping "how to perform one step," so the two
+don't need to duplicate the affordability/selection math, just the execution layer.
