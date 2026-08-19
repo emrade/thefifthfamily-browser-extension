@@ -8,6 +8,7 @@ const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>,
   'insufficient-funds': 'Not enough cash + bank to load even one pet.',
   'no-idle-pets': 'No idle pets right now — everything is already out or in transit.',
   'session-error': 'Stopped early — the game rejected a request (stale session or token). Reload the game tab, view Smuggling once, then run again.',
+  'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
 };
 
 function formatMoney(n: number): string {

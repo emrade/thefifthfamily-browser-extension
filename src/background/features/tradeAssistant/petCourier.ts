@@ -13,17 +13,27 @@ import type { BlackMarketItem, CourierRunSummary, DestinationOption, SmugglingV2
 const DAILY_CAP_STOP_THRESHOLD = 1000;
 
 /**
- * Thrown by `postAction` for a failure that looks like a *session-level* problem —
- * no CSRF token cached at all, or a response that isn't even valid JSON (the game
- * only ever returns clean `{ok:true/false,...}` for a request it actually accepted;
- * anything else is far more likely a stale/rejected token or an expired session
- * than a per-pet business rejection). Distinguished from an ordinary `{ok:false}`
- * result specifically so the batch can tell "this one pet can't be sent" from
- * "nothing from here on will work either" — the former should skip to the next
- * pet, the latter should stop the whole run rather than repeat the identical
- * failure once per remaining pet.
+ * Thrown for a failure that isn't specific to one pet or one action — the batch
+ * can't tell "this one thing failed, try the next" from "nothing from here on will
+ * work either" without this. `kind` picks the remedy shown to the player:
+ * - `auth`: no cached CSRF token, or a non-JSON response (the game returns clean
+ *   `{ok:true/false,...}` for anything it actually processed — a stale/rejected
+ *   token or expired session is the likely cause of anything else). Fix: reload
+ *   the game tab, view Smuggling once, run again.
+ * - `shape`: a response parsed as JSON but doesn't look like a real one (`ok`
+ *   missing/non-boolean), or the panel parsed but a section that should never be
+ *   empty was (the black-market grid — every district has always had 3 items).
+ *   Fix: none available yet — this specifically means the game changed something
+ *   this feature doesn't understand, so it needs to stop rather than guess.
  */
-class SystemicActionError extends Error {}
+class SystemicActionError extends Error {
+  constructor(
+    message: string,
+    public readonly kind: 'auth' | 'shape',
+  ) {
+    super(message);
+  }
+}
 
 async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&smug_tab=proto&_t=${Date.now()}`, {
@@ -54,7 +64,7 @@ async function fetchCashAndDistrict(): Promise<{ cash: number; bank: number; dis
 
 async function postAction(path: string, params: Record<string, string | number>): Promise<any> {
   const csrf = await getCsrfToken();
-  if (!csrf) throw new SystemicActionError('no CSRF token observed yet — open the game tab and view any panel first, then run again');
+  if (!csrf) throw new SystemicActionError('no CSRF token observed yet — open the game tab and view any panel first, then run again', 'auth');
 
   const body = new URLSearchParams({ ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])), _csrf: csrf });
   const res = await loggedFetch(`${GAME_ORIGIN}${path}`, {
@@ -64,15 +74,28 @@ async function postAction(path: string, params: Record<string, string | number>)
     body: body.toString(),
   });
 
+  let json: any;
   try {
-    return await res.json();
+    json = await res.json();
   } catch {
     // A request the game actually processed always comes back as clean JSON,
     // `{ok:true|false, ...}` — this is the CSRF token being rejected (or the
     // session having expired) far more often than it's anything specific to this
     // one action, so it's treated as systemic rather than retried per pet.
-    throw new SystemicActionError(`non-JSON response from ${path} (status ${res.status}) — likely a stale session or CSRF token`);
+    throw new SystemicActionError(`non-JSON response from ${path} (status ${res.status}) — likely a stale session or CSRF token`, 'auth');
   }
+
+  // `ok` missing or non-boolean means this isn't the response shape every real
+  // action response has confirmed so far — a genuine business rejection is always
+  // an explicit `ok:false`, never an absent field. Distinguishing this from that
+  // is the whole point: an actual game-shape change should stop the run with one
+  // clear message, not get retried once per remaining pet as if each were its own
+  // unrelated failure.
+  if (typeof json?.ok !== 'boolean') {
+    throw new SystemicActionError(`unexpected response shape from ${path} — the game may have changed this action's format`, 'shape');
+  }
+
+  return json;
 }
 
 function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
@@ -117,6 +140,17 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       return summary;
     }
 
+    // Every district has always had 3 buyable items — the envelope unwrapping and
+    // the grid parsing are separate steps, so an empty grid on an otherwise-parsed
+    // panel means the `.sv2-card`/`data-sv2-here` markup changed shape, not that
+    // there's genuinely nothing to buy. Caught here, before anything is spent,
+    // rather than surfacing later as "nothing buyable" (which reads as routine).
+    if (snapshot.blackMarket.length === 0) {
+      summary.errors.push('the black-market grid parsed empty — the panel markup may have changed shape');
+      summary.stoppedReason = 'shape-changed';
+      return summary;
+    }
+
     // Opportunistic — see docs/smuggling-v2-plan.md's "Pet roster discovery" note.
     // Most runs won't have anything to learn here (the roster only shows once
     // shipments exist), which is exactly why the persisted mapping below matters.
@@ -136,7 +170,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       } catch (err) {
         if (err instanceof SystemicActionError) {
           summary.errors.push(err.message);
-          summary.stoppedReason = 'session-error';
+          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
         summary.errors.push(`offload failed for ${entry.petName}: ${String(err)}`);
@@ -211,7 +245,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       } catch (err) {
         if (err instanceof SystemicActionError) {
           summary.errors.push(err.message);
-          summary.stoppedReason = 'session-error';
+          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
         summary.errors.push(`withdrawal failed: ${String(err)}`);
@@ -272,7 +306,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       } catch (err) {
         if (err instanceof SystemicActionError) {
           summary.errors.push(err.message);
-          summary.stoppedReason = 'session-error';
+          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
         summary.errors.push(`run failed for ${pet.name}: ${String(err)}`);

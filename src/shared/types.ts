@@ -339,6 +339,6 @@ export interface CourierRunSummary {
   sent: { petName: string; item: string; qty: number; destination: string }[];
   skipped: { petName: string; reason: string }[];
   cashWithdrawn: number;
-  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'session-error' | null;
+  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'session-error' | 'shape-changed' | null;
   errors: string[];
 }
