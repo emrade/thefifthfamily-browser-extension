@@ -347,7 +347,10 @@ export interface SmugglingV2Snapshot {
 export interface CourierRunSummary {
   timestamp: number;
   offloaded: { petName: string; profit: number }[];
-  sent: { petName: string; item: string; qty: number; destination: string }[];
+  // `items` rather than a single item/qty — a shipment can (and often does, once
+  // pre-existing stash gets drained into it) carry a mix, not just what was
+  // freshly bought this run.
+  sent: { petName: string; items: { item: string; qty: number }[]; destination: string }[];
   skipped: { petName: string; reason: string }[];
   cashWithdrawn: number;
   stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | null;
@@ -366,7 +369,7 @@ export type CourierProgressEvent =
   | { kind: 'started' }
   | { kind: 'offloaded'; petName: string; profit: number }
   | { kind: 'drafting'; petName: string }
-  | { kind: 'sent'; petName: string; item: string; qty: number; destination: string }
+  | { kind: 'sent'; petName: string; items: { item: string; qty: number }[]; destination: string }
   | { kind: 'skipped'; petName: string; reason: string }
   | { kind: 'error'; message: string }
   | { kind: 'finished' };

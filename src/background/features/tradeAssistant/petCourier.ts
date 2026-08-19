@@ -382,6 +382,16 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     let stashUsed = snapshot.hiddenCargo.current;
     const stashMax = snapshot.hiddenCargo.max;
 
+    // Whatever's already sitting in the stash from before this run started — a
+    // previous failed attempt (a buy that succeeded but a later step didn't,
+    // confirmed to happen: it's exactly how the stash ended up full enough to
+    // block every pet in the run right before this fix) or just leftover from
+    // manual play. Drained into whichever pet processes first, ahead of any new
+    // buying, rather than left to sit there blocking the whole stash indefinitely.
+    // A shipment carrying a mix of items is normal — confirmed from a real
+    // `v2_offload` response with two different `lines[]` entries.
+    const leftoverStash = new Map(snapshot.blackMarket.filter((i) => i.stash > 0).map((i) => [i.itemId, { name: i.name, qty: i.stash }]));
+
     for (const pet of included) {
       // Tracked outside the try block so the `catch` below can clean up a draft
       // that got this far before something later failed — the game only allows
@@ -399,20 +409,39 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         }
         shipmentId = Number(draft.shipment_id);
 
+        let qty = 0;
+        const loadedItems = new Map<string, number>(); // item name -> qty, merges if the same item shows up from both draining and buying
+
+        // Drain existing stash first — a straight transfer (stash → manifest, no
+        // purchase involved), so it only costs pet capacity, never stash room.
+        for (const [itemId, entry] of leftoverStash) {
+          if (qty >= pet.capacity || entry.qty <= 0) continue;
+          const loadQty = Math.min(pet.capacity - qty, entry.qty);
+          const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: itemId, qty: loadQty });
+          if (!load?.ok) {
+            pushError(`load (from existing stash) failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
+            continue; // this one item didn't work — still worth trying the rest of the stash, and then buying fresh
+          }
+          stashUsed -= loadQty;
+          entry.qty -= loadQty;
+          qty += loadQty;
+          loadedItems.set(entry.name, (loadedItems.get(entry.name) ?? 0) + loadQty);
+        }
+
         // A pet's own capacity routinely exceeds the shared stash cap (George's 30
         // vs. a 21-slot stash, confirmed on this account) — buying it in one shot,
-        // the original version of this loop, fails outright rather than partially,
+        // an earlier version of this loop, fails outright rather than partially,
         // every time the pet's capacity alone is bigger than the stash. Cycling
         // buy→load in stash-sized chunks is the same flow the UI itself uses (see
         // docs/smuggling-v2-plan.md's confirmed action table).
-        let qty = 0;
         while (qty < pet.capacity) {
           const remainingNeeded = pet.capacity - qty;
           const availableRoom = stashMax - stashUsed;
           if (availableRoom <= 0) {
-            // Not an error by itself — a still-nonzero `qty` means earlier rounds
-            // this same pet already loaded something worth departing with; only
-            // truly a dead end if nothing was ever loaded (handled just below).
+            // Not an error by itself — a still-nonzero `qty` means the drain step
+            // above (or an earlier round this same pet) already loaded something
+            // worth departing with; only truly a dead end if nothing was ever
+            // loaded at all (handled just below).
             break;
           }
 
@@ -434,6 +463,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           }
           stashUsed -= boughtQty; // moved from stash onto this pet's manifest, freeing the room back up
           qty += boughtQty;
+          loadedItems.set(item.name, (loadedItems.get(item.name) ?? 0) + boughtQty);
         }
 
         if (qty === 0) {
@@ -482,7 +512,11 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           continue;
         }
 
-        pushSent({ petName: pet.name, item: item.name, qty, destination: destination.district });
+        pushSent({
+          petName: pet.name,
+          items: [...loadedItems].map(([name, itemQty]) => ({ item: name, qty: itemQty })),
+          destination: destination.district,
+        });
       } catch (err) {
         if (err instanceof SystemicActionError) {
           pushError(err.message);

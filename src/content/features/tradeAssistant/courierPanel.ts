@@ -1,7 +1,7 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, CourierStatus } from '@/shared/types';
 
@@ -131,7 +131,7 @@ function renderSummary(run: CourierRunSummary | null): string {
   }
   if (run.sent.length > 0) {
     parts.push('<div class="ff-cp-row-head">Sent</div>');
-    parts.push(...run.sent.map((s) => `<div class="ff-cp-row">${s.petName} — ${s.qty}× ${s.item} → ${s.destination}</div>`));
+    parts.push(...run.sent.map((s) => `<div class="ff-cp-row">${s.petName} — ${describeItems(s.items)} → ${s.destination}</div>`));
   }
   if (run.cashWithdrawn > 0) {
     parts.push(`<div class="ff-cp-row">Withdrew ${formatCourierMoney(run.cashWithdrawn)}.</div>`);

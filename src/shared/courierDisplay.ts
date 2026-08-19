@@ -12,6 +12,14 @@ export function formatCourierMoney(n: number): string {
   return `$${n.toLocaleString()}`;
 }
 
+/** A shipment's cargo can be mixed — draining pre-existing stash into it ahead of
+ *  any new buying (see petCourier.ts) means "what got loaded" is a list, not
+ *  always a single item — formatted here once rather than in each of the three
+ *  places that show it (live progress, popup summary, panel summary). */
+export function describeItems(items: { item: string; qty: number }[]): string {
+  return items.map((i) => `${i.qty}× ${i.item}`).join(', ');
+}
+
 export const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>, string> = {
   'daily-cap-reached': "Today's profit cap is reached — resumes after the midnight reset.",
   'insufficient-funds': 'Not enough cash + bank to load even one pet.',
@@ -44,7 +52,7 @@ export function describeProgressEvent(event: CourierProgressEvent): string | nul
     case 'offloaded':
       return `Offloaded ${event.petName} — ${formatCourierMoney(event.profit)} profit`;
     case 'sent':
-      return `Sent ${event.petName} — ${event.qty}× ${event.item} → ${event.destination}`;
+      return `Sent ${event.petName} — ${describeItems(event.items)} → ${event.destination}`;
     case 'skipped':
       return `Skipped ${event.petName} — ${event.reason}`;
     case 'error':

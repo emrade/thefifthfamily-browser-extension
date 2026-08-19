@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { db } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, PetRosterEntry } from '@/shared/types';
 
@@ -103,7 +103,7 @@ export function Courier() {
               <div class="ff-courier-summary__row-head">Sent</div>
               {lastRun.sent.map((s) => (
                 <div key={s.petName} class="ff-courier-summary__row">
-                  {s.petName} — {s.qty}× {s.item} → {s.destination}
+                  {s.petName} — {describeItems(s.items)} → {s.destination}
                 </div>
               ))}
             </>
