@@ -6,7 +6,20 @@ import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
 import { getCsrfToken } from '../../csrfToken';
 import { parseSmugglingV2PanelRegex } from './smugglingV2RegexParser';
-import type { BlackMarketItem, CourierRunSummary, DestinationOption, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, SmugglingV2Snapshot } from '@/shared/types';
+
+/**
+ * Broadcasts one step of the run as it happens, so a UI surface watching (the
+ * popup, the in-page floating panel) can show progress live instead of going
+ * quiet until the whole batch finishes and the final `CourierRunSummary`
+ * resolves. Best-effort and fire-and-forget on purpose — nobody may be
+ * listening (popup closed, panel not on screen), and that's fine, since nothing
+ * here is relied on for correctness; the final summary is still the record of
+ * what actually happened.
+ */
+function emitProgress(event: CourierProgressEvent): void {
+  chrome.runtime.sendMessage({ type: 'courier-run-progress', event }).catch(() => {});
+}
 
 /** Below this, further sales wouldn't pay out anyway — not worth spending on cargo
  *  that would just sit there past the daily cap. */
@@ -136,6 +149,10 @@ async function postAction(path: string, params: Record<string, string | number>)
  */
 async function cancelShipment(shipmentId: number, petName: string, summary: CourierRunSummary): Promise<void> {
   const resp = await postAction('/actions/smuggling.php', { action: 'v2_cancel', shipment_id: shipmentId });
+  // Module-level function, called with `summary` passed explicitly — `pushError`
+  // is a closure local to `executeCourierBatch` and isn't reachable from here, so
+  // this pushes directly (and skips the live-progress broadcast for this one,
+  // rare, cleanup-only case rather than threading emitProgress through as well).
   if (!resp?.ok) summary.errors.push(`could not cancel ${petName}'s stuck shipment — it may still be blocking new drafts`);
 }
 
@@ -158,8 +175,10 @@ function pickDestination(destinations: DestinationOption[]): DestinationOption |
 /** Persists the summary regardless of which path produced it, so a reopened popup
  *  can show "last run" even if the run happened (or crashed) while it was closed. */
 export async function runCourierBatch(): Promise<CourierRunSummary> {
+  emitProgress({ kind: 'started' });
   const summary = await executeCourierBatch();
   await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
+  emitProgress({ kind: 'finished' });
   return summary;
 }
 
@@ -174,10 +193,31 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     errors: [],
   };
 
+  // Each of these both mutates the authoritative `summary` (what actually gets
+  // persisted/returned) and broadcasts the same fact live — one call site per
+  // event instead of a separate `emitProgress` sprinkled next to every `.push`,
+  // so the two can't drift apart by a call site someone forgets to pair up.
+  const pushError = (message: string) => {
+    summary.errors.push(message);
+    emitProgress({ kind: 'error', message });
+  };
+  const pushOffloaded = (entry: CourierRunSummary['offloaded'][number]) => {
+    summary.offloaded.push(entry);
+    emitProgress({ kind: 'offloaded', ...entry });
+  };
+  const pushSent = (entry: CourierRunSummary['sent'][number]) => {
+    summary.sent.push(entry);
+    emitProgress({ kind: 'sent', ...entry });
+  };
+  const pushSkipped = (entry: CourierRunSummary['skipped'][number]) => {
+    summary.skipped.push(entry);
+    emitProgress({ kind: 'skipped', ...entry });
+  };
+
   try {
     let snapshot = await fetchPanel();
     if (!snapshot) {
-      summary.errors.push('could not read the smuggling panel');
+      pushError('could not read the smuggling panel');
       return summary;
     }
 
@@ -187,7 +227,19 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // there's genuinely nothing to buy. Caught here, before anything is spent,
     // rather than surfacing later as "nothing buyable" (which reads as routine).
     if (snapshot.blackMarket.length === 0) {
-      summary.errors.push('the black-market grid parsed empty — the panel markup may have changed shape');
+      pushError('the black-market grid parsed empty — the panel markup may have changed shape');
+      summary.stoppedReason = 'shape-changed';
+      return summary;
+    }
+
+    // "Hidden Cargo" is the account-wide stash cap — buying without knowing it
+    // means buying blind into a limit that's routinely smaller than a single
+    // pet's own capacity (George's 30 vs. a 21-slot stash, confirmed on this
+    // account). Same treatment as the black-market check above: this monitor is
+    // always present on a real capture, so a missing one means the markup
+    // changed, not that the account genuinely has no cargo stat.
+    if (!snapshot.hiddenCargo) {
+      pushError('the Hidden Cargo monitor parsed empty — the panel markup may have changed shape');
       summary.stoppedReason = 'shape-changed';
       return summary;
     }
@@ -217,17 +269,17 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       try {
         const resp = await postAction('/actions/smuggling.php', { action: 'v2_offload', shipment_id: entry.shipmentId, qty: '' });
         if (resp?.ok) {
-          summary.offloaded.push({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
+          pushOffloaded({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
         } else {
-          summary.errors.push(`offload failed for ${entry.petName}: ${resp?.error ?? 'unknown error'}`);
+          pushError(`offload failed for ${entry.petName}: ${resp?.error ?? 'unknown error'}`);
         }
       } catch (err) {
         if (err instanceof SystemicActionError) {
-          summary.errors.push(err.message);
+          pushError(err.message);
           summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
-        summary.errors.push(`offload failed for ${entry.petName}: ${String(err)}`);
+        pushError(`offload failed for ${entry.petName}: ${String(err)}`);
       }
     }
 
@@ -252,13 +304,13 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
 
     const item = pickItem(snapshot.blackMarket);
     if (!item) {
-      summary.errors.push('nothing buyable in the current district');
+      pushError('nothing buyable in the current district');
       return summary;
     }
 
     const funds = await fetchCashAndDistrict();
     if (!funds) {
-      summary.errors.push('could not read cash/bank balance');
+      pushError('could not read cash/bank balance');
       return summary;
     }
 
@@ -271,7 +323,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     for (const pet of ordered) {
       const cost = pet.capacity * item.price;
       if (runningCost + cost > totalAvailable) {
-        summary.skipped.push({ petName: pet.name, reason: 'insufficient funds' });
+        pushSkipped({ petName: pet.name, reason: 'insufficient funds' });
         continue;
       }
       runningCost += cost;
@@ -291,18 +343,18 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         // is also accepted, so this doesn't guess.
         const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') });
         if (!resp?.ok) {
-          summary.errors.push(`withdrawal failed: ${resp?.error ?? 'unknown error'}`);
+          pushError(`withdrawal failed: ${resp?.error ?? 'unknown error'}`);
           summary.stoppedReason = 'insufficient-funds';
           return summary;
         }
         summary.cashWithdrawn = shortfall;
       } catch (err) {
         if (err instanceof SystemicActionError) {
-          summary.errors.push(err.message);
+          pushError(err.message);
           summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
-        summary.errors.push(`withdrawal failed: ${String(err)}`);
+        pushError(`withdrawal failed: ${String(err)}`);
         summary.stoppedReason = 'insufficient-funds';
         return summary;
       }
@@ -313,6 +365,23 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // confirmed 60-minute rotation).
     let destination: DestinationOption | null = null;
 
+    // `snapshot` may have been reassigned since the hiddenCargo check above (the
+    // stuck-draft cleanup and offload passes both refetch it) — re-validated here
+    // against whichever fetch is actually current, rather than trusting the
+    // earlier check still describes this snapshot.
+    if (!snapshot.hiddenCargo) {
+      pushError('the Hidden Cargo monitor parsed empty on the latest fetch — the panel markup may have changed shape');
+      summary.stoppedReason = 'shape-changed';
+      return summary;
+    }
+    // Tracked locally rather than re-fetched before every buy — a `buy` fills
+    // this and a `v2_load` frees it right back up, both confirmed from real
+    // captures, so the running total stays accurate without paying a network
+    // round trip per chunk. Shared across every pet in this batch, not reset per
+    // pet, because the stash itself is account-wide, not per-pet.
+    let stashUsed = snapshot.hiddenCargo.current;
+    const stashMax = snapshot.hiddenCargo.max;
+
     for (const pet of included) {
       // Tracked outside the try block so the `catch` below can clean up a draft
       // that got this far before something later failed — the game only allows
@@ -321,25 +390,54 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       // delivery being loaded."). `shipmentId` stays null until `v2_draft`
       // actually succeeds, so there's nothing to cancel if it never got that far.
       let shipmentId: number | null = null;
+      emitProgress({ kind: 'drafting', petName: pet.name });
       try {
         const draft = await postAction('/actions/smuggling.php', { action: 'v2_draft', user_pet_id: pet.userPetId });
         if (!draft?.ok) {
-          summary.errors.push(`draft failed for ${pet.name}: ${draft?.error ?? 'unknown error'}`);
+          pushError(`draft failed for ${pet.name}: ${draft?.error ?? 'unknown error'}`);
           continue;
         }
         shipmentId = Number(draft.shipment_id);
 
-        const buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: pet.capacity });
-        if (!buy?.ok) {
-          summary.errors.push(`buy failed for ${pet.name}: ${buy?.error ?? 'unknown error'}`);
-          await cancelShipment(shipmentId, pet.name, summary);
-          continue;
-        }
-        const qty = Number(buy.qty ?? buy.qty_requested ?? pet.capacity);
+        // A pet's own capacity routinely exceeds the shared stash cap (George's 30
+        // vs. a 21-slot stash, confirmed on this account) — buying it in one shot,
+        // the original version of this loop, fails outright rather than partially,
+        // every time the pet's capacity alone is bigger than the stash. Cycling
+        // buy→load in stash-sized chunks is the same flow the UI itself uses (see
+        // docs/smuggling-v2-plan.md's confirmed action table).
+        let qty = 0;
+        while (qty < pet.capacity) {
+          const remainingNeeded = pet.capacity - qty;
+          const availableRoom = stashMax - stashUsed;
+          if (availableRoom <= 0) {
+            // Not an error by itself — a still-nonzero `qty` means earlier rounds
+            // this same pet already loaded something worth departing with; only
+            // truly a dead end if nothing was ever loaded (handled just below).
+            break;
+          }
 
-        const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: item.itemId, qty });
-        if (!load?.ok) {
-          summary.errors.push(`load failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
+          const buyQty = Math.min(remainingNeeded, availableRoom);
+          const buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
+          if (!buy?.ok) {
+            pushError(`buy failed for ${pet.name}: ${buy?.error ?? 'unknown error'}`);
+            break;
+          }
+          const boughtQty = Number(buy.qty ?? buy.qty_requested ?? buyQty);
+          stashUsed += boughtQty;
+
+          const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: item.itemId, qty: boughtQty });
+          if (!load?.ok) {
+            // Bought but not loaded — still genuinely sitting in the stash, so
+            // `stashUsed` stays incremented rather than being rolled back here.
+            pushError(`load failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
+            break;
+          }
+          stashUsed -= boughtQty; // moved from stash onto this pet's manifest, freeing the room back up
+          qty += boughtQty;
+        }
+
+        if (qty === 0) {
+          pushError(`could not load anything for ${pet.name}`);
           await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
@@ -363,7 +461,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
             // once per remaining pet, was confirmed necessary the first time this
             // ran: it produced the identical "no destination" outcome for every
             // pet after the first, just discovered the slow way.
-            summary.errors.push(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
+            pushError(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
             await cancelShipment(shipmentId, pet.name, summary);
             summary.stoppedReason = 'no-destination-available';
             return summary;
@@ -372,27 +470,27 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
 
         const districtRow = await db.districts.where('name').equals(destination.district).first();
         if (!districtRow) {
-          summary.errors.push(`unknown district "${destination.district}" — not in the local district table yet`);
+          pushError(`unknown district "${destination.district}" — not in the local district table yet`);
           await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
 
         const depart = await postAction('/actions/smuggling.php', { action: 'v2_depart', shipment_id: shipmentId, destination_city_id: districtRow.id });
         if (!depart?.ok) {
-          summary.errors.push(`depart failed for ${pet.name}: ${depart?.error ?? 'unknown error'}`);
+          pushError(`depart failed for ${pet.name}: ${depart?.error ?? 'unknown error'}`);
           await cancelShipment(shipmentId, pet.name, summary);
           continue;
         }
 
-        summary.sent.push({ petName: pet.name, item: item.name, qty, destination: destination.district });
+        pushSent({ petName: pet.name, item: item.name, qty, destination: destination.district });
       } catch (err) {
         if (err instanceof SystemicActionError) {
-          summary.errors.push(err.message);
+          pushError(err.message);
           summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
           return summary;
         }
         if (shipmentId !== null) await cancelShipment(shipmentId, pet.name, summary);
-        summary.errors.push(`run failed for ${pet.name}: ${String(err)}`);
+        pushError(`run failed for ${pet.name}: ${String(err)}`);
       }
     }
 
@@ -403,12 +501,12 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // `SystemicActionError` there is exactly as real a stop-everything signal as
     // one from inside the loop.
     if (err instanceof SystemicActionError) {
-      summary.errors.push(err.message);
+      pushError(err.message);
       summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
       return summary;
     }
     console.error(LOG_PREFIX, 'courier batch failed', err);
-    summary.errors.push(String(err));
+    pushError(String(err));
     return summary;
   }
 }

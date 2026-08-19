@@ -34,6 +34,7 @@ export function parseSmugglingV2Panel(responseText: string): SmugglingV2Snapshot
     destinations: parseDestinations(doc),
     assignedCourier: parseAssignedCourier(doc),
     dailyProfitCapRemaining: parseDailyCapRemaining(doc),
+    hiddenCargo: parseHiddenCargo(doc),
   };
 }
 
@@ -185,4 +186,16 @@ function parseDailyCapRemaining(doc: Document): number | null {
   if (!dailyProfit) return null;
   const match = textOf(dailyProfit).match(/\$([\d,]+)\s*left/);
   return match ? numberFrom(match[1]) : null;
+}
+
+/** Reads "Hidden Cargo" — `.sv2-m-val` renders as `"21 / 21"` once the nested
+ *  `<span>` for the max is included in `textContent`. Scales with player level
+ *  (confirmed: "20 base at level 63... = 21"), so this is read fresh each time
+ *  rather than assumed constant. */
+function parseHiddenCargo(doc: Document): { current: number; max: number } | null {
+  const monitors = Array.from(doc.querySelectorAll('.sv2-monitor'));
+  const cargo = monitors.find((m) => textOf(m.querySelector('.sv2-m-lbl')).includes('Hidden Cargo'));
+  if (!cargo) return null;
+  const match = textOf(cargo.querySelector('.sv2-m-val')).match(/(\d+)\s*\/\s*(\d+)/);
+  return match ? { current: Number(match[1]), max: Number(match[2]) } : null;
 }

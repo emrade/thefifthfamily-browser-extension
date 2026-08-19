@@ -2,13 +2,19 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { db } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, PetRosterEntry } from '@/shared/types';
 
 export function Courier() {
   const [lastRun, setLastRun] = useState<CourierRunSummary | null>(null);
   const [running, setRunning] = useState(false);
   const [roster, setRoster] = useState<PetRosterEntry[] | null>(null);
+  // Cleared at the start of each run, appended to live as `courier-run-progress`
+  // events arrive — see petCourier.ts's `emitProgress`. Purely a "what's
+  // happening right now" display; `lastRun` (the resolved Promise, below) stays
+  // the authoritative record once the run finishes.
+  const [liveLines, setLiveLines] = useState<string[]>([]);
 
   function refreshRoster() {
     db.petRoster
@@ -20,10 +26,19 @@ export function Courier() {
   useEffect(() => {
     storage.getLastCourierRun().then(setLastRun).catch((err) => console.error(LOG_PREFIX, 'failed to load last courier run', err));
     refreshRoster();
+
+    function onMessage(msg: ExtensionMessage) {
+      if (msg.type !== 'courier-run-progress') return;
+      const line = describeProgressEvent(msg.event);
+      if (line) setLiveLines((prev) => [...prev, line]);
+    }
+    chrome.runtime.onMessage.addListener(onMessage);
+    return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
 
   async function handleRun() {
     setRunning(true);
+    setLiveLines([]);
     try {
       const summary = (await chrome.runtime.sendMessage({ type: 'courier-run-requested' })) as CourierRunSummary;
       setLastRun(summary);
@@ -50,7 +65,22 @@ export function Courier() {
         {running ? 'Running…' : 'Run'}
       </button>
 
-      {lastRun && (
+      {running && (
+        <div class="ff-courier-summary">
+          <div class="ff-section-label">Running</div>
+          {liveLines.length === 0 ? (
+            <div class="ff-courier-summary__row">Starting…</div>
+          ) : (
+            liveLines.map((line, i) => (
+              <div key={i} class="ff-courier-summary__row">
+                {line}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {!running && lastRun && (
         <div class="ff-courier-summary">
           <div class="ff-section-label">Last run</div>
           <div class="ff-courier-summary__timestamp">{new Date(lastRun.timestamp).toLocaleString()}</div>

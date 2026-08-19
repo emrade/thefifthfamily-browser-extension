@@ -329,6 +329,17 @@ export interface SmugglingV2Snapshot {
   destinations: DestinationOption[];
   assignedCourier: AssignedCourier | null;
   dailyProfitCapRemaining: number | null;
+  /**
+   * "Hidden Cargo" — total unspent stash across every item, shared by the whole
+   * account, distinct from any one pet's own carry capacity (`PetRosterEntry.capacity`).
+   * Scales with player level (confirmed: "20 base at level 63... = 21" in one real
+   * capture) — a `buy` fills this before a `v2_load` moves units from here onto a
+   * pet's manifest, freeing the room back up. A pet whose own capacity exceeds this
+   * max (common — George's 30 vs. a 21-slot stash) can only ever be loaded by
+   * cycling buy→load→buy→load, never in one purchase. Null if the monitor board
+   * itself isn't present.
+   */
+  hiddenCargo: { current: number; max: number } | null;
 }
 
 /** What one click of "Run" actually did — shown in the popup and kept as "last run"
@@ -342,6 +353,23 @@ export interface CourierRunSummary {
   stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | null;
   errors: string[];
 }
+
+/**
+ * One step of a courier run, broadcast live as it happens — see
+ * `messaging.ts`'s `courier-run-progress`. Purely a UI convenience: the
+ * authoritative record is still the final `CourierRunSummary` a run resolves
+ * with, which is what actually gets persisted. A dropped or missed progress
+ * event (e.g. the popup wasn't open to hear it) costs nothing but a moment of
+ * stale display — nothing here is relied on for correctness.
+ */
+export type CourierProgressEvent =
+  | { kind: 'started' }
+  | { kind: 'offloaded'; petName: string; profit: number }
+  | { kind: 'drafting'; petName: string }
+  | { kind: 'sent'; petName: string; item: string; qty: number; destination: string }
+  | { kind: 'skipped'; petName: string; reason: string }
+  | { kind: 'error'; message: string }
+  | { kind: 'finished' };
 
 /** Read-only snapshot for a UI surface to render without triggering a run — the
  *  popup's Couriers tab reads `db.petRoster`/`storage` directly (same origin,

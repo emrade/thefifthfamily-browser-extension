@@ -1,4 +1,4 @@
-import type { CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload } from './types';
+import type { CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload } from './types';
 import { LOG_PREFIX } from './log';
 
 /**
@@ -74,6 +74,12 @@ export type ExtensionMessage =
   // opportunistically — e.g. the in-page floating panel refreshing itself whenever
   // it's opened, not just on an explicit action.
   | { type: 'courier-status-requested' }
+  // Broadcast (not awaited, no response expected) from background *during* a run
+  // — the popup and the in-page floating panel both listen for this to show
+  // progress live instead of going quiet until the final summary arrives. Purely
+  // additive: the run still resolves with the complete `CourierRunSummary` the
+  // same way it always did, this is only ever a UI convenience layered on top.
+  | { type: 'courier-run-progress'; event: CourierProgressEvent }
   // Fired on any sign the player is actively using Street Intel — a panel view or a
   // resolved attempt — just to arm background's recurring poll (see background/
   // features/streetIntel) the first time it's needed. Carries no data of its own;

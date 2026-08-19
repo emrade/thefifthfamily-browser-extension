@@ -31,6 +31,7 @@ export function parseSmugglingV2PanelRegex(responseText: string): SmugglingV2Sna
     destinations: parseDestinations(html),
     assignedCourier: parseAssignedCourier(html),
     dailyProfitCapRemaining: parseDailyCapRemaining(html),
+    hiddenCargo: parseHiddenCargo(html),
   };
 }
 
@@ -194,4 +195,15 @@ function parseDailyCapRemaining(html: string): number | null {
   const window = html.slice(idx, idx + 800);
   const match = window.match(/\$([\d,]+)\s*left/);
   return match ? numberFrom(match[1]) : null;
+}
+
+/** Reads "Hidden Cargo" — the same account-wide stash cap the DOM adapter reads,
+ *  here via a bounded window rather than a scoped element lookup. Scales with
+ *  player level, so read fresh each time rather than assumed constant. */
+function parseHiddenCargo(html: string): { current: number; max: number } | null {
+  const idx = html.indexOf('Hidden Cargo');
+  if (idx === -1) return null;
+  const window = html.slice(idx, idx + 300);
+  const match = window.match(/sv2-m-val[^>]*>\s*(\d+)\s*<span[^>]*>\s*\/\s*(\d+)/);
+  return match ? { current: Number(match[1]), max: Number(match[2]) } : null;
 }

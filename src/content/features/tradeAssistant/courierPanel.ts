@@ -1,7 +1,8 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, CourierStatus } from '@/shared/types';
 
 /**
@@ -111,6 +112,10 @@ const PANEL_CSS = `
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
 let running = false;
+// Cleared at the start of each run, appended to live as `courier-run-progress`
+// broadcasts arrive — see petCourier.ts's `emitProgress`. Same "live view, final
+// summary takes over once resolved" split as the popup's Couriers tab.
+let liveLines: string[] = [];
 
 function renderSummary(run: CourierRunSummary | null): string {
   if (!run) return '<div class="ff-cp-row">No runs yet.</div>';
@@ -146,6 +151,11 @@ function renderSummary(run: CourierRunSummary | null): string {
   return parts.join('');
 }
 
+function renderLive(): string {
+  if (liveLines.length === 0) return '<div class="ff-cp-row">Starting…</div>';
+  return liveLines.map((line) => `<div class="ff-cp-row">${line}</div>`).join('');
+}
+
 async function refresh() {
   if (!panelEl) return;
   const rosterEl = panelEl.querySelector('.ff-cp-roster');
@@ -162,14 +172,16 @@ async function refresh() {
 async function handleRun() {
   if (!panelEl || running) return;
   running = true;
+  liveLines = [];
   const btn = panelEl.querySelector<HTMLButtonElement>('.ff-cp-run');
+  const summaryEl = panelEl.querySelector('.ff-cp-summary');
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Running…';
   }
+  if (summaryEl) summaryEl.innerHTML = renderLive();
   try {
     const summary = (await chrome.runtime.sendMessage({ type: 'courier-run-requested' })) as CourierRunSummary;
-    const summaryEl = panelEl.querySelector('.ff-cp-summary');
     if (summaryEl) summaryEl.innerHTML = renderSummary(summary);
     await refresh(); // a run can learn new pets too
   } catch (err) {
@@ -182,6 +194,15 @@ async function handleRun() {
     }
   }
 }
+
+chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
+  if (msg.type !== 'courier-run-progress' || !running || !panelEl) return;
+  const line = describeProgressEvent(msg.event);
+  if (!line) return;
+  liveLines.push(line);
+  const summaryEl = panelEl.querySelector('.ff-cp-summary');
+  if (summaryEl) summaryEl.innerHTML = renderLive();
+});
 
 function setExpanded(next: boolean) {
   expanded = next;

@@ -1,4 +1,4 @@
-import type { CourierRunSummary, PetRosterEntry } from './types';
+import type { CourierProgressEvent, CourierRunSummary, PetRosterEntry } from './types';
 
 /**
  * Display logic shared between the two courier UI surfaces — the popup's Couriers
@@ -28,4 +28,26 @@ export function describeRoster(roster: PetRosterEntry[] | null): string {
     return "0 pets known yet — with all your pets idle, view the Smuggling panel once in-game to populate this.";
   }
   return `${roster.length} pet${roster.length === 1 ? '' : 's'} known: ${roster.map((p) => p.name).join(', ')}`;
+}
+
+/** One line of live progress, shown while a run is in flight — both surfaces
+ *  listen for `courier-run-progress` and render whatever this returns. Null for
+ *  the two bookend events (`started`/`finished`), which exist to toggle a
+ *  "running" state rather than to be shown as their own line. */
+export function describeProgressEvent(event: CourierProgressEvent): string | null {
+  switch (event.kind) {
+    case 'started':
+    case 'finished':
+      return null;
+    case 'drafting':
+      return `Drafting ${event.petName}…`;
+    case 'offloaded':
+      return `Offloaded ${event.petName} — ${formatCourierMoney(event.profit)} profit`;
+    case 'sent':
+      return `Sent ${event.petName} — ${event.qty}× ${event.item} → ${event.destination}`;
+    case 'skipped':
+      return `Skipped ${event.petName} — ${event.reason}`;
+    case 'error':
+      return event.message;
+  }
 }
