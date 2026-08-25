@@ -388,3 +388,77 @@ export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;
 }
+
+/**
+ * One job listed on the Careers panel, as read from the live page — see
+ * `careersPanelParser.ts`. `otEnergyCost`/`otAvailable` reflect a real quirk
+ * confirmed from the panel markup: a job's Overtime button (and its own energy
+ * cost) simply doesn't exist in the HTML until that job reaches rank 2 — a
+ * never-worked job's card has only the normal Work Shift button.
+ */
+export interface CareerCatalogEntry {
+  careerId: number;
+  name: string;
+  energyCost: number;
+  otEnergyCost: number | null;
+  otAvailable: boolean;
+}
+
+/** One accuracy value the auto-runner may submit, and how often relative to the
+ *  others — see `careerAuto/runner.ts`'s weighted pick. Deliberately a short list
+ *  of exact values rather than a random range: every real accuracy this account
+ *  has ever submitted was one of a handful of discrete numbers (the mini-game
+ *  snaps to zones, not continuous 0–100), so a smooth random spread would look
+ *  less natural than picking from the same small set the account already has
+ *  real history for. */
+export interface CareerAccuracyWeight {
+  value: number;
+  weight: number;
+}
+
+/** User-configured — read/written directly by the popup, same as
+ *  `NotificationPreferences`/`PageFeaturePreferences`. `energyCost`/`otEnergyCost`/
+ *  `otAvailable` are captured once at job-selection time from a `CareerCatalogEntry`
+ *  rather than re-fetched on every run, since a job's energy cost is not expected
+ *  to change — the popup's "Refresh job list" action re-syncs it if ever needed. */
+export interface CareerAutoConfig {
+  enabled: boolean;
+  careerId: number | null;
+  careerName: string;
+  energyCost: number;
+  otEnergyCost: number | null;
+  otAvailable: boolean;
+  accuracyWeights: CareerAccuracyWeight[];
+}
+
+/** What one automated shift actually did — the background-owned counterpart to
+ *  `CourierRunSummary`, shown in the Career Auto popup tab as "last shift." */
+export interface CareerShiftResult {
+  timestamp: number;
+  careerId: number;
+  careerName: string;
+  overtime: boolean;
+  accuracy: number;
+  tier: string;
+  tierLabel: string;
+  cash: number;
+  xp: number;
+  promoted: boolean;
+  leveledUp: boolean;
+  rankName: string;
+}
+
+/**
+ * Background-owned runtime state for the career auto-runner — distinct from
+ * `CareerAutoConfig` (what the player chose) the same way `CourierRunSummary`
+ * is distinct from a settings object. `nextEligibleAt` is this feature's own
+ * tracking of the job's cooldown, seeded only from `cooldown_seconds` on a
+ * response to a call *this automation* made — see `runner.ts`'s note on the
+ * residual risk of that going stale if the same job is also run manually.
+ */
+export interface CareerAutoStatus {
+  lastShift: CareerShiftResult | null;
+  nextEligibleAt: number | null;
+  pausedReason: 'fired' | 'error' | null;
+  pausedAt: number | null;
+}

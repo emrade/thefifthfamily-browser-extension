@@ -13,6 +13,8 @@ export const STORAGE_KEYS = {
   PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
   REQUEST_LOG_PREFERENCES: 'ff_request_log_preferences',
   LAST_COURIER_RUN: 'ff_last_courier_run',
+  CAREER_AUTO_CONFIG: 'ff_career_auto_config',
+  CAREER_AUTO_STATUS: 'ff_career_auto_status',
 } as const;
 
 export const ALARM_NAMES = {
@@ -20,6 +22,7 @@ export const ALARM_NAMES = {
   MARKET_POLL: 'ff-market-poll',
   STREET_INTEL_POLL: 'ff-street-intel-poll',
   REQUEST_LOG_SWEEP: 'ff-request-log-sweep',
+  CAREER_AUTO: 'ff-career-auto',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -164,3 +167,33 @@ export const SEED_DISTRICTS: District[] = [
 // see docs/trade-assistant-plan.md "Travel Arrival Notification".
 export const ARRIVAL_CONFIRM_RETRIES = 3;
 export const ARRIVAL_CONFIRM_RETRY_DELAY_MS = 5_000;
+
+// --- Career auto-runner -------------------------------------------------------
+//
+// How long to wait before re-checking eligibility when the last check found the
+// account simply not ready yet — not enough energy, or travelling/jailed/
+// hospitalized — none of which resolve on a fixed schedule the way a market
+// shift or a cooldown timer does, so this is a plain re-poll interval rather
+// than something derived from a server-provided countdown.
+export const CAREER_AUTO_FALLBACK_INTERVAL_MS = 2 * 60_000;
+
+// Small buffer added after a tracked cooldown's expiry before the next
+// attempt fires, same reasoning as MARKET_POLL_BUFFER_MS — guards against
+// firing a few hundred ms early on clock skew and getting an ordinary
+// rejection back for it.
+export const CAREER_AUTO_BUFFER_MS = 5_000;
+
+// Derived from this account's real `career.php` history (see
+// docs/career-auto-plan.md): every accuracy value it has ever submitted was
+// one of exactly three numbers — 95 (76 times, "perfect"), 70 (16 times,
+// "good"), 35 (once, "miss") — never anything in between. The mini-game
+// appears to snap to discrete zones, not continuous 0-100 precision, so a
+// smoothly-randomized value would look less natural than picking from the
+// same small set the account already has genuine history for. 35 ("miss") is
+// left out on purpose — there's no reason to deliberately replicate a bad
+// outcome — leaving a weighted pick between the other two, matching their
+// real ~82/17 split.
+export const CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS = [
+  { value: 95, weight: 85 },
+  { value: 70, weight: 15 },
+];

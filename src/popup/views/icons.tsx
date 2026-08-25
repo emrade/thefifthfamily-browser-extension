@@ -60,6 +60,16 @@ export function ArchiveIcon() {
   );
 }
 
+export function BriefcaseIcon() {
+  return (
+    <svg {...commonProps}>
+      <rect x="2" y="7" width="20" height="13" rx="2" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+    </svg>
+  );
+}
+
 export function SettingsIcon() {
   return (
     <svg {...commonProps}>

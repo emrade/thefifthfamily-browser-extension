@@ -1,8 +1,31 @@
-import type { CourierRunSummary, FightClubFilterPrefs, FightClubHeroStats, LastSmugglingContext, PendingCustoms, PendingTravel, PlayerStatsSnapshot } from './types';
-import { STORAGE_KEYS } from './constants';
+import type {
+  CareerAutoConfig,
+  CareerAutoStatus,
+  CourierRunSummary,
+  FightClubFilterPrefs,
+  FightClubHeroStats,
+  LastSmugglingContext,
+  PendingCustoms,
+  PendingTravel,
+  PlayerStatsSnapshot,
+} from './types';
+import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
+
+// No job selected yet — the popup's job picker is what actually populates
+// careerId/careerName/energyCost/otEnergyCost/otAvailable, from a live
+// CareerCatalogEntry, the first time the player picks one.
+const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
+  enabled: false,
+  careerId: null,
+  careerName: '',
+  energyCost: 0,
+  otEnergyCost: null,
+  otAvailable: false,
+  accuracyWeights: CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
+};
 
 async function get<T>(key: string, fallback: T): Promise<T> {
   const result = await chrome.storage.local.get(key);
@@ -67,6 +90,21 @@ export const storage = {
 
   getLastCourierRun: () => get<CourierRunSummary | null>(STORAGE_KEYS.LAST_COURIER_RUN, null),
   setLastCourierRun: (v: CourierRunSummary) => set(STORAGE_KEYS.LAST_COURIER_RUN, v),
+
+  // Merge-with-defaults, same reasoning as notification/page-feature prefs — a
+  // config field added in a later version (e.g. a new accuracy weight) should
+  // still resolve for an existing install rather than coming back undefined.
+  getCareerAutoConfig: async (): Promise<CareerAutoConfig> => {
+    const stored = await get<Partial<CareerAutoConfig>>(STORAGE_KEYS.CAREER_AUTO_CONFIG, {});
+    return { ...DEFAULT_CAREER_AUTO_CONFIG, ...stored };
+  },
+  setCareerAutoConfig: (v: CareerAutoConfig) => set(STORAGE_KEYS.CAREER_AUTO_CONFIG, v),
+
+  // Background-owned runtime state (last shift, tracked cooldown, pause reason)
+  // — simple nullable, same as `getLastCourierRun`, not merged with defaults
+  // since there's no "default" shift result to fall back to.
+  getCareerAutoStatus: () => get<CareerAutoStatus | null>(STORAGE_KEYS.CAREER_AUTO_STATUS, null),
+  setCareerAutoStatus: (v: CareerAutoStatus) => set(STORAGE_KEYS.CAREER_AUTO_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

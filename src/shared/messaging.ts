@@ -92,6 +92,12 @@ export type ExtensionMessage =
   // the poll re-fetches the panel itself on every cycle rather than working off
   // whatever this particular view happened to show.
   | { type: 'street-intel-viewed'; timestamp: number }
+  // Sent from the popup's Career Auto tab, not a content-script adapter — same
+  // request/response exception as 'courier-run-requested'. Returns a fresh
+  // Promise<CareerCatalogEntry[]> (background fetches+parses the live careers
+  // panel on every call rather than caching it) for the job picker, since this
+  // is a rare, user-initiated action where staleness costs more than the fetch.
+  | { type: 'career-catalog-requested' }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.

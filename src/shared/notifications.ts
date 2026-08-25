@@ -26,6 +26,11 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Street Intel Opportunity',
     description: 'Notify when your cooldown clears and a medium-risk-or-better job is available.',
   },
+  {
+    id: 'careerAutoStopped',
+    label: 'Career Auto Stopped',
+    description: 'Notify when the career auto-runner stops itself, e.g. after getting fired.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

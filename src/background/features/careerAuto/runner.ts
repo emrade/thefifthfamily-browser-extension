@@ -1,0 +1,166 @@
+import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
+import { notify } from '@/shared/notify';
+import { storage } from '@/shared/storage';
+import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
+import { SystemicActionError, fetchLiveStatus, postAction } from '../../gameAction';
+import type { CareerAccuracyWeight, CareerAutoConfig } from '@/shared/types';
+
+const FEATURE_KEY = 'careerAuto';
+
+/**
+ * Schedules the next eligibility check. Given a known cooldown expiry, aligns to
+ * it plus a small buffer — same pattern as `marketPoller.scheduleNextPoll`
+ * aligning to `marketShiftAt`. Given `null` (not enough energy yet, or no
+ * cooldown tracked at all — e.g. right after being enabled), falls back to a
+ * plain re-poll interval, since neither of those resolve on their own schedule
+ * the way a cooldown timer does.
+ */
+export function scheduleNextCheck(nextEligibleAt: number | null): void {
+  const when = nextEligibleAt !== null ? nextEligibleAt + CAREER_AUTO_BUFFER_MS : Date.now() + CAREER_AUTO_FALLBACK_INTERVAL_MS;
+  chrome.alarms.create(ALARM_NAMES.CAREER_AUTO, { when });
+}
+
+export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
+  if (alarm.name !== ALARM_NAMES.CAREER_AUTO) return;
+  await runIfEligible();
+}
+
+/**
+ * Reacts to the popup flipping `enabled`/switching jobs — called from
+ * background/index.ts's `chrome.storage.onChanged` listener. Toggling off
+ * clears the alarm immediately, so nothing fires after the switch is off, no
+ * matter where in its own cycle a stale alarm might already be. Toggling on (or
+ * changing the selected job) schedules an immediate eligibility check rather
+ * than waiting for whatever's left of some earlier schedule.
+ */
+export function onConfigChanged(config: CareerAutoConfig): void {
+  if (!config.enabled || config.careerId == null) {
+    chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
+    return;
+  }
+  scheduleNextCheck(null);
+}
+
+/** Weighted pick over the small set of discrete accuracy values the account has
+ *  real history for — see `CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS`'s comment for
+ *  why this isn't a smooth random range. Falls back to the first entry's value
+ *  if the weight list is ever empty (shouldn't happen — the default always has
+ *  entries — but a config field is user-editable storage, not a type-checked
+ *  literal, so this doesn't assume it stayed well-formed). */
+function pickAccuracy(weights: CareerAccuracyWeight[]): number {
+  const total = weights.reduce((sum, w) => sum + w.weight, 0);
+  if (total <= 0) return weights[0]?.value ?? 95;
+
+  let roll = Math.random() * total;
+  for (const w of weights) {
+    roll -= w.weight;
+    if (roll <= 0) return w.value;
+  }
+  return weights[weights.length - 1].value;
+}
+
+async function pause(reason: 'fired' | 'error', message: string): Promise<void> {
+  const config = await storage.getCareerAutoConfig();
+  await storage.setCareerAutoConfig({ ...config, enabled: false });
+
+  const status = await storage.getCareerAutoStatus();
+  await storage.setCareerAutoStatus({
+    lastShift: status?.lastShift ?? null,
+    nextEligibleAt: null,
+    pausedReason: reason,
+    pausedAt: Date.now(),
+  });
+
+  chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
+
+  await notify('careerAutoStopped', {
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: 'Career auto-runner stopped',
+    message,
+  });
+}
+
+export async function runIfEligible(): Promise<void> {
+  const config = await storage.getCareerAutoConfig();
+  if (!config.enabled || config.careerId == null) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
+
+  const status = await fetchLiveStatus();
+  if (!status) {
+    scheduleNextCheck(null); // couldn't read live state — try again on the fallback cadence rather than going dormant
+    return;
+  }
+
+  // Same three gates `marketPoller.isSafeToPoll` uses, for the identical reason
+  // — the action is likely to fail or be meaningless in any of these states.
+  if (status.travelling || status.jailed || status.hospitalized) {
+    scheduleNextCheck(null);
+    return;
+  }
+
+  const overtime = config.otAvailable && config.otEnergyCost != null && status.energy >= config.otEnergyCost;
+  const canRunNormal = status.energy >= config.energyCost;
+  if (!overtime && !canRunNormal) {
+    scheduleNextCheck(null); // not enough energy yet — energy regenerates on its own, so just check again later
+    return;
+  }
+
+  const accuracy = pickAccuracy(config.accuracyWeights);
+
+  let resp: any;
+  try {
+    resp = await postAction('/actions/career.php', {
+      career_id: config.careerId,
+      accuracy,
+      overtime: overtime ? 1 : 0,
+    });
+  } catch (err) {
+    recordParseFailure(FEATURE_KEY);
+    const message = err instanceof SystemicActionError ? err.message : String(err);
+    console.error(LOG_PREFIX, 'career auto-runner action failed', err);
+    await pause('error', message);
+    return;
+  }
+
+  // No confirmed example of a real rejection exists for this endpoint (every
+  // captured call so far has been ok:true) — anything other than a clean
+  // ok:true response is unrecognized shape, treated the same conservative way
+  // `SystemicActionError`'s 'shape' kind is treated elsewhere: stop and tell the
+  // player, rather than guess at what changed.
+  if (resp?.ok !== true || typeof resp.cooldown_seconds !== 'number') {
+    recordParseFailure(FEATURE_KEY);
+    await pause('error', `Unexpected response from a career shift${resp?.error ? `: ${resp.error}` : ''} — the game may have changed something.`);
+    return;
+  }
+
+  recordParseSuccess(FEATURE_KEY);
+
+  if (resp.fired === true) {
+    await pause('fired', `Got fired from ${config.careerName} after a fumbled shift. Automation stopped — check the job in-game before re-enabling.`);
+    return;
+  }
+
+  const nextEligibleAt = Date.now() + resp.cooldown_seconds * 1000;
+  await storage.setCareerAutoStatus({
+    lastShift: {
+      timestamp: Date.now(),
+      careerId: config.careerId,
+      careerName: config.careerName,
+      overtime,
+      accuracy,
+      tier: String(resp.tier ?? ''),
+      tierLabel: String(resp.tierLabel ?? ''),
+      cash: Number(resp.cash) || 0,
+      xp: Number(resp.xp) || 0,
+      promoted: Boolean(resp.promoted),
+      leveledUp: Boolean(resp.leveled_up),
+      rankName: String(resp.rank_name ?? ''),
+    },
+    nextEligibleAt,
+    pausedReason: null,
+    pausedAt: null,
+  });
+
+  scheduleNextCheck(nextEligibleAt);
+}

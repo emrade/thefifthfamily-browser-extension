@@ -2,12 +2,15 @@ import { useEffect, useState } from 'preact/hooks';
 import { LiveStats } from './LiveStats';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
-import { ArchiveIcon, CashIcon, ChevronRightIcon, FightClubIcon, SettingsIcon } from './icons';
+import { storage } from '@/shared/storage';
+import type { CareerAutoConfig } from '@/shared/types';
+import { ArchiveIcon, BriefcaseIcon, CashIcon, ChevronRightIcon, FightClubIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenTradeAssistant: () => void;
   onOpenFightClub: () => void;
   onOpenRequestLog: () => void;
+  onOpenCareerAuto: () => void;
   onOpenSettings: () => void;
 }
 
@@ -22,12 +25,23 @@ function since(ms: number | null): string {
 
 export function Home(props: HomeProps) {
   const [health, setHealth] = useState<FeatureHealthMap>({});
+  const [careerAutoConfig, setCareerAutoConfig] = useState<CareerAutoConfig | null>(null);
 
   useEffect(() => {
     readFeatureHealth()
       .then(setHealth)
       .catch((err) => console.error(LOG_PREFIX, 'failed to read feature health', err));
+    storage
+      .getCareerAutoConfig()
+      .then(setCareerAutoConfig)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read career auto config', err));
   }, []);
+
+  const careerAutoStatus = !careerAutoConfig || careerAutoConfig.careerId == null
+    ? 'Not set up'
+    : careerAutoConfig.enabled
+      ? `Running ${careerAutoConfig.careerName}`
+      : 'Off';
 
   // Only broken features are listed. A healthy extension shows nothing here — this
   // is meant to be invisible until the day the game changes underneath it, which
@@ -81,6 +95,15 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">HTTP Archive</div>
           <div class="ff-nav-row__status">Raw request capture and exports</div>
+        </div>
+        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      </button>
+
+      <button class="ff-nav-row" onClick={props.onOpenCareerAuto}>
+        <div class="ff-nav-row__icon"><BriefcaseIcon /></div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Career Auto</div>
+          <div class="ff-nav-row__status">{careerAutoStatus}</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

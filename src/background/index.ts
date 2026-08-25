@@ -3,6 +3,7 @@ import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petC
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
 import { handleMessage as handleStreetIntel, handlePollAlarm as handleStreetIntelPollAlarm } from './features/streetIntel';
+import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { enqueueRecord } from '@/shared/requestLog/queue';
@@ -28,6 +29,10 @@ ensureSeedData().catch((err) => console.error(LOG_PREFIX, 'ensureSeedData failed
 // Same "runs on every wake, cheap no-op after the first" shape as ensureSeedData —
 // it only creates the alarm if one isn't already registered.
 ensureSweepAlarm().catch((err) => console.error(LOG_PREFIX, 'ensureSweepAlarm failed', err));
+
+// Re-arms the career auto-runner's alarm (if enabled) and starts watching for
+// config changes from the popup — see careerAuto/index.ts.
+initCareerAuto();
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
@@ -80,6 +85,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     );
   }
 
+  // Sent by the popup's Career Auto job picker — a live network fetch+parse
+  // only background can do, so unlike the rest of that tab's config (which the
+  // popup reads/writes directly via storage.ts) this one has to be message-based.
+  if (msg.type === 'career-catalog-requested') {
+    return fetchCareerCatalog();
+  }
+
   // Archive writes are split off onto their own queue rather than joining the
   // ordered feature queue above. They need serializing among themselves (the shape
   // index does a read-then-write), but they must not sit in front of feature work:
@@ -113,4 +125,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleMarketPollAlarm failed', err));
   handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
   handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
+  handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));
 });
