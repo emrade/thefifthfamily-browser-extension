@@ -97,7 +97,10 @@ function parseBlackMarket(html: string): BlackMarketItem[] {
 
   const chunks = html.slice(gridStart).split('sv2-card"').slice(1);
   for (const chunk of chunks) {
-    const idMatch = chunk.match(/Game\.buyContraband\((\d+)\)/);
+    // Not anchored to a closing paren — `Game.buyContraband` now takes extra
+    // trailing args (district index, quantity) beyond the item id, e.g.
+    // `Game.buyContraband(14, 0, 25)`, so only the leading digits are captured.
+    const idMatch = chunk.match(/Game\.buyContraband\((\d+)/);
     if (!idMatch) continue; // locked cards carry no buy handler at all
 
     const nameMatch = chunk.match(/sv2-card-name">([^<]+)</);
