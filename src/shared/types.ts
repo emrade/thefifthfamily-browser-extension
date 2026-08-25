@@ -461,4 +461,12 @@ export interface CareerAutoStatus {
   nextEligibleAt: number | null;
   pausedReason: 'fired' | 'error' | null;
   pausedAt: number | null;
+  /** Count of shifts run since `shiftsTodayDate`, a local calendar-day key
+   *  (`YYYY-M-D`) — not UTC, so it resets at the player's own midnight, not an
+   *  arbitrary one. Rolling the day over is the *reader's* job, not something
+   *  written proactively at midnight: both `runner.ts` (about to record a new
+   *  shift) and the popup (about to display the count) compare this key against
+   *  today's before trusting `shiftsToday`, and treat a stale key as 0. */
+  shiftsToday: number;
+  shiftsTodayDate: string;
 }

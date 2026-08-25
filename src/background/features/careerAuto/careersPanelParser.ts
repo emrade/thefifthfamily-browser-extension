@@ -10,17 +10,29 @@ import type { CareerCatalogEntry } from '@/shared/types';
  * — splitting on that id attribute isolates each card's markup with no need to
  * balance tags, exactly like the black-market grid's `.sv2-card` cards.
  *
- * Two things confirmed directly against a real captured panel, not assumed:
- * - A job's Overtime button (`cv2-ot-btn`, carrying its own `data-cost`) simply
- *   doesn't exist in the markup until that job reaches rank 2 — a never-worked
- *   job's card has only the normal Work Shift button. `otAvailable`/
- *   `otEnergyCost` reflect that directly rather than assuming OT is always an
- *   option.
- * - A level-gated card (player level below the job's requirement) renders
- *   `<button class="cv2-work-btn" disabled>...Lv N Required</button>` — no
- *   `onclick`, no `data-cost`, no id reference in it at all. Presence of
- *   `Game.doCareer(<id>)` is what distinguishes a card that's actually workable
- *   right now from one that only exists in the catalog.
+ * A job's action button is actually one of *three* different variants,
+ * confirmed against real captures, not assumed:
+ * - Workable now: `<button class="work-btn cv2-work-btn" data-cost="N" ...
+ *   onclick="Game.doCareer(id)">`, plus a sibling `cv2-ot-btn` with its own
+ *   `data-cost` once the job has reached rank 2 (a never-worked job's card has
+ *   only the normal button — no `cv2-ot-btn` at all below rank 2).
+ * - Level-gated (player level below the job's requirement): `<button
+ *   class="cv2-work-btn" disabled>...Lv N Required</button>` — no `onclick`, no
+ *   `data-cost`, no id in it at all.
+ * - **On cooldown** (confirmed from a real capture taken 2 seconds after this
+ *   account's own `career.php` call): the button row is replaced *entirely* by
+ *   `<button class="cooldown-btn"><span class="countdown" ...>04:58</span></button>`
+ *   — no `onclick`, no `data-cost`, nothing distinguishing it from the
+ *   level-gated case by button markup alone. A job on cooldown is exactly a job
+ *   this feature has to pick from (it's the account's *own* selected job,
+ *   immediately after every shift it runs) — so "has a `doCareer` handler right
+ *   now" is the wrong signal for "is this a legitimate choice", and using it
+ *   made a job vanish from the picker the instant it went on cooldown.
+ *
+ * Level-locked is instead detected from the fixed "Lv N Required" copy that
+ * only that state renders, and energy costs are read from the stat tiles/OT
+ * summary row that stay present in the card regardless of which button variant
+ * is showing, rather than from the (sometimes-absent) button attributes.
  */
 export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] {
   const envelope = unwrapPanelEnvelope(responseText);
@@ -39,25 +51,25 @@ export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] 
     const careerId = Number(idMatch[1]);
     if (byId.has(careerId)) continue;
 
-    // No `Game.doCareer(id)` handler at all means this card is level-locked —
-    // not offered as a choice, since attempting it would fail regardless of
-    // what career_id/accuracy/overtime the automation sent.
-    if (!chunk.includes(`Game.doCareer(${careerId})`)) continue;
+    if (/Lv \d+ Required/.test(chunk)) continue; // level-locked — not a real choice
 
     const nameMatch = chunk.match(/cv2-card-name">([^<]+)</);
     if (!nameMatch) continue;
 
-    const energyMatch = chunk.match(/class="work-btn cv2-work-btn"[^>]*?data-cost="(\d+)"/);
+    const energyMatch = chunk.match(/cv2-stat-val[^>]*>(\d+)<\/div><div class="cv2-stat-lbl">Energy<\/div>/);
     if (!energyMatch) continue;
 
-    const otMatch = chunk.match(/class="cv2-ot-btn"[^>]*?data-cost="(\d+)"/);
+    // Presence of the row itself (not just a successful cost match within it)
+    // is what "OT unlocked for this job" actually means — see the class doc
+    // comment above.
+    const otMatch = chunk.match(/cv2-ot-row">[\s\S]*?OT:\s*(\d+)E/);
 
     byId.set(careerId, {
       careerId,
       name: nameMatch[1].trim(),
       energyCost: Number(energyMatch[1]),
       otEnergyCost: otMatch ? Number(otMatch[1]) : null,
-      otAvailable: otMatch != null,
+      otAvailable: chunk.includes('cv2-ot-row'),
     });
   }
 

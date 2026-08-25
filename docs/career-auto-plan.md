@@ -49,8 +49,22 @@ per job rather than assuming OT is always an option.
 A level-gated job (player level below what the job requires) renders as
 `<button class="cv2-work-btn" disabled>...Lv N Required</button>` — no `onclick`, no
 `data-cost`, no career id referenced in it at all — verified against `career-card-97`
-("Plant Manager", "Lv 90 Required"). Presence of `Game.doCareer(<id>)` in a card's
-markup is what the catalog parser uses to decide a job is actually pickable right now.
+("Plant Manager", "Lv 90 Required"). The catalog parser uses this "Lv N Required" copy
+to decide a job is level-locked.
+
+**Post-ship correction**, found from a real bug report: the button isn't only ever
+"normal" or "level-locked" — there's a *third* variant, confirmed from a capture taken
+2 seconds after this account's own `career.php` call: while genuinely on cooldown, the
+server replaces the entire button row with `<button class="cooldown-btn">...04:58</span>
+</button>` — no `onclick`, no `data-cost`, indistinguishable from the level-locked case
+by button markup alone. The catalog parser's first version keyed "is this pickable" off
+`Game.doCareer(<id>)` being present, which made a job disappear from the picker the
+instant it went on cooldown — i.e. right after every shift the automation itself ran,
+which is exactly when the player is most likely to be looking at the dropdown. Fixed to
+key off the "Lv N Required" text specifically (the one signal unique to the truly-locked
+case) and to read energy costs from the stat tiles / OT summary row instead of the
+button's `data-cost` attributes, since those stay present in the card regardless of
+which button variant is currently showing.
 
 ---
 
@@ -98,10 +112,28 @@ markup is what the catalog parser uses to decide a job is actually pickable righ
 
 5. **Popup UI** (`popup/features/careerAuto/CareerAutoHome.tsx`) — the toggle, a job
    picker (fetched live from background on open, since it needs a real network call the
-   popup itself can't make), and a status block showing the last shift's result and a
-   live countdown to the next one. The status block updates itself via
-   `chrome.storage.onChanged` on the background-owned status key, so it reflects a
-   shift within moments of it happening without polling.
+   popup itself can't make), and a status block showing the last shift's result, a
+   **Shifts Today** count, and the next shift's actual clock time (not just a countdown
+   — e.g. "4:15 PM · in 3:42"), including before the very first shift ever runs (read
+   directly from the real `chrome.alarms` entry, since `nextEligibleAt` doesn't exist
+   until something has actually succeeded to seed it). The status block updates itself
+   via `chrome.storage.onChanged` on the background-owned status key, so it reflects a
+   shift within moments of it happening without polling. Switching jobs is never
+   blocked, including mid-countdown — that's the explicit "grind this one to max rank,
+   then move to the next" use case the feature is for — and doing so clears the old
+   job's leftover countdown immediately rather than leaving it displayed as if the
+   switch hadn't taken effect.
+
+   `Shifts Today` resets at the player's own local midnight, not UTC — both the
+   popup and `runner.ts` compare the stored count's date key against today's before
+   trusting it, so a stale count from a previous day reads as 0 rather than needing a
+   write at the exact moment the day rolls over.
+
+   Enabling automation (or switching jobs) schedules its first check within a few
+   seconds, not the multi-minute fallback interval used for "not eligible yet, try
+   later" — the two are deliberately different delays (see `onConfigChanged` vs.
+   `scheduleNextCheck` in `runner.ts`), since conflating them made flipping the toggle
+   on look like nothing had happened for up to two minutes.
 
 ---
 

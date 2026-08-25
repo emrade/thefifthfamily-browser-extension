@@ -21,6 +21,13 @@ function formatNextRun(nextRunAt: number, now: number): string {
   return `${clock} · in ${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+/** Same local calendar-day key `runner.ts` uses — kept in sync by convention,
+ *  not a shared import (see its own comment on why). */
+function localDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 export function CareerAutoHome() {
   const [config, setConfig] = useState<CareerAutoConfig | null>(null);
   const [status, setStatus] = useState<CareerAutoStatus | null>(null);
@@ -95,6 +102,11 @@ export function CareerAutoHome() {
   // happens, so there's still something to show on a freshly-enabled job.
   const nextRunAt = config?.enabled ? (status?.nextEligibleAt ?? nextAlarmAt) : null;
 
+  // Guarded against the stored date the same way `runner.ts` guards it before
+  // incrementing — otherwise this would keep showing yesterday's count all the
+  // way up until the next shift actually runs and overwrites it.
+  const shiftsToday = status?.shiftsTodayDate === localDateKey() ? status.shiftsToday : 0;
+
   async function saveConfig(next: CareerAutoConfig) {
     setConfig(next);
     await storage.setCareerAutoConfig(next);
@@ -113,11 +125,11 @@ export function CareerAutoHome() {
     }
   }
 
-  function selectJob(careerId: number) {
+  async function selectJob(careerId: number) {
     if (!config) return;
     const entry = catalog.find((c) => c.careerId === careerId);
     if (!entry) return;
-    saveConfig({
+    await saveConfig({
       ...config,
       careerId: entry.careerId,
       careerName: entry.name,
@@ -125,6 +137,18 @@ export function CareerAutoHome() {
       otEnergyCost: entry.otEnergyCost,
       otAvailable: entry.otAvailable,
     });
+    // The tracked cooldown belongs to whichever job was previously selected —
+    // switching jobs is always allowed, including mid-countdown, since that's
+    // exactly the "grind this one to max rank, then move to the next" use case
+    // this feature is for. Without clearing it, the Next Shift tile would keep
+    // showing the old job's leftover countdown until the new job's own first
+    // shift completes and overwrites it, which reads as if the switch hadn't
+    // actually taken effect yet even though it has.
+    if (status?.nextEligibleAt) {
+      const next = { ...status, nextEligibleAt: null };
+      setStatus(next);
+      await storage.setCareerAutoStatus(next);
+    }
   }
 
   if (!loaded || !config) return null;
@@ -214,6 +238,10 @@ export function CareerAutoHome() {
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono" style={{ color: 'var(--ff-purple)' }}>{status.lastShift.xp}</div>
               <div class="ff-stat-tile__label">XP</div>
+            </div>
+            <div class="ff-stat-tile">
+              <div class="ff-stat-tile__value ff-mono">{shiftsToday}</div>
+              <div class="ff-stat-tile__label">Shifts Today</div>
             </div>
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{nextRunAt ? formatNextRun(nextRunAt, now) : '—'}</div>

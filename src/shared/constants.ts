@@ -177,6 +177,13 @@ export const ARRIVAL_CONFIRM_RETRY_DELAY_MS = 5_000;
 // than something derived from a server-provided countdown.
 export const CAREER_AUTO_FALLBACK_INTERVAL_MS = 2 * 60_000;
 
+// How long after the popup writes a config change (enabling, or switching jobs)
+// before the first eligibility check under it fires. Not 0 — a moment's grace
+// so the write has settled before background reacts to it — but short enough
+// to read as "immediate" rather than waiting out the full fallback interval
+// above, which flipping the toggle on very much should not do.
+export const CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+
 // Small buffer added after a tracked cooldown's expiry before the next
 // attempt fires, same reasoning as MARKET_POLL_BUFFER_MS — guards against
 // firing a few hundred ms early on clock skew and getting an ordinary

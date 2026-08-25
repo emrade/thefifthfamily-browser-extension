@@ -1,4 +1,4 @@
-import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS } from '@/shared/constants';
+import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS, CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
@@ -11,10 +11,11 @@ const FEATURE_KEY = 'careerAuto';
 /**
  * Schedules the next eligibility check. Given a known cooldown expiry, aligns to
  * it plus a small buffer — same pattern as `marketPoller.scheduleNextPoll`
- * aligning to `marketShiftAt`. Given `null` (not enough energy yet, or no
- * cooldown tracked at all — e.g. right after being enabled), falls back to a
- * plain re-poll interval, since neither of those resolve on their own schedule
- * the way a cooldown timer does.
+ * aligning to `marketShiftAt`. Given `null` (not enough energy yet, or
+ * travelling/jailed/hospitalized), falls back to a plain re-poll interval, since
+ * none of those resolve on their own schedule the way a cooldown timer does.
+ * Not used for "config just changed" — see `onConfigChanged`, which schedules
+ * its own much shorter delay instead of this one's multi-minute fallback.
  */
 export function scheduleNextCheck(nextEligibleAt: number | null): void {
   const when = nextEligibleAt !== null ? nextEligibleAt + CAREER_AUTO_BUFFER_MS : Date.now() + CAREER_AUTO_FALLBACK_INTERVAL_MS;
@@ -31,15 +32,22 @@ export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
  * background/index.ts's `chrome.storage.onChanged` listener. Toggling off
  * clears the alarm immediately, so nothing fires after the switch is off, no
  * matter where in its own cycle a stale alarm might already be. Toggling on (or
- * changing the selected job) schedules an immediate eligibility check rather
- * than waiting for whatever's left of some earlier schedule.
+ * changing the selected job — the picker is never locked while a cooldown is
+ * counting down, since switching jobs at any time is exactly the "grind this
+ * one to max rank, then move to the next" use case this feature is for)
+ * schedules a near-immediate eligibility check under the new config, deliberately
+ * *not* going through `scheduleNextCheck(null)` — that one's `null` branch is the
+ * multi-minute "not ready yet, try later" fallback, which would make flipping
+ * the toggle on take up to that long to do anything, and would leave whatever
+ * job was previously selected's tracked cooldown displayed as if it still
+ * applied to the new one.
  */
 export function onConfigChanged(config: CareerAutoConfig): void {
   if (!config.enabled || config.careerId == null) {
     chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
     return;
   }
-  scheduleNextCheck(null);
+  chrome.alarms.create(ALARM_NAMES.CAREER_AUTO, { when: Date.now() + CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
 }
 
 /** Weighted pick over the small set of discrete accuracy values the account has
@@ -60,6 +68,15 @@ function pickAccuracy(weights: CareerAccuracyWeight[]): number {
   return weights[weights.length - 1].value;
 }
 
+/** Local calendar-day key (not UTC) — resets `shiftsToday` at the player's own
+ *  midnight, not an arbitrary one. Same shape as analytics/timeSeries.ts's own
+ *  private `dayKey`, kept separately rather than shared — a two-line date key
+ *  isn't worth a cross-feature import for. */
+function localDateKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
 async function pause(reason: 'fired' | 'error', message: string): Promise<void> {
   const config = await storage.getCareerAutoConfig();
   await storage.setCareerAutoConfig({ ...config, enabled: false });
@@ -70,6 +87,8 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
     nextEligibleAt: null,
     pausedReason: reason,
     pausedAt: Date.now(),
+    shiftsToday: status?.shiftsToday ?? 0,
+    shiftsTodayDate: status?.shiftsTodayDate ?? localDateKey(),
   });
 
   chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
@@ -142,6 +161,10 @@ export async function runIfEligible(): Promise<void> {
   }
 
   const nextEligibleAt = Date.now() + resp.cooldown_seconds * 1000;
+  const today = localDateKey();
+  const previousStatus = await storage.getCareerAutoStatus();
+  const shiftsToday = previousStatus?.shiftsTodayDate === today ? previousStatus.shiftsToday + 1 : 1;
+
   await storage.setCareerAutoStatus({
     lastShift: {
       timestamp: Date.now(),
@@ -160,6 +183,8 @@ export async function runIfEligible(): Promise<void> {
     nextEligibleAt,
     pausedReason: null,
     pausedAt: null,
+    shiftsToday,
+    shiftsTodayDate: today,
   });
 
   scheduleNextCheck(nextEligibleAt);
