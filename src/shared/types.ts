@@ -342,8 +342,8 @@ export interface SmugglingV2Snapshot {
   hiddenCargo: { current: number; max: number } | null;
 }
 
-/** What one click of "Run" actually did — shown in the popup and kept as "last run"
- *  even after the popup closes and reopens. */
+/** What one click of "Run" actually did — shown in the in-page floating panel and
+ *  kept as "last run" even after the panel closes and reopens. */
 export interface CourierRunSummary {
   timestamp: number;
   offloaded: { petName: string; profit: number }[];
@@ -367,7 +367,7 @@ export interface CourierRunSummary {
  * `messaging.ts`'s `courier-run-progress`. Purely a UI convenience: the
  * authoritative record is still the final `CourierRunSummary` a run resolves
  * with, which is what actually gets persisted. A dropped or missed progress
- * event (e.g. the popup wasn't open to hear it) costs nothing but a moment of
+ * event (e.g. the panel wasn't open to hear it) costs nothing but a moment of
  * stale display — nothing here is relied on for correctness.
  */
 export type CourierProgressEvent =
@@ -380,10 +380,10 @@ export type CourierProgressEvent =
   | { kind: 'error'; message: string }
   | { kind: 'finished' };
 
-/** Read-only snapshot for a UI surface to render without triggering a run — the
- *  popup's Couriers tab reads `db.petRoster`/`storage` directly (same origin,
- *  already has access), but the in-page floating panel runs on the *game's*
- *  origin and has to ask background for this the same way it asks for a run. */
+/** Read-only snapshot for the in-page floating panel to render without
+ *  triggering a run — the panel runs on the *game's* origin, not the
+ *  extension's, so it can't reach `db.petRoster`/`storage` directly and has to
+ *  ask background for this the same way it asks for a run. */
 export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;

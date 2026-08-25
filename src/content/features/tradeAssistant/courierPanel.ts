@@ -7,15 +7,15 @@ import type { CourierRunSummary, CourierStatus } from '@/shared/types';
 
 /**
  * A floating panel on the live Smuggling page — collapsed to a small badge by
- * default, expanding on click into the same Run button + last-run summary the
- * popup's Couriers tab shows. Exists because the popup is a poor fit for a
- * feature you want to trigger repeatedly while looking at the game: it's a
- * separate surface that closes the moment it loses focus, so reaching it means
- * re-navigating through Trade Assistant → Couriers every time.
+ * default, expanding on click into a Run button + last-run summary. This is the
+ * only surface for triggering a courier run (a popup Couriers tab existed
+ * briefly but was removed: a popup is a poor fit for a feature you want to
+ * trigger repeatedly while looking at the game, since it's a separate surface
+ * that closes the moment it loses focus).
  *
- * Runs entirely over `chrome.runtime.sendMessage` — the same 'courier-run-requested'/
- * 'courier-offload-requested'/'courier-status-requested' messages the popup uses —
- * so this adds no new execution path, only a second place to trigger the same ones.
+ * Runs entirely over `chrome.runtime.sendMessage`'s 'courier-run-requested'/
+ * 'courier-offload-requested'/'courier-status-requested' messages, answered by
+ * the background service worker in petCourier.ts.
  *
  * The panel's own visibility (not just its expand/collapse state) tracks whether
  * Smuggling is actually the panel currently on screen — the game is a single-page
@@ -126,8 +126,8 @@ let expanded = false;
 // rather than two independent booleans.
 let activeAction: 'run' | 'offload' | null = null;
 // Cleared at the start of each run, appended to live as `courier-run-progress`
-// broadcasts arrive — see petCourier.ts's `emitProgress`. Same "live view, final
-// summary takes over once resolved" split as the popup's Couriers tab.
+// messages arrive — see petCourier.ts's `emitProgress`. Replaced wholesale by
+// the final summary once the run's response resolves.
 let liveLines: string[] = [];
 
 function renderSummary(run: CourierRunSummary | null): string {

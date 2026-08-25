@@ -9,16 +9,27 @@ import { parseSmugglingV2PanelRegex } from './smugglingV2RegexParser';
 import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
- * Broadcasts one step of the run as it happens, so a UI surface watching (the
- * popup, the in-page floating panel) can show progress live instead of going
- * quiet until the whole batch finishes and the final `CourierRunSummary`
- * resolves. Best-effort and fire-and-forget on purpose — nobody may be
- * listening (popup closed, panel not on screen), and that's fine, since nothing
+ * Set for the duration of one run, to the tab that asked for it — see
+ * `runCourierBatch`/`runOffloadBatch`. `emitProgress` needs it because
+ * `chrome.tabs.sendMessage` (unlike `chrome.runtime.sendMessage`) is targeted:
+ * it's the only way to reach a *content script*'s `runtime.onMessage` listener,
+ * which is what the in-page floating panel is. `chrome.runtime.sendMessage`
+ * only reaches other extension pages (popup, options) — never content scripts —
+ * which is why progress broadcast that way silently never arrived at the panel.
+ */
+let progressTabId: number | undefined;
+
+/**
+ * Broadcasts one step of the run as it happens, so the in-page floating panel
+ * can show progress live instead of going quiet until the whole batch finishes
+ * and the final `CourierRunSummary` resolves. Best-effort and fire-and-forget
+ * on purpose — the panel may not be on screen, and that's fine, since nothing
  * here is relied on for correctness; the final summary is still the record of
  * what actually happened.
  */
 function emitProgress(event: CourierProgressEvent): void {
-  chrome.runtime.sendMessage({ type: 'courier-run-progress', event }).catch(() => {});
+  if (progressTabId == null) return;
+  chrome.tabs.sendMessage(progressTabId, { type: 'courier-run-progress', event }).catch(() => {});
 }
 
 /** Below this, further sales wouldn't pay out anyway — not worth spending on cargo
@@ -268,9 +279,13 @@ async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
   }
 }
 
-/** Persists the summary regardless of which path produced it, so a reopened popup
- *  can show "last run" even if the run happened (or crashed) while it was closed. */
-export async function runCourierBatch(): Promise<CourierRunSummary> {
+/** Persists the summary regardless of which path produced it, so a reopened panel
+ *  can show "last run" even if the run happened (or crashed) while it was closed.
+ *  `tabId` (the tab that asked for the run, from the message `sender`) is stashed
+ *  in `progressTabId` for the duration so `emitProgress` knows where to send
+ *  live updates — see its comment. */
+export async function runCourierBatch(tabId?: number): Promise<CourierRunSummary> {
+  progressTabId = tabId;
   emitProgress({ kind: 'started' });
   const summary = await executeCourierBatch();
   // Skipped when the session/CSRF itself is already known broken — the deposit
@@ -285,7 +300,8 @@ export async function runCourierBatch(): Promise<CourierRunSummary> {
  *  arrived and banks the proceeds, without touching the buy/load/depart cycle.
  *  Shares `executeCourierBatch`'s summary shape (mostly empty here) so both
  *  surfaces can render either kind of run through the same display code. */
-export async function runOffloadBatch(): Promise<CourierRunSummary> {
+export async function runOffloadBatch(tabId?: number): Promise<CourierRunSummary> {
+  progressTabId = tabId;
   emitProgress({ kind: 'started' });
   const summary = await executeOffloadBatch();
   if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);

@@ -40,7 +40,7 @@ ensureSweepAlarm().catch((err) => console.error(LOG_PREFIX, 'ensureSweepAlarm fa
 // the next message's handler can't start until the previous one's has fully settled.
 let messageQueue: Promise<void> = Promise.resolve();
 
-chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
+chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Cheap, high-frequency, and needed immediately by whatever background call comes
   // next — handled outside both queues rather than adding queue latency to every
   // captured request for something that's just a cache write.
@@ -54,19 +54,21 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
     return false;
   }
 
-  // Sent by the popup, not a content-script adapter — the listener returns a
-  // Promise here (rather than `false`) specifically for this message, so the popup
-  // can `await chrome.runtime.sendMessage(...)` and get the run summary directly,
-  // instead of polling storage for a result that a closed popup would miss anyway.
+  // Sent by the in-page floating panel — the listener returns a Promise here
+  // (rather than `false`) so the panel can `await chrome.runtime.sendMessage(...)`
+  // and get the run summary directly. `sender.tab?.id` is threaded through so
+  // `runCourierBatch` knows which tab's panel to send live progress updates to
+  // (see `emitProgress` in petCourier.ts) — `chrome.runtime.sendMessage` alone
+  // never reaches a content script, only `chrome.tabs.sendMessage(tabId, ...)` does.
   if (msg.type === 'courier-run-requested') {
-    return runCourierBatch();
+    return runCourierBatch(sender.tab?.id);
   }
 
   // Same request/response shape as 'courier-run-requested' above — a lighter
   // action for a visit where the player just wants arrived shipments collected
   // and cash banked, without committing to a full buy/load/depart cycle.
   if (msg.type === 'courier-offload-requested') {
-    return runOffloadBatch();
+    return runOffloadBatch(sender.tab?.id);
   }
 
   // Read-only counterpart, for a UI surface (the in-page floating panel) that

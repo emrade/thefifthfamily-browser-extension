@@ -1,11 +1,10 @@
 import type { CourierProgressEvent, CourierRunSummary, PetRosterEntry } from './types';
 
 /**
- * Display logic shared between the two courier UI surfaces — the popup's Couriers
- * tab (`Courier.tsx`, Preact) and the in-page floating panel (`courierPanel.ts`,
- * plain DOM) — both render the exact same `CourierRunSummary`/roster, just through
- * different rendering paths, so the *data* (which text goes with which reason, how
- * a dollar amount is formatted) has no reason to be typed out twice.
+ * Display logic for the courier UI — the in-page floating panel
+ * (`courierPanel.ts`, plain DOM) renders `CourierRunSummary`/roster data through
+ * this, so the *data* (which text goes with which reason, how a dollar amount is
+ * formatted) lives in one place rather than inline in the panel's render code.
  */
 
 export function formatCourierMoney(n: number): string {
@@ -14,8 +13,8 @@ export function formatCourierMoney(n: number): string {
 
 /** A shipment's cargo can be mixed — draining pre-existing stash into it ahead of
  *  any new buying (see petCourier.ts) means "what got loaded" is a list, not
- *  always a single item — formatted here once rather than in each of the three
- *  places that show it (live progress, popup summary, panel summary). */
+ *  always a single item — formatted here once rather than in each of the two
+ *  places that show it (live progress, panel summary). */
 export function describeItems(items: { item: string; qty: number }[]): string {
   return items.map((i) => `${i.qty}× ${i.item}`).join(', ');
 }
