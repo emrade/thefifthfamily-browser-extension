@@ -149,27 +149,84 @@ interface ScoutedChoice {
 }
 
 /**
- * Walks live, affordable candidates in reward÷Stamina value order, scouting
- * each in turn (a real API call, costing that opportunity's own Scout cost)
- * until one's best approach clears `minSuccessPct`, or the list runs out.
- * Stops at the first that clears — spends a little extra Stamina on rejected
- * scouts along the way, but never risks a full attempt's worth of Stamina on
- * a bet below the configured floor.
+ * Selection strategy — three iterations, each corrected by real data:
+ *
+ * 1. **Shipped first**: reward÷Stamina order, first candidate whose best
+ *    approach cleared `minSuccessPct` — optimize for the biggest payout,
+ *    threshold as a safety floor only. Ran for real (2026-08-26) and landed
+ *    2 disasters and a wipeout out of 5 attempts — "biggest card that clears
+ *    50%" kept landing right at the edge of the floor (54%, 61%).
+ * 2. **Corrected to odds-first**: compared against the account owner's own
+ *    ~105 real manual attempts (pre-automation 100MB archive, 2026-08-25),
+ *    specifically the 25 decision cycles where 2+ opportunities were scouted
+ *    before one was attempted. "Highest scouted odds alone" matched 25/25 of
+ *    those; reward÷Stamina matched 0/25; raw EV (odds×reward) matched 6/25.
+ *    Shipped as "pick highest odds, reward only breaks a literal tie."
+ * 3. **Corrected again, same day**: the very first live pick under rule 2
+ *    took a 95%-odds card worth $5,000–$8,700 ("Easy Money") over a
+ *    94%-odds card worth $25,000–$43,700 sitting right next to it ("Union
+ *    Whisper") — a 1-point odds gap costing 5x the reward. Checking the full
+ *    105-attempt history's *reward sizes* (not just which one was chosen)
+ *    showed the account owner's real median pick was $61,750 — under 2% of
+ *    their attempts were as small as Easy Money's range. Rule 2's "25/25"
+ *    fit was real but couldn't distinguish "always chase max odds" from
+ *    "clear a floor, then chase profit," because their history never
+ *    actually contained two options this close on odds with this large a
+ *    reward gap — so rule 2 was unfalsified by their data, not confirmed by
+ *    it, for exactly the case that broke it. Directly asked, the account
+ *    owner confirmed: "aside from odds, I was always looking for best
+ *    profit."
+ *
+ * Retested against the same 25 cycles: filtering to candidates whose best
+ * odds clears `minSuccessPct`, then picking the highest **EV (odds ×
+ * reward)** among those, matches 24/25 (96%) — the one miss is a case where
+ * an 84%-odds/$17k pick beat a 52%-odds/$51k one despite the latter's much
+ * higher EV, so odds still matter even above the floor, just not as the sole
+ * criterion. 24/25 against real history, plus directly matching what the
+ * account owner described their own reasoning as, made this the better
+ * model than rule 2's incidental 25/25 — and it fixes the Easy-Money case
+ * cleanly: Union Whisper's EV (94% × $34,350 ≈ $32,289) beats Easy Money's
+ * (95% × $6,850 ≈ $6,508) outright, no tolerance-band tuning required.
+ *
+ * So: this scouts every affordable, workable candidate (still walking the
+ * list in reward÷Stamina order — an arbitrary-but-reasonable order to spend
+ * scouting Stamina in, since the account owner's actual *scouting* order
+ * isn't observable from the archive, only what they ended up comparing) and,
+ * among whichever clear `minSuccessPct`, picks the one with the highest
+ * EV (`estimatePct/100 × rewardMidpoint`). See docs/street-intel-plan.md's
+ * Auto-Attempt section for the full writeup.
+ *
+ * `availableStamina` guards against a side effect of scouting every
+ * candidate instead of stopping at the first hit: scouting several in one
+ * cycle (each costing its own Scout Stamina) can eat into what's left for
+ * the eventual attempt. Running total `staminaSpentScouting` tracks that,
+ * and the final pick is restricted to candidates whose own `staminaCost`
+ * still fits in what's left — otherwise a scout-heavy cycle could pick a
+ * winner it can no longer actually afford to attempt, which would come back
+ * as a genuine `ok:false` from the attempt call and (per the pause() call
+ * site below) needlessly stop the whole automation over what's really just a
+ * bookkeeping gap.
  *
  * Every candidate scouted — chosen or not — is recorded in the returned
- * `log`, so a cycle that scouts three opportunities and rejects the first two
- * for coming in under the threshold leaves a visible trail instead of just
- * the eventual winner (or nothing at all, if none cleared).
+ * `log`, so a cycle that scouts three opportunities and only one clears the
+ * threshold (or none do) leaves a visible trail of what was considered and
+ * why, not just the eventual winner.
  */
 async function findScoutedCandidate(
   candidates: StreetIntelOpportunity[],
   minSuccessPct: number,
+  availableStamina: number,
 ): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[] }> {
   const log: ScoutedCandidateLog[] = [];
+  let staminaSpentScouting = 0;
+  const cleared: { choice: ScoutedChoice; logIndex: number }[] = [];
 
   for (const candidate of candidates) {
+    if (availableStamina - staminaSpentScouting < candidate.scoutCost) continue;
+
     const valueRatio = rewardMidpoint(candidate) / candidate.staminaCost;
     const resp = await postAction('/actions/street_intel.php', { action: 'scout', opportunity_id: candidate.id });
+    staminaSpentScouting += candidate.scoutCost;
 
     // An ordinary business rejection (e.g. a stamina/cooldown race against our
     // own tracking) — not systemic, just means this one candidate is off the
@@ -189,27 +246,44 @@ async function findScoutedCandidate(
     }
 
     const sorted = [...resp.estimates].sort((a: any, b: any) => (b.estimate_pct ?? 0) - (a.estimate_pct ?? 0));
-    const best = sorted[0];
-    const bestPct: number | null = best && typeof best.estimate_pct === 'number' ? best.estimate_pct : null;
-    const bestKey: string | null = best ? String(best.key) : null;
-    const cleared = bestPct !== null && bestPct >= minSuccessPct;
+    const top = sorted[0];
+    const bestPct: number | null = top && typeof top.estimate_pct === 'number' ? top.estimate_pct : null;
+    const bestKey: string | null = top ? String(top.key) : null;
+    // Affordability re-checked against Stamina actually left after every
+    // scout so far this cycle, not the cycle-start figure — see the
+    // `availableStamina` doc note above.
+    const affordableToAttempt = availableStamina - staminaSpentScouting >= candidate.staminaCost;
+    const passesBar = bestPct !== null && bestPct >= minSuccessPct && affordableToAttempt;
 
-    log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: bestKey, estimatePct: bestPct, chosen: cleared });
+    log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: bestKey, estimatePct: bestPct, chosen: false });
 
-    if (!cleared) continue;
+    if (!passesBar) continue;
 
-    return {
+    cleared.push({
       choice: {
         opportunity: candidate,
         approach: bestKey!,
         estimatePct: bestPct!,
         secondBestApproach: sorted[1] ? String(sorted[1].key) : null,
       },
-      log,
-    };
+      logIndex: log.length - 1,
+    });
   }
 
-  return { choice: null, log };
+  // Highest EV (odds × reward) among everything that cleared the floor —
+  // see the function's own doc comment for why EV-among-floor-clearers beats
+  // both "biggest reward" and "highest odds alone" against real history.
+  let winner: { choice: ScoutedChoice; logIndex: number } | null = null;
+  if (cleared.length > 0) {
+    winner = cleared.reduce((a, b) => {
+      const evA = (a.choice.estimatePct / 100) * rewardMidpoint(a.choice.opportunity);
+      const evB = (b.choice.estimatePct / 100) * rewardMidpoint(b.choice.opportunity);
+      return evB > evA ? b : a;
+    });
+    log[winner.logIndex].chosen = true;
+  }
+
+  return { choice: winner?.choice ?? null, log };
 }
 
 /**
@@ -230,7 +304,32 @@ function pickComplicationChoice(choice: ScoutedChoice): string {
   return choice.secondBestApproach ?? 'talk';
 }
 
+// `chrome.alarms` is confirmed to occasionally fire an alarm twice for a
+// single scheduled time after the service worker's been dormant (a known
+// MV3 platform quirk, not something this codebase's own scheduling caused —
+// there's exactly one `chrome.alarms.create`/`onAlarm` path for
+// ALARM_NAMES.STREET_INTEL_AUTO). Real capture, 2026-08-26: two full
+// scout+attempt cycles landed ~250ms apart, independently scouted the same
+// three opportunities, and both attempted the same winner — the second
+// attempt came back a legitimate `ok:false` ("Cooldown active. Wait
+// 10m 0s.") since the first had already spent the shared cooldown a moment
+// earlier. Without this guard that ok:false would reach the "unrecognized
+// response shape" check further down and pause the whole automation over
+// what was really just a duplicate firing, not a real problem worth
+// stopping for.
+let cycleInFlight = false;
+
 export async function runIfEligible(): Promise<void> {
+  if (cycleInFlight) return;
+  cycleInFlight = true;
+  try {
+    await runIfEligibleOnce();
+  } finally {
+    cycleInFlight = false;
+  }
+}
+
+async function runIfEligibleOnce(): Promise<void> {
   const config = await storage.getStreetIntelAutoConfig();
   if (!config.enabled) return;
 
@@ -278,7 +377,7 @@ export async function runIfEligible(): Promise<void> {
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
 
   try {
-    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct);
+    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct, status.stamina);
     if (!choice) {
       // Nothing affordable cleared the bar this cycle — the scouted log is
       // still worth keeping (it's the whole answer to "what did it consider

@@ -232,15 +232,17 @@ of its three choices at all.
   `scoutCost`, `expirySeconds`, and `approaches[]` (with `autofail`) per card, plus a new
   `parseSharedCooldownSeconds()` for the cross-check above.
 - **`actionRunner.ts`**: on each eligible cycle (off cooldown, not
-  travelling/jailed/hospitalized), sorts affordable live opportunities by reward ÷
-  Stamina cost, scouts them in that order until one's best approach clears the
-  configured minimum success % (default **50%** — just above this account's own
-  realized ~40% floor), attempts it, answers any complication by reusing the same
-  approach key that won the attempt (falling back to the second-best-scouted approach
-  for the one case with no direct equivalent — `steel_yourself`/defence, which was in
-  fact this account's single most-used approach), then deposits all cash on hand via
-  `depositCashOnHand()` — explicit player request, unconditional every cycle, same
-  reasoning as courier's own sweep.
+  travelling/jailed/hospitalized), scouts every affordable live opportunity (still
+  walking them in reward ÷ Stamina order — see "Selection heuristic corrected" below for
+  why that order no longer decides the winner) and, among whichever clear the configured
+  minimum success % (default **50%** — just above this account's own realized ~40%
+  floor), attempts the one with the highest **expected value** (scouted odds × reward
+  midpoint) among those. Answers any complication by reusing the same approach key that
+  won the attempt (falling back to the second-best-scouted approach for the one case with
+  no direct equivalent — `steel_yourself`/defence, which was in fact this account's
+  single most-used approach), then deposits all cash on hand via `depositCashOnHand()` —
+  explicit player request, unconditional every cycle, same reasoning as courier's own
+  sweep.
 - **`disaster`/jail is not treated as an anomaly to pause on** — confirmed, expected
   (~4% of real attempts), unlike Career's never-observed "fired." The existing
   travelling/jailed/hospitalized gate naturally holds the next cycle off until released;
@@ -250,6 +252,85 @@ of its three choices at all.
   minimum-success-% field, and a status block (last attempt, today's attempt count, next
   check's real time) — same shape as `CareerAutoHome.tsx`, including reading the actual
   scheduled `chrome.alarms` entry for "before the first attempt ever runs."
+
+### Selection heuristic corrected — three iterations (2026-08-26)
+
+**Iteration 1 (as originally shipped)**: reward ÷ Stamina order, first candidate whose
+best approach cleared `minSuccessPct` — optimize for the biggest payout, threshold as a
+safety floor only. Ran for real the same day and landed 2 disasters and a
+complication-wiped success out of 5 attempts — "the biggest card that clears the floor"
+kept landing right at the edge of it (54%, 61%), not anywhere actually safe.
+
+**Iteration 2 — odds-first**: compared against the account owner's own ~105 real manual
+attempts, captured in the pre-automation 100MB archive export (2026-08-25) —
+specifically the 25 decision cycles in that history where 2+ opportunities were scouted
+before one was attempted (i.e. cycles with an actual choice to reconstruct). Three
+hypotheses for what drove the real picks were tested against what was actually chosen
+each time:
+
+| Hypothesis | Match rate |
+| --- | --- |
+| Highest scouted win-probability (odds) alone | **25/25 (100%)** |
+| Highest odds × reward (expected value) | 6/25 (24%, and only by coincidence with the odds pick) |
+| Highest reward ÷ Stamina (iteration 1's rule) | 0/25 (0%) |
+
+In every disagreement case, the real pick walked past objectively larger EV — including
+a $857k-mid extreme-risk card worth $402,790 in raw EV — for a smaller, safer bet with
+better odds. Asked directly, the account owner confirmed they weren't reasoning about
+risk tier or Stamina efficiency at all: "I mostly look for something around 50% upwards,
+I sometimes try my luck below but mostly above... I don't necessarily look at if it is
+medium or extreme" — which matched the 25/25 result. Real numbers backed it up too: those
+105 manual attempts landed 80% success/partial/critical-success and only 4% disaster, for
+$8.16M net. Shipped as "pick the single highest scouted win probability, reward only
+breaks a literal tie."
+
+**Iteration 3 — the 25/25 fit turned out to be a data gap, not confirmation**: the very
+first live pick under iteration 2 took a **95%**-odds card worth $5,000–$8,700 ("Easy
+Money") over a **94%**-odds card worth $25,000–$43,700 sitting right next to it ("Union
+Whisper") — a 1-point odds gap costing 5x the reward. Checking the *reward sizes* behind
+all 105 real manual attempts (not just which one got picked, which is all iteration 2
+tested) showed the account owner's real median pick was $61,750 — under 2% of their
+attempts were as small as Easy Money's range. Iteration 2's "25/25" fit was real, but
+their history never actually contained two options this close on odds with this large a
+reward gap, so it couldn't distinguish "always chase max odds" from "clear a floor, then
+chase profit" — it was unfalsified by their data, not confirmed by it, for exactly the
+case that broke it. Directly asked, the account owner put it plainly: "aside from odds, I
+was always looking for best profit."
+
+Retested against the same 25 cycles: filtering to candidates whose best odds clears
+`minSuccessPct`, then picking the highest **EV (odds × reward)** among those, matches
+**24/25 (96%)** — the one miss is a case where an 84%-odds/$17k pick beat a
+52%-odds/$51k one despite the latter's much higher EV, so odds still matter even above
+the floor, just not as the sole criterion. 24/25 against real history, plus directly
+matching the account owner's own description of their reasoning, made this the better
+model than iteration 2's incidental 25/25 — and it fixes the Easy Money case cleanly:
+Union Whisper's EV (94% × $34,350 ≈ $32,289) beats Easy Money's (95% × $6,850 ≈ $6,508)
+outright, no tolerance-band tuning required.
+
+`findScoutedCandidate()` in `actionRunner.ts` now scouts every affordable candidate
+(still in reward ÷ Stamina order, since the account owner's actual *scouting* order — as
+opposed to their final pick — isn't observable from the archive, only what they ended up
+comparing) and picks whichever cleared candidate has the highest EV
+(`estimatePct/100 × rewardMidpoint`). See the function's own doc comment for the full
+three-iteration writeup and the stamina-affordability fix that came with scouting
+everything instead of stopping early (scouting more candidates in one cycle can eat into
+what's left for the actual attempt — tracked and re-checked per candidate rather than
+assumed from the cycle's starting Stamina figure).
+
+That same archive also surfaced an unrelated concurrency bug: two full `runIfEligible()`
+cycles ran roughly 250ms apart, independently scouted the same three opportunities, and
+both attempted the same winner — the second attempt came back a legitimate `ok:false`
+("Cooldown active. Wait 10m 0s.") since the first had already spent the shared cooldown.
+Confirmed there's exactly one `chrome.alarms.create`/`onAlarm` path for
+`ALARM_NAMES.STREET_INTEL_AUTO` in this codebase, so this is a known MV3 platform quirk
+(an alarm occasionally firing twice for one scheduled time after the service worker's
+been dormant), not a wiring bug here — but without a guard, that duplicate `ok:false`
+would hit the "unrecognized response shape" check and pause the whole automation over
+what was really just a duplicate firing. Fixed with a simple in-flight guard
+(`cycleInFlight`) around `runIfEligible()`: a second concurrent call is a no-op, letting
+the first cycle finish and own whatever reschedule it decides. `careerAuto/runner.ts`
+has the same single-alarm-path shape and hasn't shown this in practice, but carries the
+same latent risk — worth the same guard if it ever surfaces there too.
 
 ### Residual risk
 
