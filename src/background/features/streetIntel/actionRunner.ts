@@ -285,12 +285,23 @@ export async function runIfEligible(): Promise<void> {
       else console.error(LOG_PREFIX, 'street intel complication response was not ok:true', compResp);
     }
 
-    // Best-effort, unconditional — same "protect whatever's sitting exposed"
-    // reasoning as petCourier.ts's depositLeftoverCash, explicit player ask.
-    try {
-      await depositCashOnHand();
-    } catch (err) {
-      console.error(LOG_PREFIX, 'street intel post-attempt deposit failed', err);
+    // Same "protect whatever's sitting exposed" reasoning as petCourier.ts's
+    // depositLeftoverCash, explicit player ask — but only when there's
+    // actually something to sweep. A fresh live check here (not "did the
+    // complication fail") is what's reliable: a failed complication doesn't
+    // always take *everything* (only ever confirmed as a full wipe so far,
+    // but nothing guarantees that), and cash-on-hand could be non-zero for
+    // reasons unrelated to this cycle's own complication entirely. Checking
+    // live cash directly covers all of those in one place, and skips the
+    // call (and its now-confirmed-real "Invalid amount" rejection) whenever
+    // there's genuinely nothing there.
+    const postAttemptStatus = await fetchLiveStatus();
+    if (postAttemptStatus && postAttemptStatus.cash > 0) {
+      try {
+        await depositCashOnHand();
+      } catch (err) {
+        console.error(LOG_PREFIX, 'street intel post-attempt deposit failed', err);
+      }
     }
 
     const today = localDateKey();
