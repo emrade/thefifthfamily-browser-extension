@@ -227,7 +227,7 @@ export function CareerAutoHome() {
       {!status?.lastShift && !nextRunAt && <div class="ff-empty">No shifts run yet.</div>}
 
       {!status?.lastShift && nextRunAt && (
-        <div class="ff-fc-captured">First eligibility check: {formatNextRun(nextRunAt, now)}</div>
+        <div class="ff-auto-row">First eligibility check: {formatNextRun(nextRunAt, now)}</div>
       )}
 
       {status?.lastShift && (

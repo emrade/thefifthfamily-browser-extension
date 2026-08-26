@@ -142,7 +142,7 @@ export function StreetIntelAutoHome() {
       {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts run yet.</div>}
 
       {!status?.lastAttempt && nextRunAt && (
-        <div class="ff-fc-captured">First eligibility check: {formatNextRun(nextRunAt, now)}</div>
+        <div class="ff-auto-row">First eligibility check: {formatNextRun(nextRunAt, now)}</div>
       )}
 
       {status?.lastAttempt && (
@@ -171,10 +171,10 @@ export function StreetIntelAutoHome() {
             {status.lastAttempt.scoutedPct}% scouted · {new Date(status.lastAttempt.timestamp).toLocaleString()}
           </div>
           {status.lastAttempt.jailSeconds > 0 && (
-            <div class="ff-fc-captured">Landed {Math.round(status.lastAttempt.jailSeconds / 60)}m of jail time.</div>
+            <div class="ff-auto-row">Landed {Math.round(status.lastAttempt.jailSeconds / 60)}m of jail time.</div>
           )}
           {status.lastAttempt.hadComplication && (
-            <div class="ff-fc-captured">
+            <div class="ff-auto-row">
               Complication: chose {status.lastAttempt.complicationChoice}
               {status.lastAttempt.complicationSuccess === null
                 ? ' (result unknown)'
@@ -194,7 +194,7 @@ export function StreetIntelAutoHome() {
             coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
           </div>
           {status.lastCycleScouted.map((c, i) => (
-            <div class="ff-fc-captured" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
+            <div class="ff-auto-row" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
               {c.chosen ? '✓' : '✗'} {c.title} ({riskLabel(c.riskTier)}
               {c.legendary ? ', Legendary' : ''}) · {c.staminaCost}S · value {Math.round(c.valueRatio).toLocaleString()}/S ·{' '}
               {c.estimatePct === null ? 'scout rejected' : `${c.approach} ${c.estimatePct}%`}

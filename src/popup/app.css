@@ -435,6 +435,17 @@ button {
   margin: -10px 0 14px;
 }
 
+/* A repeatable small-text row (unlike .ff-fc-captured above, which is a single
+   caption meant to sit snug against a stat-grid right above it via a negative
+   margin) — no negative margin, safe to render several of in a row. */
+.ff-auto-row {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ff-ink-faint);
+  line-height: 1.4;
+  padding: 3px 0;
+}
+
 /* ── Best Trade card ────────────────────────────────────── */
 
 .ff-best-trade {
