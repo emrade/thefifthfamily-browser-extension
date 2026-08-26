@@ -539,6 +539,16 @@ export interface ScoutedCandidateLog {
  * result this feature keeps running through — not an anomaly to stop for. The
  * only pause reason is a response shape this feature doesn't recognize at all.
  */
+/** Running win/loss tally for one complication choice — see
+ *  docs/street-intel-complication-tracking.md for what this is for and how to
+ *  read it once enough samples exist. */
+export interface ComplicationChoiceStats {
+  attempts: number;
+  successes: number;
+}
+
+export type ComplicationChoiceKey = 'fight' | 'run' | 'talk';
+
 export interface StreetIntelAutoStatus {
   lastAttempt: StreetIntelAttemptResult | null;
   nextEligibleAt: number | null;
@@ -558,4 +568,10 @@ export interface StreetIntelAutoStatus {
    *  this is "what just happened," not a growing history. */
   lastCycleScouted: ScoutedCandidateLog[];
   lastCycleAt: number | null;
+  /** Unlike `lastCycleScouted`, this *does* accumulate across every cycle,
+   *  for as long as the account keeps running this automation — there's
+   *  currently no odds data for any complication choice at all, so this is
+   *  the only way to eventually know which choice actually wins more, rather
+   *  than guessing. See docs/street-intel-complication-tracking.md. */
+  complicationStats: Record<ComplicationChoiceKey, ComplicationChoiceStats>;
 }

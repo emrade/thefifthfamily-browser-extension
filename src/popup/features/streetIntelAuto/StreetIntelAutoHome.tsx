@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
-import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+
+const COMPLICATION_KEYS: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
 
 /** e.g. "4:15 PM · in 3:42" — same format as CareerAutoHome's, clock time
  *  first, ticking countdown after. Drops the countdown once due. */
@@ -200,6 +202,28 @@ export function StreetIntelAutoHome() {
               {c.estimatePct === null ? 'scout rejected' : `${c.approach} ${c.estimatePct}%`}
             </div>
           ))}
+        </>
+      )}
+
+      {status?.complicationStats && COMPLICATION_KEYS.some((k) => status.complicationStats[k].attempts > 0) && (
+        <>
+          <div class="ff-section-label">Complication History</div>
+          <div class="ff-field__hint">
+            Win rate per choice across every complication resolved so far — there's no odds data for any of these
+            from the game itself, so this is the only way to eventually know which one actually wins more. Treat
+            this as noise until each choice has a real sample (~15–20+) — see
+            docs/street-intel-complication-tracking.md.
+          </div>
+          {COMPLICATION_KEYS.map((key) => {
+            const s = status.complicationStats[key];
+            const pct = s.attempts > 0 ? Math.round((s.successes / s.attempts) * 100) : null;
+            return (
+              <div class="ff-auto-row" key={key}>
+                {key}: {s.successes}/{s.attempts}
+                {pct !== null ? ` (${pct}%)` : ''}
+              </div>
+            );
+          })}
         </>
       )}
     </>

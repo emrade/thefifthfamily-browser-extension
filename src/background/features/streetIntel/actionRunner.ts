@@ -12,9 +12,19 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
-import type { ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import type { ComplicationChoiceKey, ComplicationChoiceStats, ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
+
+const EMPTY_COMPLICATION_STATS: Record<ComplicationChoiceKey, ComplicationChoiceStats> = {
+  fight: { attempts: 0, successes: 0 },
+  run: { attempts: 0, successes: 0 },
+  talk: { attempts: 0, successes: 0 },
+};
+
+function isComplicationChoiceKey(value: string): value is ComplicationChoiceKey {
+  return value === 'fight' || value === 'run' || value === 'talk';
+}
 
 /**
  * Schedules the next eligibility check. Given a known cooldown expiry, aligns
@@ -66,10 +76,26 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
     attemptsTodayDate: current?.attemptsTodayDate ?? localDateKey(),
     lastCycleScouted: current?.lastCycleScouted ?? [],
     lastCycleAt: current?.lastCycleAt ?? null,
+    complicationStats: current?.complicationStats ?? EMPTY_COMPLICATION_STATS,
     ...patch,
   };
   await storage.setStreetIntelAutoStatus(next);
   return next;
+}
+
+/** Folds one resolved complication into the running per-choice tally — only
+ *  called when the complication call itself actually came back `ok:true`
+ *  with a real `comp_success`; an unresolved/rejected complication call has
+ *  no outcome to count either way. */
+function bumpComplicationStats(
+  current: Record<ComplicationChoiceKey, ComplicationChoiceStats> | undefined,
+  choice: string,
+  success: boolean,
+): Record<ComplicationChoiceKey, ComplicationChoiceStats> {
+  const base = current ?? EMPTY_COMPLICATION_STATS;
+  if (!isComplicationChoiceKey(choice)) return base; // defensive — every real choice this runner sends is one of the three
+  const prior = base[choice];
+  return { ...base, [choice]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } };
 }
 
 async function pause(message: string): Promise<void> {
@@ -309,6 +335,14 @@ export async function runIfEligible(): Promise<void> {
     const attemptsToday = previousStatus?.attemptsTodayDate === today ? previousStatus.attemptsToday + 1 : 1;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
+    // Only folds in a real, resolved outcome — a complication that came back
+    // as anything other than `ok:true` leaves `complicationSuccess` null and
+    // isn't counted (see docs/street-intel-complication-tracking.md).
+    const complicationStats =
+      complicationChoice !== null && complicationSuccess !== null
+        ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice, complicationSuccess)
+        : (previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
+
     await updateStatus({
       lastAttempt: {
         timestamp: Date.now(),
@@ -326,11 +360,13 @@ export async function runIfEligible(): Promise<void> {
       },
       nextEligibleAt,
       pausedReason: null,
+      pausedMessage: null,
       pausedAt: null,
       attemptsToday,
       attemptsTodayDate: today,
       lastCycleScouted: log,
       lastCycleAt: Date.now(),
+      complicationStats,
     });
 
     scheduleNextCheck(nextEligibleAt);
