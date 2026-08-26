@@ -12,14 +12,19 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
-import type { ComplicationChoiceKey, ComplicationChoiceStats, ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import type { ComplicationChoiceKey, ComplicationTrackingBucket, ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
 
-const EMPTY_COMPLICATION_STATS: Record<ComplicationChoiceKey, ComplicationChoiceStats> = {
-  fight: { attempts: 0, successes: 0 },
-  run: { attempts: 0, successes: 0 },
-  talk: { attempts: 0, successes: 0 },
+const EMPTY_TRACKING_BUCKET: ComplicationTrackingBucket = {
+  direct: { attempts: 0, successes: 0 },
+  fallback: { attempts: 0, successes: 0 },
+};
+
+const EMPTY_COMPLICATION_STATS: Record<ComplicationChoiceKey, ComplicationTrackingBucket> = {
+  fight: EMPTY_TRACKING_BUCKET,
+  run: EMPTY_TRACKING_BUCKET,
+  talk: EMPTY_TRACKING_BUCKET,
 };
 
 function isComplicationChoiceKey(value: string): value is ComplicationChoiceKey {
@@ -86,16 +91,24 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
 /** Folds one resolved complication into the running per-choice tally — only
  *  called when the complication call itself actually came back `ok:true`
  *  with a real `comp_success`; an unresolved/rejected complication call has
- *  no outcome to count either way. */
+ *  no outcome to count either way. `wasFallback` routes the increment into
+ *  the `direct` or `fallback` sub-bucket — see `ComplicationTrackingBucket`'s
+ *  doc comment for why those are kept separate. */
 function bumpComplicationStats(
-  current: Record<ComplicationChoiceKey, ComplicationChoiceStats> | undefined,
+  current: Record<ComplicationChoiceKey, ComplicationTrackingBucket> | undefined,
   choice: string,
+  wasFallback: boolean,
   success: boolean,
-): Record<ComplicationChoiceKey, ComplicationChoiceStats> {
+): Record<ComplicationChoiceKey, ComplicationTrackingBucket> {
   const base = current ?? EMPTY_COMPLICATION_STATS;
   if (!isComplicationChoiceKey(choice)) return base; // defensive — every real choice this runner sends is one of the three
-  const prior = base[choice];
-  return { ...base, [choice]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } };
+  const bucket = base[choice];
+  const kind = wasFallback ? 'fallback' : 'direct';
+  const prior = bucket[kind];
+  return {
+    ...base,
+    [choice]: { ...bucket, [kind]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } },
+  };
 }
 
 async function pause(message: string): Promise<void> {
@@ -335,12 +348,19 @@ export async function runIfEligible(): Promise<void> {
     const attemptsToday = previousStatus?.attemptsTodayDate === today ? previousStatus.attemptsToday + 1 : 1;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
+    // Whether this complication choice came from the steel_yourself fallback
+    // (second-best scouted approach) rather than directly reusing the
+    // attempt's own winning approach — see pickComplicationChoice's own
+    // branch condition, mirrored here, and ComplicationTrackingBucket's doc
+    // comment for why the two are tracked separately.
+    const wasFallback = choice.approach === 'steel_yourself';
+
     // Only folds in a real, resolved outcome — a complication that came back
     // as anything other than `ok:true` leaves `complicationSuccess` null and
     // isn't counted (see docs/street-intel-complication-tracking.md).
     const complicationStats =
       complicationChoice !== null && complicationSuccess !== null
-        ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice, complicationSuccess)
+        ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice, wasFallback, complicationSuccess)
         : (previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
 
     await updateStatus({
@@ -356,6 +376,7 @@ export async function runIfEligible(): Promise<void> {
         jailSeconds: Number(attemptResp.jail_time) || 0,
         hadComplication: Boolean(attemptResp.has_complication),
         complicationChoice,
+        complicationWasFallback: attemptResp.has_complication ? wasFallback : null,
         complicationSuccess,
       },
       nextEligibleAt,

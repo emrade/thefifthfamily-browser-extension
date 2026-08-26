@@ -502,6 +502,12 @@ export interface StreetIntelAttemptResult {
   jailSeconds: number;
   hadComplication: boolean;
   complicationChoice: string | null;
+  /** True when `complicationChoice` came from the `steel_yourself`-has-no-
+   *  equivalent fallback (the second-best scouted approach) rather than
+   *  directly reusing the approach that actually won the attempt. Null
+   *  alongside `complicationChoice: null` when there was no complication at
+   *  all. See docs/street-intel-complication-tracking.md. */
+  complicationWasFallback: boolean | null;
   complicationSuccess: boolean | null;
 }
 
@@ -539,12 +545,26 @@ export interface ScoutedCandidateLog {
  * result this feature keeps running through — not an anomaly to stop for. The
  * only pause reason is a response shape this feature doesn't recognize at all.
  */
-/** Running win/loss tally for one complication choice — see
- *  docs/street-intel-complication-tracking.md for what this is for and how to
- *  read it once enough samples exist. */
+/** Running win/loss tally for one complication choice, in one situation. */
 export interface ComplicationChoiceStats {
   attempts: number;
   successes: number;
+}
+
+/**
+ * Win/loss tallies for one complication choice, split by *why* that choice
+ * was made — see docs/street-intel-complication-tracking.md. `direct` is a
+ * choice that matched whatever approach actually won the attempt (a strong
+ * signal: it was genuinely the best-scouted option). `fallback` is a choice
+ * that only got picked because the real winner was `steel_yourself` (no
+ * complication equivalent), so it's the *second*-best scouted approach, not
+ * the best — a weaker bet by construction. Kept separate rather than folded
+ * into one count per choice, since conflating them would muddy whichever
+ * signal either one actually carries.
+ */
+export interface ComplicationTrackingBucket {
+  direct: ComplicationChoiceStats;
+  fallback: ComplicationChoiceStats;
 }
 
 export type ComplicationChoiceKey = 'fight' | 'run' | 'talk';
@@ -573,5 +593,5 @@ export interface StreetIntelAutoStatus {
    *  currently no odds data for any complication choice at all, so this is
    *  the only way to eventually know which choice actually wins more, rather
    *  than guessing. See docs/street-intel-complication-tracking.md. */
-  complicationStats: Record<ComplicationChoiceKey, ComplicationChoiceStats>;
+  complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>;
 }

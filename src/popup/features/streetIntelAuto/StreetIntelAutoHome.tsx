@@ -205,27 +205,32 @@ export function StreetIntelAutoHome() {
         </>
       )}
 
-      {status?.complicationStats && COMPLICATION_KEYS.some((k) => status.complicationStats[k].attempts > 0) && (
-        <>
-          <div class="ff-section-label">Complication History</div>
-          <div class="ff-field__hint">
-            Win rate per choice across every complication resolved so far — there's no odds data for any of these
-            from the game itself, so this is the only way to eventually know which one actually wins more. Treat
-            this as noise until each choice has a real sample (~15–20+) — see
-            docs/street-intel-complication-tracking.md.
-          </div>
-          {COMPLICATION_KEYS.map((key) => {
-            const s = status.complicationStats[key];
-            const pct = s.attempts > 0 ? Math.round((s.successes / s.attempts) * 100) : null;
-            return (
-              <div class="ff-auto-row" key={key}>
-                {key}: {s.successes}/{s.attempts}
-                {pct !== null ? ` (${pct}%)` : ''}
-              </div>
-            );
-          })}
-        </>
-      )}
+      {status?.complicationStats &&
+        COMPLICATION_KEYS.some((k) => status.complicationStats[k].direct.attempts + status.complicationStats[k].fallback.attempts > 0) && (
+          <>
+            <div class="ff-section-label">Complication History</div>
+            <div class="ff-field__hint">
+              Win rate per choice across every complication resolved so far — there's no odds data for any of these
+              from the game itself, so this is the only way to eventually know which one actually wins more.
+              "Direct" means the choice matched the attempt's own winning approach; "fallback" means it came from the
+              steel_yourself second-best substitute — a weaker bet by construction, worth reading separately. Treat
+              either as noise until it has a real sample (~15–20+) — see docs/street-intel-complication-tracking.md.
+            </div>
+            {COMPLICATION_KEYS.map((key) => {
+              const s = status.complicationStats[key];
+              const directPct = s.direct.attempts > 0 ? Math.round((s.direct.successes / s.direct.attempts) * 100) : null;
+              const fallbackPct = s.fallback.attempts > 0 ? Math.round((s.fallback.successes / s.fallback.attempts) * 100) : null;
+              if (s.direct.attempts === 0 && s.fallback.attempts === 0) return null;
+              return (
+                <div class="ff-auto-row" key={key}>
+                  {key}: direct {s.direct.successes}/{s.direct.attempts}
+                  {directPct !== null ? ` (${directPct}%)` : ''} · fallback {s.fallback.successes}/{s.fallback.attempts}
+                  {fallbackPct !== null ? ` (${fallbackPct}%)` : ''}
+                </div>
+              );
+            })}
+          </>
+        )}
     </>
   );
 }

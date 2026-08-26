@@ -38,7 +38,7 @@ knows yet. This tracker is how we'd find out.
 ## What's actually being collected
 
 `StreetIntelAutoStatus.complicationStats` (`src/shared/types.ts`) — a running tally per
-choice:
+choice, split into two sub-tallies:
 
 ```ts
 export interface ComplicationChoiceStats {
@@ -46,12 +46,33 @@ export interface ComplicationChoiceStats {
   successes: number;
 }
 
-complicationStats: Record<'fight' | 'run' | 'talk', ComplicationChoiceStats>;
+export interface ComplicationTrackingBucket {
+  /** The choice matched the attempt's own winning approach (fight→fight,
+   *  run→run, talk→talk). */
+  direct: ComplicationChoiceStats;
+  /** The choice came from the steel_yourself→second-best-scouted fallback —
+   *  a weaker bet by construction, since it wasn't the approach that actually
+   *  won the attempt. */
+  fallback: ComplicationChoiceStats;
+}
+
+complicationStats: Record<'fight' | 'run' | 'talk', ComplicationTrackingBucket>;
 ```
 
+The split exists because a `direct` pick and a `fallback` pick for the same choice key
+are different-strength signals — reusing `talk` because it just won the attempt is not
+the same bet as reaching for `talk` only because `steel_yourself` (which has no
+complication equivalent) won and `talk` happened to scout second-best. Folding both into
+one tally would hide that difference; asking "does `talk` win more when direct vs. when
+fallback" needs them kept apart.
+
 - Updated in `background/features/streetIntel/actionRunner.ts`, in the same status
-  write that records every attempt — `bumpComplicationStats()` increments the chosen
-  key's `attempts`, and `successes` too if `comp_success` was `true`.
+  write that records every attempt — `bumpComplicationStats()` takes a `wasFallback`
+  flag (`true` exactly when the attempt's winning approach was `steel_yourself`, matching
+  `pickComplicationChoice()`'s own branch) and increments the chosen key's `direct` or
+  `fallback` sub-bucket's `attempts`, and `successes` too if `comp_success` was `true`.
+  Each attempt's own record (`StreetIntelAttemptResult.complicationWasFallback`) also
+  keeps this flag directly, `null` when there was no complication at all.
 - **Only counted when the complication call itself came back a real, resolved
   `ok:true`** — a rejected or malformed complication response leaves
   `complicationSuccess` as `null` on that attempt's own record and is *not* folded into
@@ -61,8 +82,8 @@ complicationStats: Record<'fight' | 'run' | 'talk', ComplicationChoiceStats>;
   cycle only) or `lastAttempt` (most recent only) — by design, since the whole point is
   building a sample over time.
 - Visible directly in the popup's Street Intel Auto tab, under **"Complication
-  History"** — a per-choice win/loss line, shown once at least one complication has
-  resolved.
+  History"** — a per-choice line showing both the `direct` and `fallback` win/loss
+  counts side by side, shown once at least one complication has resolved.
 
 The full raw detail behind every one of these — the exact `complication.type` text, its
 `difficulty` value, the account's stats at the time — isn't duplicated into this tally;
@@ -97,11 +118,15 @@ Once there's a real sample, worth checking (in this order):
    possibility being that different named complications have different real answers, and
    the aggregate is averaging distinct situations together. This needs meaningfully more
    data than the aggregate check above, since per-type samples will be far sparser.
-4. **Separately track "direct reuse" vs. "`steel_yourself` fallback" cases** if the
-   aggregate signal is ambiguous — right now both are folded into the same per-choice
-   tally, but a fallback pick (using the *second*-best scouted approach, not the actual
-   winner) is a weaker bet by construction and might have a different real win rate than
-   a direct reuse of the same choice.
+4. **Read `direct` and `fallback` separately before combining them.** The tracker
+   already keeps these apart per choice (see above) precisely so this comparison doesn't
+   need a full data re-pull: check whether a choice's `fallback` win rate meaningfully
+   trails its own `direct` win rate. If it does, that's evidence the *steel_yourself*
+   fallback heuristic itself is the weak link, not the choice — worth fixing by picking a
+   better fallback (e.g. raw stat instead of second-best-scouted) rather than changing
+   the direct-reuse mapping, which would otherwise look fine on its own. If `fallback`
+   and `direct` track closely for a given choice, it's safe to combine them for a bigger
+   combined sample when checking point 1 above.
 
 ## Where to look right now
 
