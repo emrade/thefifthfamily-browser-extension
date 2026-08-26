@@ -12,7 +12,7 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
-import type { StreetIntelAutoConfig } from '@/shared/types';
+import type { ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
 
@@ -50,19 +50,33 @@ function localDateKey(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+/** Reads current status, merges in `patch`, writes the result back — every
+ *  status write goes through this so a write that only cares about one or two
+ *  fields (the "nothing cleared the bar this cycle" case, `pause()`) doesn't
+ *  have to know or restate every other field to avoid clobbering it. */
+async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<StreetIntelAutoStatus> {
+  const current = await storage.getStreetIntelAutoStatus();
+  const next: StreetIntelAutoStatus = {
+    lastAttempt: current?.lastAttempt ?? null,
+    nextEligibleAt: current?.nextEligibleAt ?? null,
+    pausedReason: current?.pausedReason ?? null,
+    pausedMessage: current?.pausedMessage ?? null,
+    pausedAt: current?.pausedAt ?? null,
+    attemptsToday: current?.attemptsToday ?? 0,
+    attemptsTodayDate: current?.attemptsTodayDate ?? localDateKey(),
+    lastCycleScouted: current?.lastCycleScouted ?? [],
+    lastCycleAt: current?.lastCycleAt ?? null,
+    ...patch,
+  };
+  await storage.setStreetIntelAutoStatus(next);
+  return next;
+}
+
 async function pause(message: string): Promise<void> {
   const config = await storage.getStreetIntelAutoConfig();
   await storage.setStreetIntelAutoConfig({ ...config, enabled: false });
 
-  const status = await storage.getStreetIntelAutoStatus();
-  await storage.setStreetIntelAutoStatus({
-    lastAttempt: status?.lastAttempt ?? null,
-    nextEligibleAt: null,
-    pausedReason: 'error',
-    pausedAt: Date.now(),
-    attemptsToday: status?.attemptsToday ?? 0,
-    attemptsTodayDate: status?.attemptsTodayDate ?? localDateKey(),
-  });
+  await updateStatus({ pausedReason: 'error', pausedMessage: message, pausedAt: Date.now(), nextEligibleAt: null });
 
   chrome.alarms.clear(ALARM_NAMES.STREET_INTEL_AUTO);
 
@@ -102,19 +116,30 @@ interface ScoutedChoice {
  * Stops at the first that clears — spends a little extra Stamina on rejected
  * scouts along the way, but never risks a full attempt's worth of Stamina on
  * a bet below the configured floor.
+ *
+ * Every candidate scouted — chosen or not — is recorded in the returned
+ * `log`, so a cycle that scouts three opportunities and rejects the first two
+ * for coming in under the threshold leaves a visible trail instead of just
+ * the eventual winner (or nothing at all, if none cleared).
  */
 async function findScoutedCandidate(
   candidates: StreetIntelOpportunity[],
   minSuccessPct: number,
-): Promise<ScoutedChoice | null> {
+): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[] }> {
+  const log: ScoutedCandidateLog[] = [];
+
   for (const candidate of candidates) {
+    const valueRatio = rewardMidpoint(candidate) / candidate.staminaCost;
     const resp = await postAction('/actions/street_intel.php', { action: 'scout', opportunity_id: candidate.id });
 
     // An ordinary business rejection (e.g. a stamina/cooldown race against our
     // own tracking) — not systemic, just means this one candidate is off the
     // table this cycle. `postAction` already throws for anything that looks
     // like an auth/session problem or a genuinely malformed response.
-    if (resp?.ok !== true) continue;
+    if (resp?.ok !== true) {
+      log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: null, estimatePct: null, chosen: false });
+      continue;
+    }
 
     if (!Array.isArray(resp.estimates)) {
       // `ok:true` with no `estimates` array is a shape this action has never
@@ -126,16 +151,26 @@ async function findScoutedCandidate(
 
     const sorted = [...resp.estimates].sort((a: any, b: any) => (b.estimate_pct ?? 0) - (a.estimate_pct ?? 0));
     const best = sorted[0];
-    if (!best || typeof best.estimate_pct !== 'number' || best.estimate_pct < minSuccessPct) continue;
+    const bestPct: number | null = best && typeof best.estimate_pct === 'number' ? best.estimate_pct : null;
+    const bestKey: string | null = best ? String(best.key) : null;
+    const cleared = bestPct !== null && bestPct >= minSuccessPct;
+
+    log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: bestKey, estimatePct: bestPct, chosen: cleared });
+
+    if (!cleared) continue;
 
     return {
-      opportunity: candidate,
-      approach: String(best.key),
-      estimatePct: best.estimate_pct,
-      secondBestApproach: sorted[1] ? String(sorted[1].key) : null,
+      choice: {
+        opportunity: candidate,
+        approach: bestKey!,
+        estimatePct: bestPct!,
+        secondBestApproach: sorted[1] ? String(sorted[1].key) : null,
+      },
+      log,
     };
   }
-  return null;
+
+  return { choice: null, log };
 }
 
 /**
@@ -204,9 +239,13 @@ export async function runIfEligible(): Promise<void> {
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
 
   try {
-    const choice = await findScoutedCandidate(candidates, config.minSuccessPct);
+    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct);
     if (!choice) {
-      scheduleNextCheck(null); // nothing affordable clears the bar this cycle — try again on the fallback cadence
+      // Nothing affordable cleared the bar this cycle — the scouted log is
+      // still worth keeping (it's the whole answer to "what did it consider
+      // and why didn't it act"), even though no attempt happened.
+      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now() });
+      scheduleNextCheck(null);
       return;
     }
 
@@ -259,7 +298,7 @@ export async function runIfEligible(): Promise<void> {
     const attemptsToday = previousStatus?.attemptsTodayDate === today ? previousStatus.attemptsToday + 1 : 1;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
-    await storage.setStreetIntelAutoStatus({
+    await updateStatus({
       lastAttempt: {
         timestamp: Date.now(),
         opportunityTitle: choice.opportunity.title,
@@ -279,6 +318,8 @@ export async function runIfEligible(): Promise<void> {
       pausedAt: null,
       attemptsToday,
       attemptsTodayDate: today,
+      lastCycleScouted: log,
+      lastCycleAt: Date.now(),
     });
 
     scheduleNextCheck(nextEligibleAt);

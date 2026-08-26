@@ -119,7 +119,7 @@ export function CareerAutoHome() {
     // Re-enabling clears a stale "stopped" banner immediately, rather than
     // waiting for the next successful shift to overwrite it.
     if (enabling && status?.pausedReason) {
-      const next = { ...status, pausedReason: null, pausedAt: null };
+      const next = { ...status, pausedReason: null, pausedMessage: null, pausedAt: null };
       setStatus(next);
       await storage.setCareerAutoStatus(next);
     }
@@ -179,8 +179,14 @@ export function CareerAutoHome() {
         <div class="ff-health-alert">
           <strong>Career auto-runner stopped</strong>
           <span class="ff-health-alert__hint">
-            {PAUSE_REASON_LABEL[status.pausedReason]} Check the job in-game, then flip Auto-Run back on above whenever
-            you're ready.
+            {PAUSE_REASON_LABEL[status.pausedReason]}
+            {status.pausedMessage && (
+              <>
+                <br />"{status.pausedMessage}"
+              </>
+            )}
+            <br />
+            Check the job in-game, then flip Auto-Run back on above whenever you're ready.
           </span>
         </div>
       )}

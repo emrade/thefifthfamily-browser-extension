@@ -76,7 +76,7 @@ export function StreetIntelAutoHome() {
     const enabling = !config.enabled;
     await saveConfig({ ...config, enabled: enabling });
     if (enabling && status?.pausedReason) {
-      const next = { ...status, pausedReason: null, pausedAt: null };
+      const next = { ...status, pausedReason: null, pausedMessage: null, pausedAt: null };
       setStatus(next);
       await storage.setStreetIntelAutoStatus(next);
     }
@@ -107,8 +107,14 @@ export function StreetIntelAutoHome() {
         <div class="ff-health-alert">
           <strong>Street Intel auto-runner stopped</strong>
           <span class="ff-health-alert__hint">
-            Stopped after an unexpected response from the game. Check Street Intel in-game, then flip Auto-Attempt
-            back on above whenever you're ready.
+            Stopped after an unexpected response from the game.
+            {status.pausedMessage && (
+              <>
+                <br />"{status.pausedMessage}"
+              </>
+            )}
+            <br />
+            Check Street Intel in-game, then flip Auto-Attempt back on above whenever you're ready.
           </span>
         </div>
       )}
@@ -177,6 +183,23 @@ export function StreetIntelAutoHome() {
                   : ' — failed'}
             </div>
           )}
+        </>
+      )}
+
+      {status?.lastCycleScouted && status.lastCycleScouted.length > 0 && (
+        <>
+          <div class="ff-section-label">Last Cycle Scouted</div>
+          <div class="ff-field__hint">
+            Every opportunity the last cycle actually scouted, in the order tried — including ones passed over for
+            coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
+          </div>
+          {status.lastCycleScouted.map((c, i) => (
+            <div class="ff-fc-captured" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
+              {c.chosen ? '✓' : '✗'} {c.title} ({riskLabel(c.riskTier)}
+              {c.legendary ? ', Legendary' : ''}) · {c.staminaCost}S · value {Math.round(c.valueRatio).toLocaleString()}/S ·{' '}
+              {c.estimatePct === null ? 'scout rejected' : `${c.approach} ${c.estimatePct}%`}
+            </div>
+          ))}
         </>
       )}
     </>

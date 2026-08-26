@@ -460,6 +460,11 @@ export interface CareerAutoStatus {
   lastShift: CareerShiftResult | null;
   nextEligibleAt: number | null;
   pausedReason: 'fired' | 'error' | null;
+  /** The actual diagnostic text `pause()` fired as a notification — that
+   *  notification is transient (missed toast = message gone forever), so
+   *  this is the only durable record of *why* it stopped, shown in the
+   *  popup's paused banner instead of a generic canned line. */
+  pausedMessage: string | null;
   pausedAt: number | null;
   /** Count of shifts run since `shiftsTodayDate`, a local calendar-day key
    *  (`YYYY-M-D`) — not UTC, so it resets at the player's own midnight, not an
@@ -501,6 +506,32 @@ export interface StreetIntelAttemptResult {
 }
 
 /**
+ * One opportunity the runner actually scouted during a cycle — a real API
+ * call and real Stamina spent, whether or not it ended up chosen. Without
+ * this, only the winning candidate's `estimate_pct` was ever visible (on
+ * `StreetIntelAttemptResult`); everything scouted-and-rejected along the way
+ * (e.g. the best-value opportunity coming in under the success threshold and
+ * getting passed over for something cheaper) left no trace at all.
+ */
+export interface ScoutedCandidateLog {
+  title: string;
+  riskTier: 'low' | 'medium' | 'high' | 'extreme';
+  legendary: boolean;
+  staminaCost: number;
+  /** reward-midpoint ÷ staminaCost — the same ranking value the runner
+   *  sorted candidates by, so the log shows *why* this one was tried before
+   *  the others. */
+  valueRatio: number;
+  /** Null if the scout call itself came back `ok:false` (e.g. a stamina
+   *  race) rather than with real estimates. */
+  approach: string | null;
+  estimatePct: number | null;
+  /** True for the one candidate (at most) that cleared `minSuccessPct` and
+   *  was actually attempted. */
+  chosen: boolean;
+}
+
+/**
  * Background-owned runtime state for the Street Intel auto-runner — same
  * split from `StreetIntelAutoConfig` that `CareerAutoStatus` has from
  * `CareerAutoConfig`. Unlike Career, there's no `'fired'`-equivalent pause
@@ -512,9 +543,19 @@ export interface StreetIntelAutoStatus {
   lastAttempt: StreetIntelAttemptResult | null;
   nextEligibleAt: number | null;
   pausedReason: 'error' | null;
+  /** Same reasoning as `CareerAutoStatus.pausedMessage` — the notification
+   *  fired alongside a pause is transient, this is the durable record. */
+  pausedMessage: string | null;
   pausedAt: number | null;
   /** Same local-calendar-day-key pattern as `CareerAutoStatus.shiftsToday` —
    *  see its comment for why the rollover is read-time, not write-time. */
   attemptsToday: number;
   attemptsTodayDate: string;
+  /** Every candidate scouted on the most recent eligible cycle, in the order
+   *  tried — populated even on a cycle where nothing cleared the threshold
+   *  and no attempt happened at all, which is exactly the case that's
+   *  otherwise invisible. Overwritten in full each cycle, not appended to —
+   *  this is "what just happened," not a growing history. */
+  lastCycleScouted: ScoutedCandidateLog[];
+  lastCycleAt: number | null;
 }
