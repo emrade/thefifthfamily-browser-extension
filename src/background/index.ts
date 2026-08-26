@@ -2,7 +2,12 @@ import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlar
 import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petCourier';
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
-import { handleMessage as handleStreetIntel, handlePollAlarm as handleStreetIntelPollAlarm } from './features/streetIntel';
+import {
+  handleMessage as handleStreetIntel,
+  handlePollAlarm as handleStreetIntelPollAlarm,
+  handleAutoAlarm as handleStreetIntelAutoAlarm,
+  initAuto as initStreetIntelAuto,
+} from './features/streetIntel';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
@@ -33,6 +38,10 @@ ensureSweepAlarm().catch((err) => console.error(LOG_PREFIX, 'ensureSweepAlarm fa
 // Re-arms the career auto-runner's alarm (if enabled) and starts watching for
 // config changes from the popup — see careerAuto/index.ts.
 initCareerAuto();
+
+// Same idea, for the Street Intel auto-attempt runner — see
+// features/streetIntel/index.ts's initAuto.
+initStreetIntelAuto();
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
@@ -126,4 +135,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
   handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
   handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));
+  handleStreetIntelAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelAutoAlarm failed', err));
 });

@@ -4,10 +4,11 @@ import { getCsrfToken } from './csrfToken';
 
 /**
  * Shared by every background feature that POSTs a game action (pet courier,
- * career auto-runner) — CSRF attachment, response-shape validation, and the
- * auth/shape split all live here once rather than being redefined per feature.
- * Originally lived only in petCourier.ts; extracted once a second caller needed
- * the exact same defensive behavior rather than a reimplementation of it.
+ * career auto-runner, Street Intel auto-attempt) — CSRF attachment,
+ * response-shape validation, and the auth/shape split all live here once
+ * rather than being redefined per feature. Originally lived only in
+ * petCourier.ts; extracted once a second caller needed the exact same
+ * defensive behavior rather than a reimplementation of it.
  */
 
 /**
@@ -100,6 +101,14 @@ export async function postAction(path: string, params: Record<string, string | n
       throw new SystemicActionError(`"${json.error}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
     }
 
+    // Same heuristic as above, against `msg` instead of `error` — confirmed real
+    // rejections from `street_intel.php` use `{ok:false,"msg":"..."}`, not
+    // `error`, unlike smuggling.php/career.php. Only ever adds a recognized-as-
+    // auth-failure case; never removes one already caught by the `error` check.
+    if (json.ok === false && typeof json.msg === 'string' && /csrf|token|session|unauthori[sz]ed|forbidden|not logged in/i.test(json.msg)) {
+      throw new SystemicActionError(`"${json.msg}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
+    }
+
     // Confirmed real ("Slow down!" on a v2_draft call) — retried in place with a
     // growing pause rather than surfaced as an ordinary failure, since the
     // rejection has nothing to do with this particular call's own content.
@@ -115,6 +124,9 @@ export async function postAction(path: string, params: Record<string, string | n
 export interface LiveStatus {
   energy: number;
   maxEnergy: number;
+  stamina: number;
+  maxStamina: number;
+  cash: number;
   travelling: boolean;
   jailed: boolean;
   hospitalized: boolean;
@@ -138,8 +150,33 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
   return {
     energy: Number(json.stats.energy) || 0,
     maxEnergy: Number(json.stats.max_energy) || 0,
+    stamina: Number(json.stats.stamina) || 0,
+    maxStamina: Number(json.stats.max_stamina) || 0,
+    cash: Number(json.stats.cash) || 0,
     travelling: Boolean(json.status.travelling),
     jailed: Boolean(json.status.jailed),
     hospitalized: Boolean(json.status.hospitalized),
   };
+}
+
+/**
+ * Sweeps whatever cash is currently on hand into the bank — the mechanical
+ * request only, extracted from petCourier.ts's `depositLeftoverCash` once a
+ * second caller (the Street Intel auto-runner) needed the identical call
+ * rather than a reimplementation of it. Callers own the "is it worth
+ * depositing"/summary/progress-broadcast decisions themselves; this is just
+ * the POST.
+ *
+ * `amount=ALL` — corrected from an earlier, never-actually-confirmed guess
+ * that sent a specific comma-formatted figure (`amount=1,000,000`, inferred
+ * from `withdraw`'s shape, which really does take a figure). Checking the
+ * archive while building this shared version turned up 279 real deposit
+ * calls, every single one using the literal string `ALL`, never a number —
+ * the response even confirms it directly (`{"ok":true,"message":"Deposited
+ * $X","cash":0,"bank":N}`). No amount to look up beforehand, and no race
+ * between "how much cash did we see" and "how much is actually there by the
+ * time this fires."
+ */
+export async function depositCashOnHand(): Promise<any> {
+  return postAction('/actions/bank.php', { action: 'deposit', amount: 'ALL' });
 }

@@ -1,10 +1,48 @@
 import { notify } from '@/shared/notify';
 import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
-import { ALARM_NAMES, GAME_ORIGIN, STREET_INTEL_POLL_INTERVAL_MS } from '@/shared/constants';
+import { ALARM_NAMES, GAME_ORIGIN, STORAGE_KEYS, STREET_INTEL_POLL_INTERVAL_MS } from '@/shared/constants';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
+import { storage } from '@/shared/storage';
+import type { StreetIntelAutoConfig } from '@/shared/types';
+import { onConfigChanged, scheduleNextCheck } from './actionRunner';
+
+export { handleAlarm as handleAutoAlarm } from './actionRunner';
+
+/**
+ * Re-arms the auto-attempt alarm on service-worker startup if enabled —
+ * alarms don't survive a restart the way `chrome.storage` does, same problem
+ * `careerAuto`'s own `ensureScheduled()` solves. Prefers the tracked cooldown
+ * over an immediate check, so a restart mid-cooldown doesn't attempt early.
+ */
+export async function ensureAutoScheduled(): Promise<void> {
+  const config = await storage.getStreetIntelAutoConfig();
+  if (!config.enabled) return;
+
+  const status = await storage.getStreetIntelAutoStatus();
+  scheduleNextCheck(status?.nextEligibleAt ?? null);
+}
+
+/**
+ * Reacts live to the popup flipping `enabled`/changing the success threshold —
+ * same `chrome.storage.onChanged` pattern as `careerAuto/index.ts`'s
+ * `watchConfigChanges`.
+ */
+export function watchAutoConfigChanges(): void {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG in changes)) return;
+    const next = changes[STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG].newValue as StreetIntelAutoConfig | undefined;
+    if (!next) return;
+    onConfigChanged(next);
+  });
+}
+
+export function initAuto(): void {
+  watchAutoConfigChanges();
+  ensureAutoScheduled().catch((err) => console.error(LOG_PREFIX, 'streetIntel ensureAutoScheduled failed', err));
+}
 
 /**
  * Arms the recurring poll the first time the player is seen using Street Intel —

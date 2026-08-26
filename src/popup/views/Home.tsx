@@ -3,14 +3,15 @@ import { LiveStats } from './LiveStats';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { CareerAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, CashIcon, ChevronRightIcon, FightClubIcon, SettingsIcon } from './icons';
+import type { CareerAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
+import { ArchiveIcon, BriefcaseIcon, CashIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenTradeAssistant: () => void;
   onOpenFightClub: () => void;
   onOpenRequestLog: () => void;
   onOpenCareerAuto: () => void;
+  onOpenStreetIntelAuto: () => void;
   onOpenSettings: () => void;
 }
 
@@ -26,6 +27,7 @@ function since(ms: number | null): string {
 export function Home(props: HomeProps) {
   const [health, setHealth] = useState<FeatureHealthMap>({});
   const [careerAutoConfig, setCareerAutoConfig] = useState<CareerAutoConfig | null>(null);
+  const [streetIntelAutoConfig, setStreetIntelAutoConfig] = useState<StreetIntelAutoConfig | null>(null);
 
   useEffect(() => {
     readFeatureHealth()
@@ -35,6 +37,10 @@ export function Home(props: HomeProps) {
       .getCareerAutoConfig()
       .then(setCareerAutoConfig)
       .catch((err) => console.error(LOG_PREFIX, 'failed to read career auto config', err));
+    storage
+      .getStreetIntelAutoConfig()
+      .then(setStreetIntelAutoConfig)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read street intel auto config', err));
   }, []);
 
   const careerAutoStatus = !careerAutoConfig || careerAutoConfig.careerId == null
@@ -42,6 +48,8 @@ export function Home(props: HomeProps) {
     : careerAutoConfig.enabled
       ? `Running ${careerAutoConfig.careerName}`
       : 'Off';
+
+  const streetIntelAutoStatus = streetIntelAutoConfig?.enabled ? 'Running' : 'Off';
 
   // Only broken features are listed. A healthy extension shows nothing here — this
   // is meant to be invisible until the day the game changes underneath it, which
@@ -104,6 +112,15 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">Career Auto</div>
           <div class="ff-nav-row__status">{careerAutoStatus}</div>
+        </div>
+        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      </button>
+
+      <button class="ff-nav-row" onClick={props.onOpenStreetIntelAuto}>
+        <div class="ff-nav-row__icon"><CrosshairIcon /></div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Street Intel Auto</div>
+          <div class="ff-nav-row__status">{streetIntelAutoStatus}</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

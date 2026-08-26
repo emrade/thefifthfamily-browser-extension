@@ -4,7 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
-import { SystemicActionError, postAction, sleep } from '../../gameAction';
+import { SystemicActionError, depositCashOnHand, postAction, sleep } from '../../gameAction';
 import { parseSmugglingV2PanelRegex } from './smugglingV2RegexParser';
 import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, SmugglingV2Snapshot } from '@/shared/types';
 
@@ -148,19 +148,18 @@ async function offloadReady(
  * the batch, since by this point the batch's own substantive work is already
  * done (or already gave up) — this is just protecting whatever's left standing.
  *
- * The request shape mirrors the confirmed `withdraw` action 1:1
- * (`action=withdraw&amount=...` — see docs/smuggling-v2-plan.md) on the
- * assumption `bank.php` supports the mirror `action=deposit` the same way. This
- * specific call has never actually been captured, so unlike everything else in
- * this file, it's an inference from symmetry, not a confirmed shape — worth
- * double-checking against a real response the first time it runs.
+ * The actual request (`depositCashOnHand()`, in gameAction.ts) sends
+ * `amount=ALL` — confirmed from 279 real deposit calls in the archive, all
+ * identical, none using a specific figure. An earlier version of this
+ * guessed a comma-formatted amount by mirroring `withdraw`'s shape, which
+ * turned out wrong once actually checked against real traffic.
  */
 async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
   const funds = await fetchCashAndDistrict();
   if (!funds || funds.cash <= 0) return;
 
   try {
-    const resp = await postAction('/actions/bank.php', { action: 'deposit', amount: funds.cash.toLocaleString('en-US') });
+    const resp = await depositCashOnHand();
     if (resp?.ok) {
       summary.cashDeposited = funds.cash;
       emitProgress({ kind: 'deposited', amount: funds.cash });

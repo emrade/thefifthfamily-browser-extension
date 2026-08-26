@@ -8,9 +8,10 @@ import { TradeAssistantHome } from './features/tradeAssistant/TradeAssistantHome
 import { FightClubHome } from './features/fightClub/FightClubHome';
 import { RequestLogHome } from './features/requestLog/RequestLogHome';
 import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
+import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'settings';
+type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -40,6 +41,7 @@ export function App() {
             onOpenFightClub={() => setView('fightClub')}
             onOpenRequestLog={() => setView('requestLog')}
             onOpenCareerAuto={() => setView('careerAuto')}
+            onOpenStreetIntelAuto={() => setView('streetIntelAuto')}
             onOpenSettings={() => setView('settings')}
           />
         )}
@@ -47,6 +49,7 @@ export function App() {
         {view === 'fightClub' && <FightClubHome />}
         {view === 'requestLog' && <RequestLogHome />}
         {view === 'careerAuto' && <CareerAutoHome />}
+        {view === 'streetIntelAuto' && <StreetIntelAutoHome />}
         {view === 'settings' && <Settings />}
       </main>
 

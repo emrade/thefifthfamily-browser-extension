@@ -70,6 +70,19 @@ export function BriefcaseIcon() {
   );
 }
 
+export function CrosshairIcon() {
+  return (
+    <svg {...commonProps}>
+      <circle cx="12" cy="12" r="8" />
+      <line x1="12" y1="1" x2="12" y2="6" />
+      <line x1="12" y1="18" x2="12" y2="23" />
+      <line x1="1" y1="12" x2="6" y2="12" />
+      <line x1="18" y1="12" x2="23" y2="12" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function SettingsIcon() {
   return (
     <svg {...commonProps}>

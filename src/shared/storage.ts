@@ -8,8 +8,10 @@ import type {
   PendingCustoms,
   PendingTravel,
   PlayerStatsSnapshot,
+  StreetIntelAutoConfig,
+  StreetIntelAutoStatus,
 } from './types';
-import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS } from './constants';
+import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS, STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
@@ -25,6 +27,11 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
   otEnergyCost: null,
   otAvailable: false,
   accuracyWeights: CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
+};
+
+const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
+  enabled: false,
+  minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 };
 
 async function get<T>(key: string, fallback: T): Promise<T> {
@@ -105,6 +112,16 @@ export const storage = {
   // since there's no "default" shift result to fall back to.
   getCareerAutoStatus: () => get<CareerAutoStatus | null>(STORAGE_KEYS.CAREER_AUTO_STATUS, null),
   setCareerAutoStatus: (v: CareerAutoStatus) => set(STORAGE_KEYS.CAREER_AUTO_STATUS, v),
+
+  // Same merge-with-defaults/simple-nullable split as the Career Auto pair above.
+  getStreetIntelAutoConfig: async (): Promise<StreetIntelAutoConfig> => {
+    const stored = await get<Partial<StreetIntelAutoConfig>>(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG, {});
+    return { ...DEFAULT_STREET_INTEL_AUTO_CONFIG, ...stored };
+  },
+  setStreetIntelAutoConfig: (v: StreetIntelAutoConfig) => set(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG, v),
+
+  getStreetIntelAutoStatus: () => get<StreetIntelAutoStatus | null>(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, null),
+  setStreetIntelAutoStatus: (v: StreetIntelAutoStatus) => set(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

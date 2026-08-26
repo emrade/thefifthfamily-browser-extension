@@ -31,6 +31,11 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Career Auto Stopped',
     description: 'Notify when the career auto-runner stops itself, e.g. after getting fired.',
   },
+  {
+    id: 'streetIntelAutoStopped',
+    label: 'Street Intel Auto Stopped',
+    description: 'Notify when the Street Intel auto-runner stops itself after an unrecognized response.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

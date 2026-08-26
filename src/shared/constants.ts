@@ -15,6 +15,8 @@ export const STORAGE_KEYS = {
   LAST_COURIER_RUN: 'ff_last_courier_run',
   CAREER_AUTO_CONFIG: 'ff_career_auto_config',
   CAREER_AUTO_STATUS: 'ff_career_auto_status',
+  STREET_INTEL_AUTO_CONFIG: 'ff_street_intel_auto_config',
+  STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
 } as const;
 
 export const ALARM_NAMES = {
@@ -23,6 +25,7 @@ export const ALARM_NAMES = {
   STREET_INTEL_POLL: 'ff-street-intel-poll',
   REQUEST_LOG_SWEEP: 'ff-request-log-sweep',
   CAREER_AUTO: 'ff-career-auto',
+  STREET_INTEL_AUTO: 'ff-street-intel-auto',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -204,3 +207,30 @@ export const CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS = [
   { value: 95, weight: 85 },
   { value: 70, weight: 15 },
 ];
+
+// --- Street Intel auto-attempt ------------------------------------------------
+//
+// Used only when the shared account-wide action cooldown isn't active (or
+// isn't known) — once it's genuinely on, the next check is scheduled exactly
+// at its real expiry instead, since Scout/Go-Blind are disabled game-wide
+// during it regardless of how often this checked. Opportunities themselves
+// rotate on independent per-card timers with no server signal for "a new one
+// is about to appear," so this is a plain re-poll interval for "is anything
+// worth acting on yet", not something derived from a countdown.
+export const STREET_INTEL_AUTO_FALLBACK_INTERVAL_MS = 60_000;
+
+// Same reasoning as CAREER_AUTO_BUFFER_MS — a small guard past the tracked
+// cooldown's expiry against firing a hair early on clock skew.
+export const STREET_INTEL_AUTO_BUFFER_MS = 5_000;
+
+// Same reasoning as CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS — enabling the
+// automation shouldn't wait out the full fallback interval above before its
+// first check.
+export const STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+
+// Grounded in this account's own real `street_intel.php` history (see
+// docs/street-intel-plan.md's auto-attempt section): every real attempt was
+// scouted first, and none was ever made below a ~40% estimated success — the
+// one 40-49% sample already included both a failure and the account's only
+// sub-60% disaster. 50 sits just above that realized floor.
+export const STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT = 50;

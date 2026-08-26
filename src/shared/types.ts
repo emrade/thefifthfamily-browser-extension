@@ -470,3 +470,51 @@ export interface CareerAutoStatus {
   shiftsToday: number;
   shiftsTodayDate: string;
 }
+
+/** User-configured — read/written directly by the popup, same as
+ *  `CareerAutoConfig`. `minSuccessPct` gates which opportunities are worth
+ *  scouting into an attempt at all: the automation walks candidates by
+ *  reward-per-Stamina value and stops at the first whose best scouted
+ *  approach clears this floor, skipping the rest of the cycle if none do.
+ *  Default (50) is grounded in this account's own real history — see
+ *  docs/street-intel-plan.md's auto-attempt section — not an arbitrary guess. */
+export interface StreetIntelAutoConfig {
+  enabled: boolean;
+  minSuccessPct: number;
+}
+
+/** What one automated attempt (+ its complication, if one came up) actually
+ *  did — the Street Intel counterpart to `CareerShiftResult`. */
+export interface StreetIntelAttemptResult {
+  timestamp: number;
+  opportunityTitle: string;
+  riskTier: 'low' | 'medium' | 'high' | 'extreme';
+  legendary: boolean;
+  approach: string;
+  scoutedPct: number;
+  outcomeBand: string;
+  reward: number;
+  jailSeconds: number;
+  hadComplication: boolean;
+  complicationChoice: string | null;
+  complicationSuccess: boolean | null;
+}
+
+/**
+ * Background-owned runtime state for the Street Intel auto-runner — same
+ * split from `StreetIntelAutoConfig` that `CareerAutoStatus` has from
+ * `CareerAutoConfig`. Unlike Career, there's no `'fired'`-equivalent pause
+ * reason here: a `disaster` outcome (real jail time) is a confirmed, expected
+ * result this feature keeps running through — not an anomaly to stop for. The
+ * only pause reason is a response shape this feature doesn't recognize at all.
+ */
+export interface StreetIntelAutoStatus {
+  lastAttempt: StreetIntelAttemptResult | null;
+  nextEligibleAt: number | null;
+  pausedReason: 'error' | null;
+  pausedAt: number | null;
+  /** Same local-calendar-day-key pattern as `CareerAutoStatus.shiftsToday` —
+   *  see its comment for why the rollover is read-time, not write-time. */
+  attemptsToday: number;
+  attemptsTodayDate: string;
+}
