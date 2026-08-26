@@ -139,14 +139,30 @@ which button variant is currently showing.
 
 ## Known residual risk
 
+### Concurrency bug confirmed and fixed (2026-08-26)
+
+The "anything other than a clean `ok:true` is a hard stop" behavior above got tested for
+real: the automation stopped with `"Not enough energy!"` even though `runIfEligible()`
+gates every shift attempt on a live energy check before ever calling `career.php`
+(`status.energy >= config.energyCost`, or the overtime equivalent). The archive showed
+why — one `stats.php` energy read, followed by *two* `career.php` shift attempts 210ms
+apart: both came from the same energy figure, both concluded there was enough, the first
+spent it, and the second came back a legitimate rejection. This is the identical
+`chrome.alarms` double-firing quirk already caught and fixed in
+`streetIntel/actionRunner.ts` (a known MV3 platform behavior, not a wiring bug — there's
+exactly one `chrome.alarms.create`/`onAlarm` path for `ALARM_NAMES.CAREER_AUTO`) — this
+feature just hadn't shown it yet at the time that fix shipped. Fixed the same way: a
+module-level `cycleInFlight` guard around `runIfEligible()` in `runner.ts`, so a second
+concurrent alarm firing is a no-op instead of a duplicate shift attempt that gets
+misread as the game rejecting the automation.
+
 `nextEligibleAt` is this feature's *own* tracking of the job's cooldown, seeded only
 from `cooldown_seconds` on calls the automation itself makes. If the same job is also
 run manually in-game while automation is enabled, that tracking goes stale and the next
-automated attempt could fire a little early. There's no captured example of what an
-early/rejected `career.php` call actually looks like to defend against specifically —
-the generic "anything other than a clean `ok:true` is a hard stop" behavior above is the
-safety net for that case, same posture as everything else in this feature that can't yet
-be verified against real data. Worth revisiting the first time it's actually observed.
+automated attempt could fire a little early. There's still no captured example of what
+*that specific* early/rejected `career.php` call looks like — the generic hard-stop
+behavior remains the safety net for it, same posture as everything else in this feature
+that can't yet be verified against real data.
 
 Accuracy weighting (currently a fixed 85/15 default between `95` and `70`, described
 above) isn't exposed as an editable setting in this pass — revisit if the player wants

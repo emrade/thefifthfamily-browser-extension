@@ -102,7 +102,29 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
   });
 }
 
+// `chrome.alarms` is confirmed to occasionally fire an alarm twice for a
+// single scheduled time after the service worker's been dormant (a known
+// MV3 platform quirk — see the identical guard and its doc comment in
+// streetIntel/actionRunner.ts, where this was first caught and fixed).
+// Real capture here too, 2026-08-26: two `career.php` shift attempts fired
+// 210ms apart off a single shared energy reading — the first spent the
+// energy, the second came back a legitimate `ok:false` ("Not enough
+// energy!") and, since this runner treats any non-`ok:true` shift response
+// as a systemic failure, paused the whole automation over what was really
+// just a duplicate firing.
+let cycleInFlight = false;
+
 export async function runIfEligible(): Promise<void> {
+  if (cycleInFlight) return;
+  cycleInFlight = true;
+  try {
+    await runIfEligibleOnce();
+  } finally {
+    cycleInFlight = false;
+  }
+}
+
+async function runIfEligibleOnce(): Promise<void> {
   const config = await storage.getCareerAutoConfig();
   if (!config.enabled || config.careerId == null) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
 

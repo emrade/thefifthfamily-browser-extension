@@ -328,9 +328,12 @@ been dormant), not a wiring bug here — but without a guard, that duplicate `ok
 would hit the "unrecognized response shape" check and pause the whole automation over
 what was really just a duplicate firing. Fixed with a simple in-flight guard
 (`cycleInFlight`) around `runIfEligible()`: a second concurrent call is a no-op, letting
-the first cycle finish and own whatever reschedule it decides. `careerAuto/runner.ts`
-has the same single-alarm-path shape and hasn't shown this in practice, but carries the
-same latent risk — worth the same guard if it ever surfaces there too.
+the first cycle finish and own whatever reschedule it decides. `careerAuto/runner.ts` had
+the same single-alarm-path shape and, sure enough, hit the identical bug for real later
+the same day (two `career.php` shift attempts 210ms apart off one shared energy reading —
+the second came back `"Not enough energy!"` and paused the automation) — see
+`docs/career-auto-plan.md`'s "Known residual risk" section for that capture; fixed with
+the same `cycleInFlight` guard.
 
 ### Residual risk
 
