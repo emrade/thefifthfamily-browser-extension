@@ -1,9 +1,11 @@
-import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS, CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS } from '@/shared/constants';
+import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS, CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
+import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction } from '../../gameAction';
+import { parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig } from '@/shared/types';
 
 const FEATURE_KEY = 'careerAuto';
@@ -138,6 +140,31 @@ async function runIfEligibleOnce(): Promise<void> {
   // — the action is likely to fail or be meaningless in any of these states.
   if (status.travelling || status.jailed || status.hospitalized) {
     scheduleNextCheck(null);
+    return;
+  }
+
+  // Live cross-check against the game's own account-wide "on break" cooldown
+  // — this feature's tracked `nextEligibleAt` is only ever seeded from calls
+  // it makes itself, so it goes stale exactly like Street Intel's own tracked
+  // cooldown can (manual play, a missed status update). A real capture
+  // (2026-08-26) showed the consequence: a shift fired purely off stale
+  // tracked state, got rejected with "On break! Wait 3m 20s", and that
+  // rejection paused the whole automation as an unrecognized response.
+  // Fetching the careers panel and trusting its live cooldown here — same
+  // pattern as `streetIntel/actionRunner.ts`'s own panel cross-check — catches
+  // the staleness before it ever reaches career.php.
+  let liveCooldownSeconds: number | null = null;
+  try {
+    const panelRes = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=careers&_t=${Date.now()}`, { credentials: 'include' });
+    liveCooldownSeconds = parseCareerCooldownSeconds(await panelRes.text());
+  } catch (err) {
+    // A failed panel fetch isn't grounds to stop the whole automation — just
+    // proceed on tracked state alone this cycle, same as everywhere else in
+    // this codebase treats a single failed fetch as transient, not systemic.
+    console.error(LOG_PREFIX, 'career auto-runner cooldown cross-check fetch failed', err);
+  }
+  if (liveCooldownSeconds !== null) {
+    scheduleNextCheck(Date.now() + liveCooldownSeconds * 1000);
     return;
   }
 

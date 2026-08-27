@@ -75,3 +75,30 @@ export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] 
 
   return [...byId.values()];
 }
+
+/**
+ * The account-wide "on break" cooldown after any career shift — confirmed
+ * from a real capture (2026-08-26) to render identically on *every* job
+ * card while active: `<button class="cooldown-btn"><span class="countdown"
+ * data-seconds="258">...`. Not a per-job cooldown (every card shown the same
+ * `data-seconds` figure simultaneously) — this is the same account-wide
+ * "on break" state the game's own UI message names, distinct from any one
+ * job's own selection.
+ *
+ * This exists as the live cross-check `runner.ts` was missing: it previously
+ * fired a shift purely off its own tracked `nextEligibleAt`, which goes
+ * stale the same way Street Intel's own tracked cooldown can (manual play,
+ * a missed status update) — and the first real instance of that surfaced as
+ * a `career.php` rejection ("On break! Wait 3m 20s") that got misread as an
+ * unrecognized response shape and paused the whole automation. Same
+ * "fetch the panel, trust its live state over what's internally tracked"
+ * pattern as `parseSharedCooldownSeconds` in
+ * `streetIntel/streetIntelPanelRegexParser.ts`.
+ */
+export function parseCareerCooldownSeconds(responseText: string): number | null {
+  const envelope = unwrapPanelEnvelope(responseText);
+  if (!envelope) return null;
+
+  const match = envelope.html.match(/cooldown-btn"><span class="countdown" data-seconds="(\d+)"/);
+  return match ? Number(match[1]) : null;
+}

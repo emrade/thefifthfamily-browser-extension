@@ -156,13 +156,28 @@ module-level `cycleInFlight` guard around `runIfEligible()` in `runner.ts`, so a
 concurrent alarm firing is a no-op instead of a duplicate shift attempt that gets
 misread as the game rejecting the automation.
 
+### Stale-cooldown bug confirmed and fixed (2026-08-26, same day)
+
 `nextEligibleAt` is this feature's *own* tracking of the job's cooldown, seeded only
-from `cooldown_seconds` on calls the automation itself makes. If the same job is also
-run manually in-game while automation is enabled, that tracking goes stale and the next
-automated attempt could fire a little early. There's still no captured example of what
-*that specific* early/rejected `career.php` call looks like — the generic hard-stop
-behavior remains the safety net for it, same posture as everything else in this feature
-that can't yet be verified against real data.
+from `cooldown_seconds` on calls the automation itself makes — with no live cross-check
+against the game's own state before firing, unlike Street Intel's runner, which fetches
+its panel and checks a live `.si-cooldown-bar` every cycle specifically to catch this.
+This went stale for real the same day as the concurrency fix above: a shift fired
+purely off tracked state and came back `"On break! Wait 3m 20s"`, which — same as the
+energy case — got misread as an unrecognized response shape and paused the automation.
+
+The archive turned up something not previously known about this cooldown: it's not
+actually per-job. A capture taken while on cooldown showed **every** career card
+rendering the identical `<button class="cooldown-btn"><span class="countdown"
+data-seconds="258">...` markup simultaneously — the same account-wide "on break" state
+the game's own rejection message names, not something scoped to whichever job is
+selected. `parseCareerCooldownSeconds()` (new, in `careersPanelParser.ts`) extracts that
+figure, and `runIfEligible()` now fetches the careers panel and checks it — same
+"fetch the panel, trust its live state over tracked state" pattern Street Intel already
+used — *before* the energy gate, rescheduling off the live figure instead of ever
+reaching `career.php` with stale state. A failed panel fetch here doesn't stop the
+automation; it just proceeds on tracked state alone for that one cycle, same as any
+other transient fetch failure elsewhere in this codebase.
 
 Accuracy weighting (currently a fixed 85/15 default between `95` and `70`, described
 above) isn't exposed as an editable setting in this pass — revisit if the player wants
