@@ -59,9 +59,17 @@ export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] 
     const energyMatch = chunk.match(/cv2-stat-val[^>]*>(\d+)<\/div><div class="cv2-stat-lbl">Energy<\/div>/);
     if (!energyMatch) continue;
 
-    // Presence of the row itself (not just a successful cost match within it)
-    // is what "OT unlocked for this job" actually means — see the class doc
-    // comment above.
+    // `cv2-ot-row` is *not* the rank-2 gate it looks like — a real capture
+    // (2026-08-27) showed it rendering on every job's card as a cost/reward
+    // preview regardless of rank, including a never-worked, "Unranked" job.
+    // Trusting it as `otAvailable` sent a rank-1 job's shift with
+    // `overtime=1` and got it rejected: "Overtime unlocks at Rank 2." The
+    // actual rank-2 gate is `cv2-ot-btn` — the clickable button itself, which
+    // only exists as the Work button's sibling once Rank Rewards show R2
+    // unlocked (see `isCareerOvertimeUnlocked` below for the live per-cycle
+    // version of this same check). The preview row is still the right place
+    // to read the energy cost from, since it's present — and accurate —
+    // before the job ever reaches rank 2.
     const otMatch = chunk.match(/cv2-ot-row">[\s\S]*?OT:\s*(\d+)E/);
 
     byId.set(careerId, {
@@ -69,7 +77,7 @@ export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] 
       name: nameMatch[1].trim(),
       energyCost: Number(energyMatch[1]),
       otEnergyCost: otMatch ? Number(otMatch[1]) : null,
-      otAvailable: chunk.includes('cv2-ot-row'),
+      otAvailable: chunk.includes('cv2-ot-btn'),
     });
   }
 
@@ -101,4 +109,32 @@ export function parseCareerCooldownSeconds(responseText: string): number | null 
 
   const match = envelope.html.match(/cooldown-btn"><span class="countdown" data-seconds="(\d+)"/);
   return match ? Number(match[1]) : null;
+}
+
+/**
+ * Live per-cycle check for whether Overtime is actually clickable for one
+ * specific career right now — reads the same `panel.php?type=careers` fetch
+ * `runner.ts` already makes every cycle for `parseCareerCooldownSeconds`'s
+ * cooldown cross-check, rather than trusting `CareerAutoConfig.otAvailable`,
+ * which is only ever captured once at job-selection time (see that field's
+ * doc comment in `shared/types.ts`, and `parseCareersCatalog`'s note above on
+ * why its own `otAvailable` read was wrong until 2026-08-27).
+ *
+ * Correctly reads `false` for a job currently on the shared "on break"
+ * cooldown, since neither button renders at all then (see the cooldown case
+ * in this file's top doc comment) — not a concern for `runner.ts`'s caller,
+ * which only reaches this check after already confirming via
+ * `parseCareerCooldownSeconds` that the job isn't on cooldown this cycle.
+ */
+export function isCareerOvertimeUnlocked(responseText: string, careerId: number): boolean {
+  const envelope = unwrapPanelEnvelope(responseText);
+  if (!envelope) return false;
+
+  const chunks = envelope.html.split('id="career-card-').slice(1);
+  for (const chunk of chunks) {
+    const idMatch = chunk.match(/^(\d+)"/);
+    if (!idMatch || Number(idMatch[1]) !== careerId) continue;
+    return chunk.includes('cv2-ot-btn');
+  }
+  return false;
 }

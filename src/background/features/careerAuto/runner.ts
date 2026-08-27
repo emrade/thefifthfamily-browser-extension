@@ -5,7 +5,7 @@ import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction } from '../../gameAction';
-import { parseCareerCooldownSeconds } from './careersPanelParser';
+import { isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig } from '@/shared/types';
 
 const FEATURE_KEY = 'careerAuto';
@@ -154,22 +154,35 @@ async function runIfEligibleOnce(): Promise<void> {
   // Fetching the careers panel and trusting its live cooldown here — same
   // pattern as `streetIntel/actionRunner.ts`'s own panel cross-check — catches
   // the staleness before it ever reaches career.php.
-  let liveCooldownSeconds: number | null = null;
+  let panelHtml: string | null = null;
   try {
     const panelRes = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=careers&_t=${Date.now()}`, { credentials: 'include' });
-    liveCooldownSeconds = parseCareerCooldownSeconds(await panelRes.text());
+    panelHtml = await panelRes.text();
   } catch (err) {
     // A failed panel fetch isn't grounds to stop the whole automation — just
     // proceed on tracked state alone this cycle, same as everywhere else in
     // this codebase treats a single failed fetch as transient, not systemic.
     console.error(LOG_PREFIX, 'career auto-runner cooldown cross-check fetch failed', err);
   }
+  const liveCooldownSeconds = panelHtml !== null ? parseCareerCooldownSeconds(panelHtml) : null;
   if (liveCooldownSeconds !== null) {
     scheduleNextCheck(Date.now() + liveCooldownSeconds * 1000);
     return;
   }
 
-  const overtime = config.otAvailable && config.otEnergyCost != null && status.energy >= config.otEnergyCost;
+  // `config.otAvailable` is captured once at job-selection time from the
+  // catalog panel, and (until fixed 2026-08-27) was wrong regardless of
+  // timing: it read a cost/reward preview row that renders on every job's
+  // card whether or not Overtime is actually unlocked, so a rank-1 job could
+  // still send `overtime=1` and get rejected with "Overtime unlocks at Rank
+  // 2." Re-confirming live off this cycle's own panel fetch — the same one
+  // just used for the cooldown cross-check above — catches that instead of
+  // trusting anything captured earlier. Skipped (defaults to no OT) if the
+  // panel fetch above failed, same conservative call as everywhere else here
+  // treats a missing live read.
+  const rankAllowsOvertime = panelHtml !== null && isCareerOvertimeUnlocked(panelHtml, config.careerId);
+
+  const overtime = config.otAvailable && config.otEnergyCost != null && rankAllowsOvertime && status.energy >= config.otEnergyCost;
   const canRunNormal = status.energy >= config.energyCost;
   if (!overtime && !canRunNormal) {
     scheduleNextCheck(null); // not enough energy yet — energy regenerates on its own, so just check again later
