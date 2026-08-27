@@ -448,7 +448,7 @@ async function runIfEligibleOnce(): Promise<void> {
     const previousStatus = await storage.getStreetIntelAutoStatus();
     const rolledOver = previousStatus?.attemptsTodayDate !== today;
     const attemptsToday = rolledOver ? 1 : previousStatus!.attemptsToday + 1;
-    const cashToday = (rolledOver ? 0 : previousStatus!.cashToday) + rewardCash;
+    const cashToday = (rolledOver ? 0 : previousStatus!.cashToday ?? 0) + rewardCash;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
     // Whether this complication choice came from the steel_yourself fallback

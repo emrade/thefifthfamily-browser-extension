@@ -217,7 +217,7 @@ async function runIfEligibleOnce(): Promise<void> {
   const previousStatus = await storage.getCareerAutoStatus();
   const rolledOver = previousStatus?.shiftsTodayDate !== today;
   const shiftsToday = rolledOver ? 1 : previousStatus!.shiftsToday + 1;
-  const cashToday = (rolledOver ? 0 : previousStatus!.cashToday) + shiftCash;
+  const cashToday = (rolledOver ? 0 : previousStatus!.cashToday ?? 0) + shiftCash;
 
   await storage.setCareerAutoStatus({
     lastShift: {

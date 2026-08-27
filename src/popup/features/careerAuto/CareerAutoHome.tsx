@@ -106,7 +106,7 @@ export function CareerAutoHome() {
   // incrementing — otherwise this would keep showing yesterday's count all the
   // way up until the next shift actually runs and overwrites it.
   const shiftsToday = status?.shiftsTodayDate === localDateKey() ? status.shiftsToday : 0;
-  const cashToday = status?.shiftsTodayDate === localDateKey() ? status.cashToday : 0;
+  const cashToday = status?.shiftsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
 
   async function saveConfig(next: CareerAutoConfig) {
     setConfig(next);

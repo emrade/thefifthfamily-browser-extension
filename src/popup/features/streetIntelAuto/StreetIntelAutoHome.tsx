@@ -67,7 +67,7 @@ export function StreetIntelAutoHome() {
 
   const nextRunAt = config?.enabled ? (status?.nextEligibleAt ?? nextAlarmAt) : null;
   const attemptsToday = status?.attemptsTodayDate === localDateKey() ? status.attemptsToday : 0;
-  const cashToday = status?.attemptsTodayDate === localDateKey() ? status.cashToday : 0;
+  const cashToday = status?.attemptsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
 
   async function saveConfig(next: StreetIntelAutoConfig) {
     setConfig(next);
