@@ -67,6 +67,7 @@ export function StreetIntelAutoHome() {
 
   const nextRunAt = config?.enabled ? (status?.nextEligibleAt ?? nextAlarmAt) : null;
   const attemptsToday = status?.attemptsTodayDate === localDateKey() ? status.attemptsToday : 0;
+  const cashToday = status?.attemptsTodayDate === localDateKey() ? status.cashToday : 0;
 
   async function saveConfig(next: StreetIntelAutoConfig) {
     setConfig(next);
@@ -161,6 +162,10 @@ export function StreetIntelAutoHome() {
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{attemptsToday}</div>
               <div class="ff-stat-tile__label">Attempts Today</div>
+            </div>
+            <div class="ff-stat-tile">
+              <div class="ff-stat-tile__value ff-mono" style={{ color: 'var(--ff-green)' }}>${cashToday.toLocaleString()}</div>
+              <div class="ff-stat-tile__label">Earned Today</div>
             </div>
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{nextRunAt ? formatNextRun(nextRunAt, now) : '—'}</div>

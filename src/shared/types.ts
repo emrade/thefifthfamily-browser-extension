@@ -474,6 +474,10 @@ export interface CareerAutoStatus {
    *  today's before trusting `shiftsToday`, and treat a stale key as 0. */
   shiftsToday: number;
   shiftsTodayDate: string;
+  /** Sum of `CareerShiftResult.cash` across every shift counted in
+   *  `shiftsToday` — same `shiftsTodayDate` key governs both, so they reset
+   *  together at read time rather than needing a second date field. */
+  cashToday: number;
 }
 
 /** User-configured — read/written directly by the popup, same as
@@ -581,6 +585,13 @@ export interface StreetIntelAutoStatus {
    *  see its comment for why the rollover is read-time, not write-time. */
   attemptsToday: number;
   attemptsTodayDate: string;
+  /** Sum of `StreetIntelAttemptResult.reward` across every attempt counted in
+   *  `attemptsToday` — same `attemptsTodayDate` key governs both. Deliberately
+   *  not netted against `cash_lost` from a failed complication (that's a
+   *  separate, rarer number — see docs/street-intel-complication-tracking.md
+   *  — and netting it here would make this tile silently disagree with
+   *  `lastAttempt.reward`, which is also gross). */
+  cashToday: number;
   /** Every candidate scouted on the most recent eligible cycle, in the order
    *  tried — populated even on a cycle where nothing cleared the threshold
    *  and no attempt happened at all, which is exactly the case that's

@@ -92,6 +92,7 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
     pausedAt: Date.now(),
     shiftsToday: status?.shiftsToday ?? 0,
     shiftsTodayDate: status?.shiftsTodayDate ?? localDateKey(),
+    cashToday: status?.cashToday ?? 0,
   });
 
   chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
@@ -210,10 +211,13 @@ async function runIfEligibleOnce(): Promise<void> {
     return;
   }
 
+  const shiftCash = Number(resp.cash) || 0;
   const nextEligibleAt = Date.now() + resp.cooldown_seconds * 1000;
   const today = localDateKey();
   const previousStatus = await storage.getCareerAutoStatus();
-  const shiftsToday = previousStatus?.shiftsTodayDate === today ? previousStatus.shiftsToday + 1 : 1;
+  const rolledOver = previousStatus?.shiftsTodayDate !== today;
+  const shiftsToday = rolledOver ? 1 : previousStatus!.shiftsToday + 1;
+  const cashToday = (rolledOver ? 0 : previousStatus!.cashToday) + shiftCash;
 
   await storage.setCareerAutoStatus({
     lastShift: {
@@ -224,7 +228,7 @@ async function runIfEligibleOnce(): Promise<void> {
       accuracy,
       tier: String(resp.tier ?? ''),
       tierLabel: String(resp.tierLabel ?? ''),
-      cash: Number(resp.cash) || 0,
+      cash: shiftCash,
       xp: Number(resp.xp) || 0,
       promoted: Boolean(resp.promoted),
       leveledUp: Boolean(resp.leveled_up),
@@ -236,6 +240,7 @@ async function runIfEligibleOnce(): Promise<void> {
     pausedAt: null,
     shiftsToday,
     shiftsTodayDate: today,
+    cashToday,
   });
 
   scheduleNextCheck(nextEligibleAt);

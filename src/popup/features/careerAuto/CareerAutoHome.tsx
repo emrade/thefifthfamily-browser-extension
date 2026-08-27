@@ -106,6 +106,7 @@ export function CareerAutoHome() {
   // incrementing — otherwise this would keep showing yesterday's count all the
   // way up until the next shift actually runs and overwrites it.
   const shiftsToday = status?.shiftsTodayDate === localDateKey() ? status.shiftsToday : 0;
+  const cashToday = status?.shiftsTodayDate === localDateKey() ? status.cashToday : 0;
 
   async function saveConfig(next: CareerAutoConfig) {
     setConfig(next);
@@ -248,6 +249,10 @@ export function CareerAutoHome() {
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{shiftsToday}</div>
               <div class="ff-stat-tile__label">Shifts Today</div>
+            </div>
+            <div class="ff-stat-tile">
+              <div class="ff-stat-tile__value ff-mono" style={{ color: 'var(--ff-green)' }}>${cashToday.toLocaleString()}</div>
+              <div class="ff-stat-tile__label">Earned Today</div>
             </div>
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{nextRunAt ? formatNextRun(nextRunAt, now) : '—'}</div>

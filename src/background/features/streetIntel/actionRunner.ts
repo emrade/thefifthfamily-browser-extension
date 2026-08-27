@@ -79,6 +79,7 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
     pausedAt: current?.pausedAt ?? null,
     attemptsToday: current?.attemptsToday ?? 0,
     attemptsTodayDate: current?.attemptsTodayDate ?? localDateKey(),
+    cashToday: current?.cashToday ?? 0,
     lastCycleScouted: current?.lastCycleScouted ?? [],
     lastCycleAt: current?.lastCycleAt ?? null,
     complicationStats: current?.complicationStats ?? EMPTY_COMPLICATION_STATS,
@@ -442,9 +443,12 @@ async function runIfEligibleOnce(): Promise<void> {
       }
     }
 
+    const rewardCash = Number(attemptResp.reward_cash) || 0;
     const today = localDateKey();
     const previousStatus = await storage.getStreetIntelAutoStatus();
-    const attemptsToday = previousStatus?.attemptsTodayDate === today ? previousStatus.attemptsToday + 1 : 1;
+    const rolledOver = previousStatus?.attemptsTodayDate !== today;
+    const attemptsToday = rolledOver ? 1 : previousStatus!.attemptsToday + 1;
+    const cashToday = (rolledOver ? 0 : previousStatus!.cashToday) + rewardCash;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
     // Whether this complication choice came from the steel_yourself fallback
@@ -471,7 +475,7 @@ async function runIfEligibleOnce(): Promise<void> {
         approach: choice.approach,
         scoutedPct: choice.estimatePct,
         outcomeBand: String(attemptResp.outcome_band ?? ''),
-        reward: Number(attemptResp.reward_cash) || 0,
+        reward: rewardCash,
         jailSeconds: Number(attemptResp.jail_time) || 0,
         hadComplication: Boolean(attemptResp.has_complication),
         complicationChoice,
@@ -484,6 +488,7 @@ async function runIfEligibleOnce(): Promise<void> {
       pausedAt: null,
       attemptsToday,
       attemptsTodayDate: today,
+      cashToday,
       lastCycleScouted: log,
       lastCycleAt: Date.now(),
       complicationStats,
