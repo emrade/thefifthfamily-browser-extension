@@ -8,6 +8,7 @@ import type {
   PendingCustoms,
   PendingTravel,
   PlayerStatsSnapshot,
+  RealEstateAdvisorPreferences,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
 } from './types';
@@ -32,6 +33,13 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
 const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   enabled: false,
   minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
+};
+
+// 24h matches this account's own observed collection habit (see the Real
+// Estate advisor's derivation) — a reasonable default for any install,
+// adjustable live from the overlay's own cadence chips.
+const DEFAULT_REAL_ESTATE_ADVISOR_PREFERENCES: RealEstateAdvisorPreferences = {
+  cadenceHours: 24,
 };
 
 async function get<T>(key: string, fallback: T): Promise<T> {
@@ -122,6 +130,13 @@ export const storage = {
 
   getStreetIntelAutoStatus: () => get<StreetIntelAutoStatus | null>(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, null),
   setStreetIntelAutoStatus: (v: StreetIntelAutoStatus) => set(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, v),
+
+  // Same merge-with-defaults reasoning as the prefs above.
+  getRealEstateAdvisorPreferences: async (): Promise<RealEstateAdvisorPreferences> => {
+    const stored = await get<Partial<RealEstateAdvisorPreferences>>(STORAGE_KEYS.REAL_ESTATE_ADVISOR_PREFERENCES, {});
+    return { ...DEFAULT_REAL_ESTATE_ADVISOR_PREFERENCES, ...stored };
+  },
+  setRealEstateAdvisorPreferences: (v: RealEstateAdvisorPreferences) => set(STORAGE_KEYS.REAL_ESTATE_ADVISOR_PREFERENCES, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

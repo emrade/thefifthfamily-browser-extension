@@ -21,6 +21,11 @@ export const PAGE_FEATURE_DEFINITIONS = [
     label: 'Pet Courier Panel',
     description: 'A floating panel on the Smuggling page with a Run button and last-run summary, so running couriers doesn’t need the popup open.',
   },
+  {
+    id: 'realEstateAdvisor',
+    label: 'Real Estate Advisor',
+    description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',
+  },
 ] as const;
 
 export type PageFeatureId = (typeof PAGE_FEATURE_DEFINITIONS)[number]['id'];

@@ -17,6 +17,7 @@ export const STORAGE_KEYS = {
   CAREER_AUTO_STATUS: 'ff_career_auto_status',
   STREET_INTEL_AUTO_CONFIG: 'ff_street_intel_auto_config',
   STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
+  REAL_ESTATE_ADVISOR_PREFERENCES: 'ff_real_estate_advisor_preferences',
 } as const;
 
 export const ALARM_NAMES = {

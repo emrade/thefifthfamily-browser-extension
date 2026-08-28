@@ -258,6 +258,16 @@ export interface FightClubFilterPrefs {
   maxRating: number | null;
 }
 
+/** How often the player actually collects Real Estate properties — the Real
+ *  Estate advisor overlay (content/features/realEstate) needs this to know how
+ *  much vault capacity a property actually needs, since a longer gap between
+ *  collections needs a bigger vault to avoid overflow. Player-adjustable via
+ *  the overlay's own cadence chips, not a Settings toggle — it's read far more
+ *  often than it's changed and belongs next to the numbers it drives. */
+export interface RealEstateAdvisorPreferences {
+  cadenceHours: number;
+}
+
 /**
  * A pet's own `user_pet_id` plus its capacity/speed stats — see
  * docs/smuggling-v2-plan.md's "Pet roster discovery" note. Only learnable from a
