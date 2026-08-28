@@ -18,11 +18,39 @@ import { dirname, join } from 'node:path';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const artifactsDir = join(root, 'web-ext-artifacts');
+const changelogPath = join(root, 'CHANGELOG.md');
 
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 
+/**
+ * A reminder, never a gate — printed right before a successful preflight,
+ * never before the "refusing to sign" failure below (no point nagging about
+ * a release that isn't happening). Deliberately non-blocking: a bare rebuild
+ * or a recovery re-release genuinely has nothing worth logging, and turning
+ * this into a hard failure would just train skipping it with --no-verify
+ * energy rather than respecting it.
+ *
+ * Checks for the literal heading CHANGELOG.md's own entries use
+ * (`## [x.y.z]`, see the file itself) rather than diffing git history —
+ * simpler, and answers the actual question ("does this version have an
+ * entry") directly instead of inferring it from what changed since some
+ * other commit.
+ */
+function reminderIfChangelogMissingEntry() {
+  if (!existsSync(changelogPath)) return; // no changelog being kept at all — nothing to remind about
+  const changelog = readFileSync(changelogPath, 'utf8');
+  if (changelog.includes(`## [${version}]`)) return;
+  console.log(`
+preflight: CHANGELOG.md has no entry for ${version} yet.
+
+  Not a blocker — add one now if this release has anything worth logging,
+  or ignore this if it's a plain rebuild/recovery release.
+`);
+}
+
 if (!existsSync(artifactsDir)) {
   console.log(`preflight: no previous artifacts, releasing ${version}`);
+  reminderIfChangelogMissingEntry();
   process.exit(0);
 }
 
@@ -33,6 +61,7 @@ const signed = readdirSync(artifactsDir)
 
 if (!signed.includes(version)) {
   console.log(`preflight: ${version} has not been signed before — proceeding`);
+  reminderIfChangelogMissingEntry();
   process.exit(0);
 }
 
