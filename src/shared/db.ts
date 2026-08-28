@@ -1,5 +1,16 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { CustomsEvent, District, DistrictVisit, PetRosterEntry, PriceSnapshot, RiskObservation, Trade, TravelLeg } from './types';
+import type {
+  CustomsEvent,
+  District,
+  DistrictVisit,
+  PetRosterEntry,
+  PriceSnapshot,
+  RiskObservation,
+  StockPricePoint,
+  StockRumorRecord,
+  Trade,
+  TravelLeg,
+} from './types';
 import type { EndpointProfile, RequestLogEntry } from './requestLog/types';
 
 const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
@@ -13,6 +24,8 @@ const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
   requestLog: EntityTable<RequestLogEntry, 'id'>;
   endpointProfiles: EntityTable<EndpointProfile, 'id'>;
   petRoster: EntityTable<PetRosterEntry, 'userPetId'>;
+  stockPrices: EntityTable<StockPricePoint, 'id'>;
+  stockRumors: EntityTable<StockRumorRecord, 'rumorCode'>;
 };
 
 db.version(1).stores({
@@ -62,6 +75,17 @@ db.version(4).stores({
 // this pet before" a plain `.get()` instead of a filtered scan.
 db.version(5).stores({
   petRoster: 'userPetId, name',
+});
+
+// `stockPrices` is keyed on `"${symbol}:${hour}"` — a natural composite key, same
+// reasoning as `petRoster` above — so re-polling an hour already stored (the game's
+// `poll` action returns a rolling 47h window every time, and backfill via `chart`
+// overlaps that further) is a plain overwrite via `bulkPut`, never a duplicate row.
+// `stockRumors` is keyed on the game's own `rumor_code`, which is already unique.
+// See docs/stock-market-tracker-plan.md.
+db.version(6).stores({
+  stockPrices: 'id, symbol, hour',
+  stockRumors: 'rumorCode, symbol, truthFlag',
 });
 
 /** Wipes the derived, player-facing tables — everything behind the numbers shown in

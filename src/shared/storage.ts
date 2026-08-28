@@ -9,6 +9,7 @@ import type {
   PendingTravel,
   PlayerStatsSnapshot,
   RealEstateAdvisorPreferences,
+  StockMarketPollStatus,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
 } from './types';
@@ -137,6 +138,16 @@ export const storage = {
     return { ...DEFAULT_REAL_ESTATE_ADVISOR_PREFERENCES, ...stored };
   },
   setRealEstateAdvisorPreferences: (v: RealEstateAdvisorPreferences) => set(STORAGE_KEYS.REAL_ESTATE_ADVISOR_PREFERENCES, v),
+
+  // Plain boolean, not merged with a default object like the prefs above —
+  // there's no "default" backfill state to fall back to, just done or not.
+  getStockMarketBackfillDone: () => get<boolean>(STORAGE_KEYS.STOCK_MARKET_BACKFILL_DONE, false),
+  setStockMarketBackfillDone: (v: boolean) => set(STORAGE_KEYS.STOCK_MARKET_BACKFILL_DONE, v),
+
+  // Same simple-nullable shape as Career Auto's status pair — no default
+  // worth merging in for "has this ever run".
+  getStockMarketPollStatus: () => get<StockMarketPollStatus>(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, { lastPollAt: null, lastError: null }),
+  setStockMarketPollStatus: (v: StockMarketPollStatus) => set(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

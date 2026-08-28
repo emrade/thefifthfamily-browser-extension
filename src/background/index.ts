@@ -9,6 +9,12 @@ import {
   initAuto as initStreetIntelAuto,
 } from './features/streetIntel';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
+import {
+  getStatus as getStockTrackerStatus,
+  handlePollAlarm as handleStockMarketPollAlarm,
+  init as initStockMarket,
+  pollNow as pollStockMarketNow,
+} from './features/stockMarket';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { enqueueRecord } from '@/shared/requestLog/queue';
@@ -42,6 +48,11 @@ initCareerAuto();
 // Same idea, for the Street Intel auto-attempt runner — see
 // features/streetIntel/index.ts's initAuto.
 initStreetIntelAuto();
+
+// Arms the stock market poller's alarm — see features/stockMarket/index.ts.
+// No config gate: unlike the two auto-runners above, this is read-only data
+// collection with no gameplay action to enable/disable.
+initStockMarket();
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
@@ -94,6 +105,20 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     );
   }
 
+  // Same read-only, opportunistic-call exception as 'courier-status-requested'
+  // above — see features/stockMarket/index.ts's getStatus.
+  if (msg.type === 'stock-tracker-status-requested') {
+    return getStockTrackerStatus();
+  }
+
+  // Triggered by the overlay's "Sync Now" button — a real poll right now,
+  // not gated by the alarm schedule, so the player can confirm a fix (e.g. a
+  // freshly-observed CSRF token) immediately rather than waiting out however
+  // much of the 30-minute cycle is left.
+  if (msg.type === 'stock-tracker-poll-requested') {
+    return pollStockMarketNow().then(() => getStockTrackerStatus());
+  }
+
   // Sent by the popup's Career Auto job picker — a live network fetch+parse
   // only background can do, so unlike the rest of that tab's config (which the
   // popup reads/writes directly via storage.ts) this one has to be message-based.
@@ -136,4 +161,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
   handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));
   handleStreetIntelAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelAutoAlarm failed', err));
+  handleStockMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStockMarketPollAlarm failed', err));
 });

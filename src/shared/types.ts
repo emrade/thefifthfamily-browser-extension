@@ -616,3 +616,76 @@ export interface StreetIntelAutoStatus {
    *  than guessing. See docs/street-intel-complication-tracking.md. */
   complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>;
 }
+
+/**
+ * One hourly price sample for one stock market symbol — see
+ * docs/stock-market-tracker-plan.md. `id` is a natural composite key
+ * (`"${symbol}:${hour}"`) rather than an auto-increment one, so re-polling the
+ * same hour (the game's own `poll` action returns a rolling 47h window, and
+ * `chart` timeframes overlap it further) is a plain overwrite-in-place, never
+ * a duplicate row.
+ *
+ * `hour` is the game's own hour counter (hours since `STOCK_MARKET_LAUNCH_TS`,
+ * confirmed 1:1 with real time) — the same unit `StockRumorRecord.generatedHour`/
+ * `expiresHour` use, which is what makes joining a rumor to "the price when it
+ * fired" and "the price when it resolved" a plain lookup rather than a
+ * timestamp-nearest-match.
+ */
+export interface StockPricePoint {
+  id: string;
+  symbol: string;
+  hour: number;
+  price: number;
+  /** Real-world ms, derived from `hour` — kept alongside it only so a raw
+   *  export reads as a normal timestamp without recomputing one. */
+  timestamp: number;
+}
+
+/**
+ * One stock market rumor, tracked from the moment it's first seen (as the
+ * live, unresolved `rumor` a poll returns) through to its resolution (once it
+ * ages into that poll's `whispers` history, which is the only place the game
+ * reveals whether it was actually `truthFlag: 'True'` or `'False'`).
+ *
+ * This is the whole point of the tracker: the game itself only keeps ~5-9 of
+ * these per stock (its own rolling whispers window) and only 30 days of price
+ * history, so this table is the only place this data survives past that —
+ * see docs/stock-market-tracker-plan.md for what it's for.
+ */
+export interface StockRumorRecord {
+  /** The game's own id for this rumor (e.g. `"BSEC-Y01-R005"`) — stable and
+   *  already unique, so it's the primary key rather than a synthetic one. */
+  rumorCode: string;
+  symbol: string;
+  direction: string;
+  severity: string;
+  quality: string;
+  playerText: string;
+  generatedHour: number;
+  expiresHour: number;
+  /** Null while this is still the live, unresolved rumor. Becomes `'True'`/
+   *  `'False'` once it appears in a `whispers` list, and never changes again
+   *  after that (the game never revises a resolved rumor). */
+  truthFlag: 'True' | 'False' | null;
+  firstSeenAt: number;
+  /** Updated on every poll that still sees this rumor_code, resolved or not —
+   *  lets a later analysis tell "still being tracked" apart from "the account
+   *  stopped polling a while ago" without needing the poller's own logs. */
+  lastSeenAt: number;
+  resolvedAt: number | null;
+}
+
+/** Runtime status of the background poller in poller.ts — same "simple
+ *  nullable, not merged with defaults" shape as CareerAutoStatus, since
+ *  there's no meaningful default for "when did this last run". Read by the
+ *  in-page overlay (content/features/stockMarket) via a message round-trip,
+ *  the only way it can reach this — the overlay runs on the game's origin,
+ *  the data lives in the extension's own IndexedDB, which only the
+ *  background service worker/popup can open directly. */
+export interface StockMarketPollStatus {
+  lastPollAt: number | null;
+  /** Set on the most recent failed attempt, cleared on the next success —
+   *  not accumulated, so a transient failure that later recovers doesn't
+   *  keep reading as broken forever. */
+  lastError: string | null;
+}

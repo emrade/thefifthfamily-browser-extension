@@ -80,6 +80,19 @@ export type ExtensionMessage =
   // a time in-game is exactly the repetitive tapping this feature was built to
   // remove, even on visits where the player doesn't want to spend on a full send.
   | { type: 'courier-offload-requested' }
+  // Same request/response exception as 'courier-status-requested' — read-only,
+  // so safe to call opportunistically. Sent by the in-page Stock Market status
+  // overlay (content/features/stockMarket), which — like the courier panel —
+  // runs on the game's own origin and so can't reach `db`/`storage` directly;
+  // this is the only way for it to show whether the background poller
+  // (background/features/stockMarket/poller.ts) is actually running.
+  | { type: 'stock-tracker-status-requested' }
+  // Same request/response exception, triggered by the overlay's "Sync Now"
+  // button — runs a real poll immediately (rather than waiting out however
+  // much of the 30-minute schedule is left) and returns the resulting fresh
+  // status in one round trip, so e.g. fixing a stale CSRF token can be
+  // confirmed right away instead of by waiting for the next scheduled attempt.
+  | { type: 'stock-tracker-poll-requested' }
   // Broadcast (not awaited, no response expected) from background *during* a run
   // — the popup and the in-page floating panel both listen for this to show
   // progress live instead of going quiet until the final summary arrives. Purely

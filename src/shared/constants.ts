@@ -18,6 +18,8 @@ export const STORAGE_KEYS = {
   STREET_INTEL_AUTO_CONFIG: 'ff_street_intel_auto_config',
   STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
   REAL_ESTATE_ADVISOR_PREFERENCES: 'ff_real_estate_advisor_preferences',
+  STOCK_MARKET_BACKFILL_DONE: 'ff_stock_market_backfill_done',
+  STOCK_MARKET_POLL_STATUS: 'ff_stock_market_poll_status',
 } as const;
 
 export const ALARM_NAMES = {
@@ -27,6 +29,7 @@ export const ALARM_NAMES = {
   REQUEST_LOG_SWEEP: 'ff-request-log-sweep',
   CAREER_AUTO: 'ff-career-auto',
   STREET_INTEL_AUTO: 'ff-street-intel-auto',
+  STOCK_MARKET_POLL: 'ff-stock-market-poll',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -235,3 +238,18 @@ export const STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // one 40-49% sample already included both a failure and the account's only
 // sub-60% disaster. 50 sits just above that realized floor.
 export const STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT = 50;
+
+// --- Stock market tracker -----------------------------------------------------
+//
+// See docs/stock-market-tracker-plan.md. Confirmed from the live panel's own
+// inline script (`V2.launchTs`): the real-world ms timestamp its hour counter
+// (`hour: 0`) counts up from, at exactly one hour per real hour. This is what
+// lets a price point be stored and joined against a rumor's `generatedHour`/
+// `expiresHour` by that same integer hour rather than a timestamp.
+export const STOCK_MARKET_LAUNCH_TS = 1783119600000;
+
+// Price only ticks once per real hour (see STOCK_MARKET_LAUNCH_TS above), so
+// polling faster than that buys nothing — this is purely a safety margin
+// against one missed alarm costing a whole hour of coverage, not an attempt
+// to catch a faster-moving number.
+export const STOCK_MARKET_POLL_INTERVAL_MS = 30 * 60_000;

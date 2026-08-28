@@ -26,6 +26,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     label: 'Real Estate Advisor',
     description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',
   },
+  {
+    id: 'stockMarketStatus',
+    label: 'Stock Market Tracker',
+    description:
+      'Collects Stock Market price and rumor history in the background (for a future trading feature) and shows a status overlay confirming it on the Stock Market page. Turning this off stops the background collection immediately; the overlay itself clears on the next reload.',
+  },
 ] as const;
 
 export type PageFeatureId = (typeof PAGE_FEATURE_DEFINITIONS)[number]['id'];

@@ -6,22 +6,34 @@ import { db } from './db';
  * a stacked network-hook bug), not a re-importable backup format.
  */
 export async function exportAllData(): Promise<string> {
-  const [trades, priceSnapshots, customsEvents, districts, districtVisits, travelLegs, riskObservations, storageSnapshot] =
-    await Promise.all([
-      db.trades.toArray(),
-      db.priceSnapshots.toArray(),
-      db.customsEvents.toArray(),
-      db.districts.toArray(),
-      db.districtVisits.toArray(),
-      db.travelLegs.toArray(),
-      db.riskObservations.toArray(),
-      chrome.storage.local.get(null),
-    ]);
+  const [
+    trades,
+    priceSnapshots,
+    customsEvents,
+    districts,
+    districtVisits,
+    travelLegs,
+    riskObservations,
+    stockPrices,
+    stockRumors,
+    storageSnapshot,
+  ] = await Promise.all([
+    db.trades.toArray(),
+    db.priceSnapshots.toArray(),
+    db.customsEvents.toArray(),
+    db.districts.toArray(),
+    db.districtVisits.toArray(),
+    db.travelLegs.toArray(),
+    db.riskObservations.toArray(),
+    db.stockPrices.toArray(),
+    db.stockRumors.toArray(),
+    chrome.storage.local.get(null),
+  ]);
 
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      tables: { trades, priceSnapshots, customsEvents, districts, districtVisits, travelLegs, riskObservations },
+      tables: { trades, priceSnapshots, customsEvents, districts, districtVisits, travelLegs, riskObservations, stockPrices, stockRumors },
       storage: storageSnapshot,
     },
     null,
