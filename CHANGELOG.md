@@ -9,6 +9,21 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.13.8] - 2026-08-28
+
+### Added
+- Stock Market Tracker: pause itself (and notify, repeating on every
+  scheduled tick until resumed) after a poll response it doesn't recognize
+  at all — distinct from an ordinary rejection (hospitalized, jailed, etc.),
+  which still just retries on schedule with its real message shown.
+- `npm run preflight` reminds (non-blocking) when CHANGELOG.md has no entry
+  for the version about to be released.
+
+### Fixed
+- Stock Market Tracker: surface the game's actual rejection message (e.g.
+  "You can't do that while hospitalized!") instead of a generic "poll
+  returned an unexpected shape" for an ordinary, well-formed rejection.
+
 ## [0.13.7] - 2026-08-28
 
 No functional changes (version bump only).
