@@ -686,6 +686,22 @@ export interface StockMarketPollStatus {
   lastPollAt: number | null;
   /** Set on the most recent failed attempt, cleared on the next success —
    *  not accumulated, so a transient failure that later recovers doesn't
-   *  keep reading as broken forever. */
+   *  keep reading as broken forever. Still set (to the pause reason) while
+   *  `paused` is true. */
   lastError: string | null;
+  /** True once the poller has hard-stopped itself after a response it
+   *  doesn't recognize at all — deliberately narrower than "any failure":
+   *  an ordinary rejection (hospitalized, jailed, or anything else the game
+   *  reports through its normal `{ok:false,"error":"..."}` channel) is not
+   *  cause for this, since that's just the game's regular error reporting,
+   *  the same thing a legitimate player would see. This exists for the
+   *  genuinely unrecognized case — because blindly retrying an interaction
+   *  the game itself may be treating as unusual, indefinitely and
+   *  unattended, is a real account-safety question, not just a wasted call.
+   *  Same reasoning Career Auto / Street Intel Auto already pause for, ported
+   *  here even though this feature spends nothing and risks no game state,
+   *  because the risk being guarded against isn't resource loss — it's
+   *  unattended repetition of something the game's response says is not
+   *  normal. Cleared only by an explicit resume (see poller.ts's `resume`). */
+  paused: boolean;
 }

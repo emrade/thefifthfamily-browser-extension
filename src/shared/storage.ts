@@ -146,7 +146,7 @@ export const storage = {
 
   // Same simple-nullable shape as Career Auto's status pair — no default
   // worth merging in for "has this ever run".
-  getStockMarketPollStatus: () => get<StockMarketPollStatus>(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, { lastPollAt: null, lastError: null }),
+  getStockMarketPollStatus: () => get<StockMarketPollStatus>(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, { lastPollAt: null, lastError: null, paused: false }),
   setStockMarketPollStatus: (v: StockMarketPollStatus) => set(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),

@@ -2,6 +2,7 @@ import { postAction, SystemicActionError } from '../../gameAction';
 import { ALARM_NAMES, STOCK_MARKET_LAUNCH_TS, STOCK_MARKET_POLL_INTERVAL_MS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { db } from '@/shared/db';
+import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import type { StockPricePoint, StockRumorRecord } from '@/shared/types';
 
@@ -13,10 +14,19 @@ import type { StockPricePoint, StockRumorRecord } from '@/shared/types';
  * this is pure, passive data collection so that answer becomes available months
  * from now, without needing the player to have the tab open to catch it.
  *
- * Unlike the career/street-intel auto-runners, this has no on/off config: it's
- * read-only (a `poll`/`chart` action, never `buy`/`sell`), so there's no
- * gameplay risk to weigh against always running it — same reasoning as the
- * item-market poller.
+ * Unlike the career/street-intel auto-runners, spending nothing (a `poll`/
+ * `chart` action, never `buy`/`sell`) means there's no in-game resource at
+ * risk from retrying blind — which is why an *ordinary* rejection (see
+ * `blockedByPlayerState` below) just keeps retrying on schedule rather than
+ * stopping the way those two do. But there's a different risk that has
+ * nothing to do with resources: repeating something the game's own response
+ * suggests it doesn't recognize, unattended, indefinitely, is exactly the
+ * shape of behavior that gets an account flagged — so a genuinely
+ * unrecognized response (not an ordinary `{ok:false,"error":"..."}` the game
+ * sends through its normal channel, which any legitimate player could also
+ * hit) does pause, the same as those two, and for the same underlying reason:
+ * stop and let a human look, rather than keep doing the thing that produced
+ * a response nobody's ever seen before. See `pause`/`resume` below.
  */
 
 interface RawWhisper {
@@ -127,21 +137,82 @@ async function backfillIfNeeded(stocksById: Record<string, RawStockData>): Promi
   await storage.setStockMarketBackfillDone(true);
 }
 
+/** Confirmed real (see docs/stock-market-tracker-plan.md): a background poll
+ *  attempted while hospitalized came back `{ok:false,"error":"You can't do
+ *  that while hospitalized!"}` — the game blocks `poll` itself, not just
+ *  `buy`/`sell`. Same pre-flight check as `marketPoller.ts`'s
+ *  `isSafeToPoll`, checked before spending a call on it. Unlike that one,
+ *  this doesn't skip silently — a gate hit here is still recorded via
+ *  `recordPollResult` (prefixed `'Skipped — '` so the overlay can tell it
+ *  apart from a real failure), since silently doing nothing left no way to
+ *  tell "paused for a normal reason" apart from "actually stuck". Travelling
+ *  is deliberately not checked, unlike marketPoller.ts — there's no
+ *  confirmed evidence it blocks stocks_v2.php the way it blocks a
+ *  district-specific smuggling panel, and this project's own rule is to
+ *  build against confirmed shapes, not extend a guess to a case that hasn't
+ *  actually been observed. */
+async function blockedByPlayerState(): Promise<string | null> {
+  const stats = await storage.getLatestStats();
+  if (stats?.hospitalized) return 'Skipped — hospitalized';
+  if (stats?.jailed) return 'Skipped — jailed';
+  return null;
+}
+
 export async function pollNow(): Promise<void> {
+  const alreadyPaused = await storage.getStockMarketPollStatus();
+  if (alreadyPaused.paused) {
+    // Re-fires on every scheduled tick rather than only once, on purpose — a
+    // single notification is easy to miss (dismissed, notifications off that
+    // day, phone not near you); repeating it for as long as this stays
+    // paused means the only way to stop seeing it is to actually look and
+    // resume, not just miss the one moment it happened. No network call is
+    // made — repeating the exact thing that triggered this is the one
+    // behavior actually being guarded against.
+    await notify('stockMarketTrackerPaused', {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: 'Stock Market Tracker is still paused',
+      message: alreadyPaused.lastError ?? 'An unrecognized response stopped data collection.',
+    });
+    return;
+  }
+
+  const blocked = await blockedByPlayerState();
+  if (blocked) {
+    await recordPollResult(blocked);
+    return;
+  }
+
   let resp: any;
   try {
     resp = await postAction('/actions/stocks_v2.php', { action: 'poll' });
   } catch (err) {
+    if (err instanceof SystemicActionError && err.kind === 'shape') {
+      await pause(err.message);
+      return;
+    }
+    // 'auth' (no token yet, or a stale session/CSRF rejection) is an
+    // ordinary, common failure mode of *any* authenticated client — not
+    // evidence of anything unusual — so it just keeps retrying on schedule,
+    // same as before.
     const message = err instanceof SystemicActionError ? err.message : String(err);
     console.error(LOG_PREFIX, 'stock market poll failed —', message);
     await recordPollResult(message);
     return;
   }
 
+  // A well-formed business rejection (confirmed real: the hospitalized case
+  // above) is not evidence of anything unusual — it's the game's normal
+  // error-reporting channel, the same thing a legitimate player would see —
+  // so it's surfaced and retried on schedule, not paused.
+  if (resp?.ok === false && typeof resp.error === 'string') {
+    console.error(LOG_PREFIX, 'stock market poll rejected —', resp.error);
+    await recordPollResult(resp.error);
+    return;
+  }
+
   if (!resp?.ok || typeof resp.data !== 'object' || resp.data === null) {
-    const message = 'poll returned an unexpected shape';
-    console.error(LOG_PREFIX, 'stock market', message);
-    await recordPollResult(message);
+    await pause('Poll returned a response shape never seen before.');
     return;
   }
 
@@ -157,6 +228,32 @@ export async function pollNow(): Promise<void> {
   await recordPollResult(null);
 }
 
+/** Hard-stops the tracker after a response nobody's ever seen before — see
+ *  this file's own top comment for why this exists at all despite the
+ *  feature spending nothing. Deliberately doesn't touch the poll alarm (it
+ *  stays scheduled): `pollNow` checks `paused` first and, if set, only
+ *  re-fires the notification rather than repeating the actual call — so the
+ *  reminder keeps coming on the normal cadence without the thing being
+ *  guarded against ever happening again on its own. */
+async function pause(message: string): Promise<void> {
+  console.error(LOG_PREFIX, 'stock market tracker pausing —', message);
+  await storage.setStockMarketPollStatus({ lastPollAt: (await storage.getStockMarketPollStatus()).lastPollAt, lastError: message, paused: true });
+  await notify('stockMarketTrackerPaused', {
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: 'Stock Market Tracker paused itself',
+    message: `An unrecognized response stopped data collection: ${message}`,
+  });
+}
+
+/** Clears a pause set by the function above — the overlay's "Resume
+ *  Tracking" button is the only caller. Polling itself resumes on its own
+ *  next scheduled tick; nothing to re-arm here since the alarm was never
+ *  touched. */
+export async function resume(): Promise<void> {
+  await storage.setStockMarketPollStatus({ lastPollAt: (await storage.getStockMarketPollStatus()).lastPollAt, lastError: null, paused: false });
+}
+
 /** Updates the status the in-page overlay reads (see getStatus below).
  *  `lastPollAt` only moves forward on a real success, so a failed attempt
  *  doesn't make a previously-working tracker look like it just ran. */
@@ -165,12 +262,14 @@ async function recordPollResult(error: string | null): Promise<void> {
   await storage.setStockMarketPollStatus({
     lastPollAt: error ? prev.lastPollAt : Date.now(),
     lastError: error,
+    paused: false, // recordPollResult is never the pause path — see `pause` above
   });
 }
 
 export interface StockTrackerStatus {
   lastPollAt: number | null;
   lastError: string | null;
+  paused: boolean;
   backfillDone: boolean;
   totalPricePoints: number;
   stocksTracked: number;

@@ -14,6 +14,7 @@ import {
   handlePollAlarm as handleStockMarketPollAlarm,
   init as initStockMarket,
   pollNow as pollStockMarketNow,
+  resume as resumeStockMarketTracker,
 } from './features/stockMarket';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
@@ -117,6 +118,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // much of the 30-minute cycle is left.
   if (msg.type === 'stock-tracker-poll-requested') {
     return pollStockMarketNow().then(() => getStockTrackerStatus());
+  }
+
+  // Triggered by the overlay's "Resume Tracking" button — see
+  // features/stockMarket/poller.ts's `pause`/`resume` for why a pause exists
+  // at all despite this feature spending nothing.
+  if (msg.type === 'stock-tracker-resume-requested') {
+    return resumeStockMarketTracker().then(() => getStockTrackerStatus());
   }
 
   // Sent by the popup's Career Auto job picker — a live network fetch+parse

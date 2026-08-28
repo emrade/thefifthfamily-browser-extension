@@ -93,6 +93,12 @@ export type ExtensionMessage =
   // status in one round trip, so e.g. fixing a stale CSRF token can be
   // confirmed right away instead of by waiting for the next scheduled attempt.
   | { type: 'stock-tracker-poll-requested' }
+  // Same read-only, opportunistic-call exception, triggered by the overlay's
+  // "Resume Tracking" button — clears a pause set by poller.ts's `pause`
+  // (see its own comment for why that exists) and returns the refreshed
+  // status. Never fires automatically; a human explicitly deciding to
+  // resume is the whole point of pausing in the first place.
+  | { type: 'stock-tracker-resume-requested' }
   // Broadcast (not awaited, no response expected) from background *during* a run
   // — the popup and the in-page floating panel both listen for this to show
   // progress live instead of going quiet until the final summary arrives. Purely

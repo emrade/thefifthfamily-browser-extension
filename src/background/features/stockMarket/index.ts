@@ -2,7 +2,7 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { ensureScheduled } from './poller';
 
-export { handlePollAlarm, getStatus, pollNow } from './poller';
+export { handlePollAlarm, getStatus, pollNow, resume } from './poller';
 export type { StockTrackerStatus } from './poller';
 
 /**

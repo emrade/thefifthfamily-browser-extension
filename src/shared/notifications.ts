@@ -36,6 +36,11 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Street Intel Auto Stopped',
     description: 'Notify when the Street Intel auto-runner stops itself after an unrecognized response.',
   },
+  {
+    id: 'stockMarketTrackerPaused',
+    label: 'Stock Market Tracker Paused',
+    description: 'Notify when the Stock Market Tracker stops itself after a response it doesn’t recognize, so it never keeps hitting the same unexplained behavior unattended.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

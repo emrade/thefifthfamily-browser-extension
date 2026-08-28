@@ -104,6 +104,52 @@ collector is actually running, but it's a health check, not an analysis view.
 
 ---
 
+## Handling a genuinely unrecognized response
+
+This feature spends nothing (`poll`/`chart` only, never `buy`/`sell`), so at
+first it seemed like the resource-loss risk Career Auto / Street Intel Auto
+pause for just didn't apply here. A real capture during use corrected that:
+a background poll made while hospitalized came back
+`{"ok":false,"error":"You can't do that while hospitalized!"}` — the game
+blocks `poll` itself, not just trading actions.
+
+That specific case isn't actually risky — it's the game's normal error-
+reporting channel, the same thing a legitimate player would see, so it's
+handled by a plain pre-flight check (`blockedByPlayerState` in `poller.ts`,
+mirroring `marketPoller.ts`'s `isSafeToPoll`) and otherwise just retries on
+schedule. But it raised a real question: what about a response the game
+sends back that *isn't* an ordinary, well-formed rejection — one that
+suggests the request itself is being treated as unusual? Resource loss isn't
+the risk there; account safety is. Repeating something the game's own
+response says it doesn't recognize, unattended and indefinitely, is exactly
+the shape of behavior that gets flagged, whether or not the call itself
+spends anything.
+
+So a narrow pause was added after all, scoped specifically to that case:
+
+- **Pauses** — a hard stop, not a retry: `resp.ok` missing/non-boolean, or
+  `ok:true` with no `data`; or `postAction` throwing a `SystemicActionError`
+  with `kind: 'shape'`. Sets `paused: true`, fires a notification, and
+  — deliberately — leaves the poll alarm scheduled rather than clearing it:
+  `pollNow` checks `paused` first and, while set, only re-fires the
+  notification instead of repeating the actual call. A single notification is
+  easy to miss; repeating it on the normal ~30-minute cadence for as long as
+  it stays paused means the only way to stop seeing it is to actually look
+  and resume, not just miss the one moment it happened.
+- **Retries as before** — an ordinary rejection, whatever the reason: any
+  well-formed `{ok:false,"error":"..."}` (hospitalized, jailed, or anything
+  else not yet seen — the message is surfaced as-is, not folded into a
+  generic "unexpected shape" string), and a `SystemicActionError` with
+  `kind: 'auth'` (no CSRF token yet, or a stale session) — a common, ordinary
+  failure mode of any authenticated client, not evidence of anything unusual.
+- **Resuming** is manual only — the overlay's "Sync Now" button becomes
+  "Resume Tracking" while paused, calling a `stock-tracker-resume-requested`
+  message that clears the pause. Never automatic, since a human explicitly
+  deciding "this is fine, carry on" is the entire point of pausing for this
+  reason in the first place.
+
+---
+
 ## What shipped
 
 - `src/shared/types.ts` — `StockPricePoint`, `StockRumorRecord`.
@@ -119,36 +165,40 @@ collector is actually running, but it's a health check, not an analysis view.
   extension uses), persists prices and rumors, and runs the one-time 30-day
   backfill (tracked via `storage.getStockMarketBackfillDone()`) the first time
   it succeeds.
+- `src/shared/notifications.ts` — `stockMarketTrackerPaused`, firing (see
+  "Handling a genuinely unrecognized response" above) both when a pause first
+  happens and again on every scheduled tick for as long as it stays paused.
 - `src/background/features/stockMarket/index.ts` — arms/disarms the alarm to
   match the player's own "Stock Market Tracker" Settings toggle
   (`PAGE_FEATURE_DEFINITIONS`'s `stockMarketStatus`), both on every
   service-worker wake and live, the instant that toggle changes (a
   `chrome.storage.onChanged` watcher, same shape as Career Auto's
-  `watchConfigChanges`). Unlike Career Auto / Street Intel Auto there's no
-  separate "paused" state on a failure — a failed poll just retries on the
-  next scheduled cycle forever, since (unlike those two) this never spends
-  anything and a resumed CSRF token needs no explicit re-enable to pick back
-  up. The toggle existing at all is specifically so disabling it on one
-  browser (e.g. a Chrome install used only for testing, primary play on
-  Firefox) provably stops the outgoing requests, not just the on-page display
-  of them.
+  `watchConfigChanges`). This toggle is orthogonal to the pause mechanism
+  above — it's a player-controlled on/off switch (specifically so disabling
+  it on one browser, e.g. a Chrome install used only for testing with
+  primary play on Firefox, provably stops the outgoing requests, not just
+  the on-page display of them), while the pause is the tracker stopping
+  *itself* over a response it doesn't trust.
 - `src/background/index.ts` — wired into the shared alarm dispatcher, plus
-  two message handlers: `stock-tracker-status-requested` (`getStatus()` in
+  three message handlers: `stock-tracker-status-requested` (`getStatus()` in
   `poller.ts`, answering "is this actually working" with the last poll time/
-  error, backfill state, and live Dexie counts) and
+  error, paused state, backfill state, and live Dexie counts),
   `stock-tracker-poll-requested` (runs `pollNow()` immediately and returns the
   refreshed status — backs the overlay's "Sync Now" button, since the
   displayed status otherwise only ever reflects the last *scheduled* attempt
   and can lag a real fix, like a freshly-observed CSRF token, by up to the
-  full 30-minute cycle).
+  full 30-minute cycle), and `stock-tracker-resume-requested` (clears a pause).
 - `src/content/features/stockMarket/index.ts` — a small status overlay on the
   live Stock Market page (`#lsv2-data` marker), same collapsed-badge-that-
-  expands shape as the Pet Courier panel. Shows a colored dot (green/amber/red
-  for synced/stale/errored), last-sync time, backfill state, running totals
-  (price points, stocks tracked, rumors resolved with a true/false split), and
-  a "Sync Now" button — the only way to confirm the background collector is
-  doing anything at all, since it previously had no UI whatsoever. Like every
-  other page-feature toggle, disabling "Stock Market Tracker" only hides this
-  overlay on the *next* reload (the content script reads the toggle once at
-  load); the background collection side of the same toggle, above, stops
-  immediately without needing one.
+  expands shape as the Pet Courier panel. Shows a colored dot across five
+  tiers (green=synced, amber=stale, amber="waiting" for an ordinary skip like
+  hospitalized/jailed, red=last attempt failed but still retrying, pulsing
+  red=hard-paused and needs you), last-sync time, backfill state, running
+  totals (price points, stocks tracked, rumors resolved with a true/false
+  split), and a single action button that becomes "Resume Tracking" instead
+  of "Sync Now" while paused — the only way to confirm the background
+  collector is doing anything at all, since it previously had no UI
+  whatsoever. Like every other page-feature toggle, disabling "Stock Market
+  Tracker" only hides this overlay on the *next* reload (the content script
+  reads the toggle once at load); the background collection side of the same
+  toggle, above, stops immediately without needing one.

@@ -56,8 +56,16 @@ const STYLE = `
 .ff-ss-badge:hover { border-color: rgba(201,168,76,0.8); transform: translateY(-1px); }
 .ff-ss-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .ff-ss-dot[data-ff-health="ok"] { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,0.7); }
-.ff-ss-dot[data-ff-health="stale"] { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.6); }
+.ff-ss-dot[data-ff-health="stale"], .ff-ss-dot[data-ff-health="waiting"] { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.6); }
 .ff-ss-dot[data-ff-health="error"] { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.6); }
+.ff-ss-dot[data-ff-health="paused"] {
+  background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.6);
+  animation: ffSsPulse 1.6s ease-in-out infinite;
+}
+@keyframes ffSsPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .ff-ss-dot[data-ff-health="paused"] { animation: none; }
+}
 .ff-ss-badge-arrow { font-size: 10.5px; color: #d9c48a; font-weight: 700; }
 
 .ff-ss-panel {
@@ -84,8 +92,8 @@ const STYLE = `
 .ff-ss-status .ff-ss-dot { margin-top: 4px; }
 .ff-ss-status-title { font-weight: 800; color: #e4e4e7; }
 .ff-ss-status[data-ff-health="ok"] .ff-ss-status-title { color: #6ee7b7; }
-.ff-ss-status[data-ff-health="stale"] .ff-ss-status-title { color: #fbbf24; }
-.ff-ss-status[data-ff-health="error"] .ff-ss-status-title { color: #f87171; }
+.ff-ss-status[data-ff-health="stale"] .ff-ss-status-title, .ff-ss-status[data-ff-health="waiting"] .ff-ss-status-title { color: #fbbf24; }
+.ff-ss-status[data-ff-health="error"] .ff-ss-status-title, .ff-ss-status[data-ff-health="paused"] .ff-ss-status-title { color: #f87171; }
 .ff-ss-status-sub { color: #8b8f9e; font-size: 10px; margin-top: 2px; }
 
 .ff-ss-rows { font-size: 10.5px; color: #ccc; margin-bottom: 12px; }
@@ -102,6 +110,10 @@ const STYLE = `
 }
 .ff-ss-sync:hover:not(:disabled) { background: rgba(201,168,76,0.18); }
 .ff-ss-sync:disabled { opacity: 0.6; cursor: default; }
+.ff-ss-sync[data-ff-mode="resume"] {
+  background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.4); color: #f87171;
+}
+.ff-ss-sync[data-ff-mode="resume"]:hover:not(:disabled) { background: rgba(239,68,68,0.2); }
 `;
 
 function formatRelative(ts: number): string {
@@ -118,6 +130,7 @@ function formatRelative(ts: number): string {
 interface StockTrackerStatus {
   lastPollAt: number | null;
   lastError: string | null;
+  paused: boolean;
   backfillDone: boolean;
   totalPricePoints: number;
   stocksTracked: number;
@@ -129,7 +142,16 @@ interface StockTrackerStatus {
 
 let panelEl: HTMLDivElement | null = null;
 
-function healthOf(status: StockTrackerStatus): 'ok' | 'stale' | 'error' {
+function healthOf(status: StockTrackerStatus): 'ok' | 'stale' | 'waiting' | 'error' | 'paused' {
+  // A genuine hard stop (see poller.ts's `pause`) always wins, regardless of
+  // what lastError happens to say — this is the one state that needs a
+  // human to actually notice and act, unlike every other tier here.
+  if (status.paused) return 'paused';
+  // A "Skipped — " message is the poller declining to run for a normal,
+  // temporary reason (hospitalized/jailed — see poller.ts's
+  // blockedByPlayerState) — not a malfunction, so it gets its own calmer
+  // tier rather than reading as broken the way a real error does.
+  if (status.lastError?.startsWith('Skipped — ')) return 'waiting';
   if (status.lastError) return 'error';
   if (!status.lastPollAt || Date.now() - status.lastPollAt > STALE_AFTER_MS) return 'stale';
   return 'ok';
@@ -147,7 +169,13 @@ function renderStatus(status: StockTrackerStatus) {
     statusEl.setAttribute('data-ff-health', health);
     let title: string;
     let sub: string;
-    if (health === 'error') {
+    if (health === 'paused') {
+      title = 'Paused — needs your attention';
+      sub = `${status.lastError ?? 'An unrecognized response stopped data collection.'} Won't retry until you resume it below.`;
+    } else if (health === 'waiting') {
+      title = status.lastError as string; // "Skipped — hospitalized"/"Skipped — jailed"
+      sub = 'Normal — polling resumes automatically once that clears, no action needed.';
+    } else if (health === 'error') {
       title = 'Last attempt failed';
       sub = status.lastError ?? 'unknown error';
     } else if (!status.lastPollAt) {
@@ -172,6 +200,21 @@ function renderStatus(status: StockTrackerStatus) {
       <div class="ff-ss-row"><span class="ff-ss-row-label">True / False</span><span class="ff-ss-row-val">${status.trueCount} / ${status.falseCount}</span></div>
     `;
   }
+
+  // Swaps the single action button between "Sync Now" and "Resume Tracking"
+  // rather than having two separate buttons — only one action ever makes
+  // sense at a time, and the click handler (see buildPanel) reads this same
+  // data attribute to decide which one to run.
+  const btn = panelEl.querySelector<HTMLButtonElement>('.ff-ss-sync');
+  if (btn && !btn.disabled) {
+    if (status.paused) {
+      btn.dataset.ffMode = 'resume';
+      btn.textContent = 'Resume Tracking';
+    } else {
+      btn.dataset.ffMode = 'sync';
+      btn.textContent = 'Sync Now';
+    }
+  }
 }
 
 async function refresh() {
@@ -183,29 +226,43 @@ async function refresh() {
   }
 }
 
+// Shared by both buttons this single element can become (see renderStatus's
+// mode-swap) — runs `messageType`, shows `busyLabel` while it's in flight,
+// then hands the fresh status to renderStatus, which sets the button back to
+// whichever mode/label actually matches the *new* state (re-enabling it
+// first, since renderStatus only touches an enabled button — this is what a
+// resume that comes back still `paused` for some reason relies on to keep
+// reading as "Resume Tracking" rather than snapping back to "Sync Now").
+async function runButtonAction(messageType: 'stock-tracker-poll-requested' | 'stock-tracker-resume-requested', busyLabel: string) {
+  if (!panelEl) return;
+  const btn = panelEl.querySelector<HTMLButtonElement>('.ff-ss-sync');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = busyLabel;
+  }
+  try {
+    const status = (await chrome.runtime.sendMessage({ type: messageType })) as StockTrackerStatus;
+    if (btn) btn.disabled = false;
+    renderStatus(status);
+  } catch (err) {
+    console.error(LOG_PREFIX, `stock tracker ${messageType} failed`, err);
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Runs a real poll immediately rather than waiting out whatever's left of the
 // 30-minute schedule — the status shown otherwise only ever reflects the
 // *last scheduled* attempt, which can be stale by up to that whole interval
 // (e.g. right after fixing a CSRF issue, there's no other way to confirm it
 // without waiting).
-async function syncNow() {
-  if (!panelEl) return;
-  const btn = panelEl.querySelector<HTMLButtonElement>('.ff-ss-sync');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Syncing…';
-  }
-  try {
-    const status = (await chrome.runtime.sendMessage({ type: 'stock-tracker-poll-requested' })) as StockTrackerStatus;
-    renderStatus(status);
-  } catch (err) {
-    console.error(LOG_PREFIX, 'stock tracker manual sync failed', err);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Sync Now';
-    }
-  }
+function syncNow() {
+  return runButtonAction('stock-tracker-poll-requested', 'Syncing…');
+}
+
+// Clears a pause set by poller.ts's `pause` — see its own comment for why a
+// pause exists at all for a feature that spends nothing.
+function resumeTracking() {
+  return runButtonAction('stock-tracker-resume-requested', 'Resuming…');
 }
 
 function setExpanded(next: boolean) {
@@ -229,13 +286,16 @@ function buildPanel(): HTMLDivElement {
       </div>
       <div class="ff-ss-status" data-ff-health="stale">Loading…</div>
       <div class="ff-ss-rows"></div>
-      <button class="ff-ss-sync" type="button">Sync Now</button>
+      <button class="ff-ss-sync" type="button" data-ff-mode="sync">Sync Now</button>
     </div>
   `;
 
   el.querySelector('.ff-ss-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-ss-close')?.addEventListener('click', () => setExpanded(false));
-  el.querySelector('.ff-ss-sync')?.addEventListener('click', () => void syncNow());
+  el.querySelector<HTMLButtonElement>('.ff-ss-sync')?.addEventListener('click', (e) => {
+    const mode = (e.currentTarget as HTMLButtonElement).dataset.ffMode;
+    void (mode === 'resume' ? resumeTracking() : syncNow());
+  });
 
   return el;
 }
