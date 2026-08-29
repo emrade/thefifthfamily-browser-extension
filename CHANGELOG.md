@@ -9,6 +9,33 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.14.0] - 2026-08-29
+
+### Added
+- Pet Couriers: an auto-watch that detects when a smuggling destination opens
+  (aligned to the confirmed hourly rotation, and re-checked the moment a pet
+  lands if no destination had been confirmed yet this hour) and, when
+  auto-dispatch is enabled from the in-page panel, sends idle pets out
+  automatically. Includes a live status readout (destination state, next
+  check, pets en route) and notifications for a freshly-opened destination or
+  a completed auto-dispatch — kept to once per opened window rather than once
+  per pet, so a returning pet redispatched into an already-known-open
+  destination doesn't re-notify.
+
+### Fixed
+- `SystemicActionError`: a rejection caused by being jailed/hospitalized/
+  travelling right now (confirmed real: "You can't do that while
+  hospitalized!") was misclassified the same as a genuinely unrecognized
+  response shape, disabling Career Auto / Street Intel automation over a
+  transient, recoverable condition instead of just rescheduling around it.
+- Every `chrome.notifications.create` call used a bare relative `iconUrl`,
+  which Chrome can't resolve on its own — notification icons were silently
+  failing to load across every feature that fires one, not just Pet Couriers.
+- Pet Couriers auto-watch: the pet-return alarm didn't survive an extension
+  reload while pets were still in flight, silently stranding them (never
+  offloaded or redispatched) until unrelated activity happened to trigger a
+  new check.
+
 ## [0.13.8] - 2026-08-28
 
 ### Added
