@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.15.2] - 2026-08-29
+
+### Fixed
+- Pet Couriers: an auto-dispatched run now shows the same live step-by-step
+  breakdown a manual Run does. The panel's progress listener only rendered
+  when a manual button click had set `activeAction`, so an auto-triggered
+  run's own progress messages were silently discarded even though the
+  background was already sending them. Both paths now share one
+  message-driven mechanism.
+- Pet Couriers: the "sent" notification now fires after the "En route" list
+  is actually updated, not before — previously the notification could arrive
+  several seconds ahead of the panel having anything new to show. The
+  panel's own auto-refresh on completion also gets one follow-up refresh a
+  couple seconds later, since the `finished` signal itself still arrives
+  slightly ahead of that data (confirmed via a background-flow simulation,
+  not just read from the code).
+
 ## [0.15.1] - 2026-08-29
 
 ### Fixed
