@@ -5,7 +5,7 @@ import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, fetchLiveStatus, postAction, sleep, statusReleaseAt } from '../../gameAction';
 import { cancelShipment, fetchPanel, pickDestination, runCourierBatch, runOffloadBatch } from './petCourier';
-import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
+import type { CourierAutoConfig, CourierRunSummary, CourierWatchState, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
 
 /**
  * Watches for the hourly smuggling destination rotation and reacts to it in the
@@ -18,15 +18,19 @@ import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEn
  *
  * - `SMUGGLING_DEST_POLL`: fires once per hour, ~60s after the confirmed
  *   top-of-hour rotation (real capture evidence: every observed destination
- *   transition landed within ~36s of `:00`). Only probes (drafts one idle pet,
- *   reads the destination list, cancels the draft) when there's actually an
- *   idle pet to probe with and both destinations aren't already known open.
+ *   transition landed within ~36s of `:00`).
  * - `SMUGGLING_COURIER_RETURN`: fires exactly when the next in-flight pet is
  *   due back, so a pet that lands mid-open-window gets offloaded and
- *   redispatched within seconds rather than waiting out the next hourly tick
- *   (the player's own point: no reason to poll every 15 minutes when the
- *   destination pair only changes once an hour, but a returning pet shouldn't
- *   have to wait for that same clock).
+ *   redispatched within seconds rather than waiting out the next hourly tick.
+ *
+ * Both funnel into the same `evaluateDestination` below, which only probes
+ * (drafts one idle pet, reads the destination list, cancels the draft — the
+ * only way to see it at all) when there's both an idle pet to probe with
+ * *and* no already-known verdict for the current rotation hour yet. That
+ * second condition is what makes a pet's return useful on its own: if every
+ * pet was out when the hourly check last fired, it had nothing to probe with
+ * and had to skip — the *first* pet back is what finally has something to
+ * check with, and shouldn't have to wait for the next hourly tick to do it.
  *
  * `CourierAutoConfig.autoDispatchEnabled` only gates the "send" side —
  * detection and notification always run regardless, so turning auto-dispatch
@@ -43,6 +47,10 @@ import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEn
 
 function nextHourBoundary(): number {
   return (Math.floor(Date.now() / 3_600_000) + 1) * 3_600_000;
+}
+
+function currentHourStart(): number {
+  return Math.floor(Date.now() / 3_600_000) * 3_600_000;
 }
 
 export function scheduleHourlyDestCheck(): void {
@@ -96,6 +104,7 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
     autoDispatchEnabled: config.autoDispatchEnabled,
     destinationOpenUntil: watchState.destinationOpenUntil,
     lastCheckedAt: watchState.lastCheckedAt,
+    lastProbeResult: watchState.lastProbeResult,
     nextDestCheckAt: destAlarm?.scheduledTime ?? null,
     pendingReturns: [...pendingReturns].sort((a, b) => a.arrivesAt - b.arrivesAt).map((p) => ({ petName: p.petName, arrivesAt: p.arrivesAt })),
   };
@@ -211,6 +220,85 @@ async function probeDestination(idlePet: PetRosterEntry): Promise<{ open: boolea
   return { open: districtName !== null, districtName };
 }
 
+/** Sends idle pets (or notifies) once a destination is confirmed open — either
+ *  just-probed, or already known-open from earlier this same rotation hour.
+ *  Returns `true` if a `SystemicActionError` from the actual dispatch was
+ *  already handled (reschedule or disable) and the caller should stop. */
+async function actOnOpenDestination(idleCount: number, districtName: string | null, alarmName: string): Promise<boolean> {
+  const config = await storage.getCourierAutoConfig();
+  if (config.autoDispatchEnabled) {
+    const summary = await runCourierBatch();
+    if (await handleBatchStop(summary, alarmName)) return true;
+    if (summary.sent.length > 0) {
+      await notify('courierAutoDispatched', {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'Pet couriers auto-dispatched',
+        message: `Sent ${summary.sent.length} pet${summary.sent.length === 1 ? '' : 's'} to ${districtName ?? 'the open destination'}.`,
+      });
+    }
+    await updateBadge(0);
+  } else {
+    await notify('courierDestinationOpen', {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: 'Smuggling destination open',
+      message: `${districtName ?? 'A destination'} is open — ${idleCount} pet${idleCount === 1 ? '' : 's'} ready to send.`,
+    });
+    await updateBadge(idleCount);
+  }
+  return false;
+}
+
+/**
+ * The core probe-and-react cycle, shared by the hourly alarm and a pet's
+ * return. Probes for real only when there's no already-known verdict for the
+ * *current* rotation hour yet — a same-hour "locked" or "open" verdict is
+ * reacted to (or just left alone) without spending another draft/cancel
+ * round-trip, while a hand-off from a cycle that had zero idle pets to probe
+ * with (`lastProbeResult: 'skipped-no-idle-pets'`) — or simply never having
+ * checked this hour at all — means the very next idle pet, however it became
+ * idle, gets to run the check that couldn't happen before it. Returns `true`
+ * if the caller should stop immediately (a dispatch's own error was already
+ * handled).
+ */
+async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string): Promise<boolean> {
+  const watchState = await storage.getCourierWatchState();
+  const haveThisHoursAnswer =
+    watchState.lastProbeResult !== null && watchState.lastProbeResult !== 'skipped-no-idle-pets' && watchState.lastCheckedAt >= currentHourStart();
+
+  if (idlePets.length === 0) {
+    if (!haveThisHoursAnswer) {
+      const next: CourierWatchState = { ...watchState, lastCheckedAt: Date.now(), lastProbeResult: 'skipped-no-idle-pets' };
+      await storage.setCourierWatchState(next);
+    }
+    await updateBadge(0);
+    return false;
+  }
+
+  if (haveThisHoursAnswer) {
+    const stillOpen = watchState.destinationOpenUntil !== null && watchState.destinationOpenUntil > Date.now();
+    if (!stillOpen) {
+      await updateBadge(0);
+      return false;
+    }
+    // No stored district name for an already-known verdict — `actOnOpenDestination`
+    // falls back to generic phrasing for it.
+    return actOnOpenDestination(idlePets.length, null, alarmName);
+  }
+
+  const probe = await probeDestination(idlePets[0]);
+
+  if (!probe.open) {
+    await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
+    await updateBadge(0);
+    return false;
+  }
+
+  await storage.setCourierWatchState({ destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now(), lastProbeResult: 'open' });
+  return actOnOpenDestination(idlePets.length, probe.districtName, alarmName);
+}
+
 export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.SMUGGLING_DEST_POLL) return;
 
@@ -231,54 +319,16 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
       return;
     }
     await recordFleetReturns(snapshot.fleet);
-
     const idlePets = await getIdlePets(snapshot.fleet);
-    if (idlePets.length === 0) {
-      // Nothing to probe with, and nothing to send even if it turned out
-      // open — cheaper to just wait for a pet to come back (which re-checks
-      // via the return alarm's own `destinationOpenUntil` read) or the next
-      // hourly tick. Badge cleared regardless of destination state: with no
-      // idle pets there's nothing actionable to show.
-      await updateBadge(0);
-      scheduleHourlyDestCheck();
-      return;
-    }
 
-    const probe = await probeDestination(idlePets[0]);
+    const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_DEST_POLL);
+    if (stopped) return;
 
-    if (!probe.open) {
-      await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now() });
-      await updateBadge(0);
-      scheduleHourlyDestCheck();
-      return;
-    }
-
-    await storage.setCourierWatchState({ destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now() });
-
-    const config = await storage.getCourierAutoConfig();
-    if (config.autoDispatchEnabled) {
-      const summary = await runCourierBatch();
-      if (await handleBatchStop(summary, ALARM_NAMES.SMUGGLING_DEST_POLL)) return;
-      if (summary.sent.length > 0) {
-        await notify('courierAutoDispatched', {
-          type: 'basic',
-          iconUrl: 'icons/icon-128.png',
-          title: 'Pet couriers auto-dispatched',
-          message: `Sent ${summary.sent.length} pet${summary.sent.length === 1 ? '' : 's'} to ${probe.districtName ?? 'the open destination'}.`,
-        });
-      }
-      await updateBadge(0);
-      const fresh = await fetchPanel();
-      if (fresh) await recordFleetReturns(fresh.fleet);
-    } else {
-      await notify('courierDestinationOpen', {
-        type: 'basic',
-        iconUrl: 'icons/icon-128.png',
-        title: 'Smuggling destination open',
-        message: `${probe.districtName ?? 'A destination'} is open — ${idlePets.length} pet${idlePets.length === 1 ? '' : 's'} ready to send.`,
-      });
-      await updateBadge(idlePets.length);
-    }
+    // A dispatch (if one happened) creates new shipments — re-read so the
+    // return alarm reflects them immediately rather than waiting for
+    // whichever fetch happens to come next.
+    const fresh = await fetchPanel();
+    if (fresh) await recordFleetReturns(fresh.fleet);
 
     scheduleHourlyDestCheck();
   } catch (err) {
@@ -313,41 +363,12 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     const offloadSummary = await runOffloadBatch();
     if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
 
-    const watchState = await storage.getCourierWatchState();
-    const stillOpen = watchState.destinationOpenUntil !== null && watchState.destinationOpenUntil > Date.now();
+    const afterOffload = await fetchPanel();
+    if (!afterOffload) return; // nothing more learnable this cycle — next return/hourly alarm tries again
 
-    if (stillOpen) {
-      const config = await storage.getCourierAutoConfig();
-      if (config.autoDispatchEnabled) {
-        const summary = await runCourierBatch();
-        if (await handleBatchStop(summary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
-        if (summary.sent.length > 0) {
-          await notify('courierAutoDispatched', {
-            type: 'basic',
-            iconUrl: 'icons/icon-128.png',
-            title: 'Pet couriers auto-dispatched',
-            message: `Sent ${summary.sent.length} pet${summary.sent.length === 1 ? '' : 's'} back out — destination still open.`,
-          });
-        }
-        await updateBadge(0);
-      } else {
-        const afterOffload = await fetchPanel();
-        const idleCount = afterOffload ? (await getIdlePets(afterOffload.fleet)).length : 0;
-        if (idleCount > 0) {
-          await notify('courierDestinationOpen', {
-            type: 'basic',
-            iconUrl: 'icons/icon-128.png',
-            title: 'Pet back — destination still open',
-            message: `${idleCount} pet${idleCount === 1 ? '' : 's'} ready to send.`,
-          });
-        }
-        await updateBadge(idleCount);
-      }
-    } else {
-      // Window closed since this pet departed — nothing actionable to show
-      // even though it just came back idle.
-      await updateBadge(0);
-    }
+    const idlePets = await getIdlePets(afterOffload.fleet);
+    const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+    if (stopped) return;
 
     const fresh = await fetchPanel();
     if (fresh) await recordFleetReturns(fresh.fleet);

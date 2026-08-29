@@ -169,7 +169,8 @@ export const storage = {
 
   // Background-owned runtime state — simple nullable-default, no "default open
   // state" to merge in beyond "nothing checked yet".
-  getCourierWatchState: () => get<CourierWatchState>(STORAGE_KEYS.COURIER_WATCH_STATE, { destinationOpenUntil: null, lastCheckedAt: 0 }),
+  getCourierWatchState: () =>
+    get<CourierWatchState>(STORAGE_KEYS.COURIER_WATCH_STATE, { destinationOpenUntil: null, lastCheckedAt: 0, lastProbeResult: null }),
   setCourierWatchState: (v: CourierWatchState) => set(STORAGE_KEYS.COURIER_WATCH_STATE, v),
 
   // Empty array default — no pets in flight yet.

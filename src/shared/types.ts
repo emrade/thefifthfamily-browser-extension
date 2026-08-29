@@ -390,21 +390,27 @@ export type CourierProgressEvent =
   | { kind: 'error'; message: string }
   | { kind: 'finished' };
 
-/** Read-only snapshot for the in-page floating panel to render without
- *  triggering a run — the panel runs on the *game's* origin, not the
- *  extension's, so it can't reach `db.petRoster`/`storage` directly and has to
- *  ask background for this the same way it asks for a run. */
 /** Read-only view into what the courier auto-watch background feature is
  *  currently tracking — the player's own ask: "even when it is active i have
  *  no idea what it is doing or even if it is doing anything." Assembled fresh
  *  on every request from live alarm state + storage, not itself persisted. */
 export interface CourierWatchSummary {
   autoDispatchEnabled: boolean;
-  /** Epoch ms the current rotation closes at, or `null` if the last hourly
-   *  check found both destinations locked (or nothing has checked yet). */
+  /** Epoch ms the current rotation closes at, or `null` if the last probe
+   *  found both destinations locked (or nothing has probed yet). Only ever
+   *  set by an actual probe — see `lastProbeResult`. */
   destinationOpenUntil: number | null;
-  /** Epoch ms of the last hourly check, or `0` if none has run yet. */
+  /** Epoch ms of the last hourly *cycle*, whether or not it could actually
+   *  probe — `0` if none has run yet. Distinct from "last probe": a cycle
+   *  with zero idle pets still runs (and reschedules) but has nothing to
+   *  draft with, so it can't learn the destination's real state. */
   lastCheckedAt: number;
+  /** What the last cycle actually concluded — `null` before the first cycle.
+   *  `'skipped-no-idle-pets'` means the timestamp above is honest about *when*
+   *  the system last ran, but it learned nothing about the destination that
+   *  time (nothing to draft with) — the panel should say so rather than
+   *  reusing a stale open/locked verdict from whenever the last real probe was. */
+  lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
   /** Epoch ms the next hourly check is scheduled for, or `null` if — for
    *  whatever reason — no alarm is currently armed. */
   nextDestCheckAt: number | null;
@@ -412,6 +418,10 @@ export interface CourierWatchSummary {
   pendingReturns: { petName: string; arrivesAt: number }[];
 }
 
+/** Read-only snapshot for the in-page floating panel to render without
+ *  triggering a run — the panel runs on the *game's* origin, not the
+ *  extension's, so it can't reach `db.petRoster`/`storage` directly and has to
+ *  ask background for this the same way it asks for a run. */
 export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;
@@ -430,12 +440,18 @@ export interface CourierAutoConfig {
 
 /** Background-owned runtime state for the hourly destination-rotation check —
  *  lets the pet-return alarm decide instantly whether a freshly-landed pet can
- *  be redispatched without an extra draft/cancel probe. */
+ *  be redispatched without an extra draft/cancel probe, and lets the panel
+ *  (via `CourierWatchSummary`) show honestly what the last cycle actually did. */
 export interface CourierWatchState {
   /** Epoch ms marking the end of the currently-open rotation hour, or `null`
-   *  if the last hourly check found both destinations locked. */
+   *  if the last probe found both destinations locked (or none has probed
+   *  yet). Only ever set by an actual probe — untouched by a cycle that had
+   *  no idle pets to probe with. */
   destinationOpenUntil: number | null;
+  /** Epoch ms of the last hourly cycle, whether or not it could probe. */
   lastCheckedAt: number;
+  /** See `CourierWatchSummary.lastProbeResult` — same field, persisted. */
+  lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
 }
 
 /** One in-flight shipment's computed return time, persisted so the dynamic

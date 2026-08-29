@@ -201,6 +201,12 @@ function renderWatchStatus(watch: CourierWatchSummary): string {
   const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
   if (watch.lastCheckedAt === 0) {
     parts.push('<div class="ff-cp-watch-row">Destination: not checked yet.</div>');
+  } else if (watch.lastProbeResult === 'skipped-no-idle-pets') {
+    // Honest about *why* there's nothing fresher: the alarm ran at
+    // `lastCheckedAt` but every pet was out, so it had nothing to draft with
+    // and couldn't actually learn the destination's state — very different
+    // from having checked and found it locked.
+    parts.push(`<div class="ff-cp-watch-row">Destination: no idle pets to check with (last tried ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
   } else if (destOpen) {
     parts.push(
       `<div class="ff-cp-watch-row">Destination: open, closes in ${formatRelativeTime(watch.destinationOpenUntil!, now)} (${new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).</div>`,
@@ -220,9 +226,16 @@ function renderWatchStatus(watch: CourierWatchSummary): string {
   } else {
     parts.push('<div class="ff-cp-watch-row-head">En route</div>');
     parts.push(
-      ...watch.pendingReturns.map(
-        (p) => `<div class="ff-cp-watch-row">${p.petName} — back in ${formatRelativeTime(p.arrivesAt, now)}</div>`,
-      ),
+      ...watch.pendingReturns.map((p) => {
+        // A pet only leaves this list once the return alarm actually offloads
+        // it (see `recordFleetReturns`) — so still appearing here past its own
+        // ETA means offload genuinely hasn't happened yet, not just "the
+        // countdown hit zero a moment ago." Said plainly instead of repeating
+        // the same vague "any moment" a stuck pet and a freshly-landed one
+        // would otherwise share.
+        const label = p.arrivesAt <= now ? 'landed, offload pending' : `back in ${formatRelativeTime(p.arrivesAt, now)}`;
+        return `<div class="ff-cp-watch-row">${p.petName} — ${label}</div>`;
+      }),
     );
   }
 
