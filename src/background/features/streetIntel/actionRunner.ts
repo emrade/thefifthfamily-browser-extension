@@ -10,7 +10,7 @@ import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
+import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import type { ComplicationChoiceKey, ComplicationTrackingBucket, ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
@@ -496,6 +496,19 @@ async function runIfEligibleOnce(): Promise<void> {
 
     scheduleNextCheck(nextEligibleAt);
   } catch (err) {
+    if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
+      // Confirmed real (2026-08-29): the account got hospitalized mid-cycle,
+      // after the travelling/jailed/hospitalized gate above had already
+      // passed — one of the scout calls inside findScoutedCandidate (or the
+      // attempt/complication call) came back blocked instead. Not a sign
+      // anything is broken, so this must not reach `pause()` the way it used
+      // to (see gameAction.ts's SystemicActionError doc for the full story).
+      // A fresh status read gives the exact release time when available;
+      // falls back to the normal re-poll cadence otherwise.
+      const freshStatus = await fetchLiveStatus();
+      scheduleNextCheck(freshStatus ? statusReleaseAt(freshStatus) : null);
+      return;
+    }
     if (err instanceof SystemicActionError) {
       recordParseFailure(FEATURE_KEY);
       await pause(err.message);

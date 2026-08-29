@@ -4,7 +4,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, fetchLiveStatus, postAction } from '../../gameAction';
+import { SystemicActionError, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
 import { isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig } from '@/shared/types';
 
@@ -199,6 +199,16 @@ async function runIfEligibleOnce(): Promise<void> {
       overtime: overtime ? 1 : 0,
     });
   } catch (err) {
+    if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
+      // Same fix as streetIntel/actionRunner.ts's identical catch — a shift
+      // rejected for being jailed/hospitalized/travelling right now isn't a
+      // sign anything is broken, and must not disable the automation the way
+      // an unrecognized response shape does. See gameAction.ts's
+      // SystemicActionError doc for the confirmed real incident this fixes.
+      const freshStatus = await fetchLiveStatus();
+      scheduleNextCheck(freshStatus ? statusReleaseAt(freshStatus) : null);
+      return;
+    }
     recordParseFailure(FEATURE_KEY);
     const message = err instanceof SystemicActionError ? err.message : String(err);
     console.error(LOG_PREFIX, 'career auto-runner action failed', err);

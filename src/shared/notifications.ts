@@ -41,6 +41,21 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Stock Market Tracker Paused',
     description: 'Notify when the Stock Market Tracker stops itself after a response it doesn’t recognize, so it never keeps hitting the same unexplained behavior unattended.',
   },
+  {
+    id: 'courierDestinationOpen',
+    label: 'Courier Destination Open',
+    description: 'Notify when a smuggling destination opens up and auto-dispatch is off, so you know pets are ready to send.',
+  },
+  {
+    id: 'courierAutoDispatched',
+    label: 'Courier Auto-Dispatched',
+    description: 'Notify when pet couriers were automatically sent out because a destination opened up.',
+  },
+  {
+    id: 'courierAutoStopped',
+    label: 'Courier Auto-Watch Stopped',
+    description: 'Notify when the pet courier auto-watch stops itself after an unrecognized response.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

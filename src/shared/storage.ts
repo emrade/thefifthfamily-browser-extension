@@ -1,10 +1,13 @@
 import type {
   CareerAutoConfig,
   CareerAutoStatus,
+  CourierAutoConfig,
   CourierRunSummary,
+  CourierWatchState,
   FightClubFilterPrefs,
   FightClubHeroStats,
   LastSmugglingContext,
+  PendingCourierReturn,
   PendingCustoms,
   PendingTravel,
   PlayerStatsSnapshot,
@@ -34,6 +37,13 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
 const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   enabled: false,
   minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
+};
+
+// Auto-dispatch defaults on — the player explicitly asked for "auto-dispatch,
+// then notify" as the primary behavior, with the ability to turn just the
+// dispatch part off and fall back to notify-only.
+const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
+  autoDispatchEnabled: true,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
@@ -148,6 +158,23 @@ export const storage = {
   // worth merging in for "has this ever run".
   getStockMarketPollStatus: () => get<StockMarketPollStatus>(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, { lastPollAt: null, lastError: null, paused: false }),
   setStockMarketPollStatus: (v: StockMarketPollStatus) => set(STORAGE_KEYS.STOCK_MARKET_POLL_STATUS, v),
+
+  // Merge-with-defaults, same reasoning as Career/Street Intel Auto's config —
+  // a field added later should still resolve for an existing install.
+  getCourierAutoConfig: async (): Promise<CourierAutoConfig> => {
+    const stored = await get<Partial<CourierAutoConfig>>(STORAGE_KEYS.COURIER_AUTO_CONFIG, {});
+    return { ...DEFAULT_COURIER_AUTO_CONFIG, ...stored };
+  },
+  setCourierAutoConfig: (v: CourierAutoConfig) => set(STORAGE_KEYS.COURIER_AUTO_CONFIG, v),
+
+  // Background-owned runtime state — simple nullable-default, no "default open
+  // state" to merge in beyond "nothing checked yet".
+  getCourierWatchState: () => get<CourierWatchState>(STORAGE_KEYS.COURIER_WATCH_STATE, { destinationOpenUntil: null, lastCheckedAt: 0 }),
+  setCourierWatchState: (v: CourierWatchState) => set(STORAGE_KEYS.COURIER_WATCH_STATE, v),
+
+  // Empty array default — no pets in flight yet.
+  getPendingCourierReturns: () => get<PendingCourierReturn[]>(STORAGE_KEYS.PENDING_COURIER_RETURNS, []),
+  setPendingCourierReturns: (v: PendingCourierReturn[]) => set(STORAGE_KEYS.PENDING_COURIER_RETURNS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

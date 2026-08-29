@@ -20,6 +20,9 @@ export const STORAGE_KEYS = {
   REAL_ESTATE_ADVISOR_PREFERENCES: 'ff_real_estate_advisor_preferences',
   STOCK_MARKET_BACKFILL_DONE: 'ff_stock_market_backfill_done',
   STOCK_MARKET_POLL_STATUS: 'ff_stock_market_poll_status',
+  COURIER_AUTO_CONFIG: 'ff_courier_auto_config',
+  COURIER_WATCH_STATE: 'ff_courier_watch_state',
+  PENDING_COURIER_RETURNS: 'ff_pending_courier_returns',
 } as const;
 
 export const ALARM_NAMES = {
@@ -30,6 +33,8 @@ export const ALARM_NAMES = {
   CAREER_AUTO: 'ff-career-auto',
   STREET_INTEL_AUTO: 'ff-street-intel-auto',
   STOCK_MARKET_POLL: 'ff-stock-market-poll',
+  SMUGGLING_DEST_POLL: 'ff-smuggling-dest-poll',
+  SMUGGLING_COURIER_RETURN: 'ff-smuggling-courier-return',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -253,3 +258,15 @@ export const STOCK_MARKET_LAUNCH_TS = 1783119600000;
 // against one missed alarm costing a whole hour of coverage, not an attempt
 // to catch a faster-moving number.
 export const STOCK_MARKET_POLL_INTERVAL_MS = 30 * 60_000;
+
+// --- Pet courier auto-watch ---------------------------------------------------
+//
+// Smuggling's two open destinations rotate on a confirmed 60-minute cycle, tied
+// to the top of the hour (UTC) — confirmed against this account's own real
+// request archive: every observed destination-state transition landed within
+// ~36s of `:00`. This buffer covers that observed jitter with margin.
+export const COURIER_DEST_POLL_BUFFER_MS = 60_000;
+
+// Same reasoning as CAREER_AUTO_BUFFER_MS/STREET_INTEL_AUTO_BUFFER_MS — a small
+// guard so a status-blocked or fleet-return alarm doesn't fire a moment early.
+export const COURIER_RETURN_BUFFER_MS = 2_000;

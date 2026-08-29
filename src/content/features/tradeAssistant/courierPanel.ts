@@ -2,6 +2,7 @@ import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, CourierStatus } from '@/shared/types';
 
@@ -78,6 +79,15 @@ const PANEL_CSS = `
 .ff-cp-close:hover { color: #fff; }
 
 .ff-cp-roster { font-size: 10px; color: #8b8f9e; margin-bottom: 12px; line-height: 1.5; }
+
+.ff-cp-autowatch {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; margin-bottom: 12px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; font-size: 10px; color: #ccc;
+}
+.ff-cp-autowatch-label { display: flex; flex-direction: column; gap: 2px; }
+.ff-cp-autowatch-hint { font-size: 8.5px; color: #6b6455; }
 
 .ff-cp-actions { display: flex; gap: 8px; margin-bottom: 12px; }
 
@@ -250,6 +260,13 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-cp-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-cp-roster">Loading…</div>
+      <label class="ff-cp-autowatch">
+        <span class="ff-cp-autowatch-label">
+          Auto-dispatch
+          <span class="ff-cp-autowatch-hint">Send pets automatically when a destination opens</span>
+        </span>
+        <input class="ff-cp-autowatch-checkbox" type="checkbox">
+      </label>
       <div class="ff-cp-actions">
         <button class="ff-cp-run" type="button">Run</button>
         <button class="ff-cp-offload" type="button">Offload All</button>
@@ -262,6 +279,27 @@ function buildPanel(): HTMLDivElement {
   el.querySelector('.ff-cp-close')?.addEventListener('click', () => setExpanded(false));
   el.querySelector('.ff-cp-run')?.addEventListener('click', () => void handleAction('run'));
   el.querySelector('.ff-cp-offload')?.addEventListener('click', () => void handleAction('offload'));
+
+  // Read/written straight through storage.ts rather than a message round-trip —
+  // it's a plain config flag with no live network call behind it, same direct
+  // pattern the popup uses for e.g. Career Auto's config. Detection/notification
+  // from the background courier-watch alarm run regardless of this flag; it only
+  // gates whether an open destination gets pets dispatched automatically.
+  const autoCheckbox = el.querySelector<HTMLInputElement>('.ff-cp-autowatch-checkbox');
+  if (autoCheckbox) {
+    storage
+      .getCourierAutoConfig()
+      .then((config) => {
+        autoCheckbox.checked = config.autoDispatchEnabled;
+      })
+      .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-dispatch config read failed', err));
+
+    autoCheckbox.addEventListener('change', () => {
+      storage
+        .setCourierAutoConfig({ autoDispatchEnabled: autoCheckbox.checked })
+        .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-dispatch config write failed', err));
+    });
+  }
 
   return el;
 }

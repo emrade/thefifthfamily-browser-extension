@@ -368,7 +368,7 @@ export interface CourierRunSummary {
    *  money"). Attempted regardless of what else the run did — even a run that only
    *  offloaded, or did nothing at all, still sweeps standing cash. */
   cashDeposited: number;
-  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | null;
+  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | 'status-blocked' | null;
   errors: string[];
 }
 
@@ -397,6 +397,35 @@ export type CourierProgressEvent =
 export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;
+}
+
+/** User toggle for the courier auto-watch background feature (see
+ *  `courierWatch.ts`) — read/written directly by the in-page courier panel,
+ *  same direct-storage pattern as `CareerAutoConfig`. Detection and
+ *  notification always run regardless of this flag; it only gates whether an
+ *  open destination gets pets dispatched automatically versus just notified
+ *  about. */
+export interface CourierAutoConfig {
+  autoDispatchEnabled: boolean;
+}
+
+/** Background-owned runtime state for the hourly destination-rotation check —
+ *  lets the pet-return alarm decide instantly whether a freshly-landed pet can
+ *  be redispatched without an extra draft/cancel probe. */
+export interface CourierWatchState {
+  /** Epoch ms marking the end of the currently-open rotation hour, or `null`
+   *  if the last hourly check found both destinations locked. */
+  destinationOpenUntil: number | null;
+  lastCheckedAt: number;
+}
+
+/** One in-flight shipment's computed return time, persisted so the dynamic
+ *  `SMUGGLING_COURIER_RETURN` alarm survives a service-worker restart between
+ *  being armed and firing — same reasoning as `PendingTravel`. */
+export interface PendingCourierReturn {
+  shipmentId: number;
+  petName: string;
+  arrivesAt: number;
 }
 
 /**

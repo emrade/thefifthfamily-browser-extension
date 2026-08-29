@@ -23,11 +23,19 @@ import { getCsrfToken } from './csrfToken';
  *   missing/non-boolean). Fix: none available yet — this specifically means the
  *   game changed something this feature doesn't understand, so it needs to stop
  *   rather than guess.
+ * - `status-blocked`: a normal-shaped `ok:false` rejection whose message says the
+ *   account is jailed/hospitalized/travelling right now (confirmed real: "You
+ *   can't do that while hospitalized!", caught mid-cycle in Street Intel's
+ *   auto-runner on 2026-08-29 after its one-time pre-flight status gate had
+ *   already passed — an unrelated in-game event hospitalized the account between
+ *   that gate and this call). Recoverable and expected, never a sign anything is
+ *   broken — the caller should reschedule for later, not treat it like `shape`
+ *   and stop the automation.
  */
 export class SystemicActionError extends Error {
   constructor(
     message: string,
-    public readonly kind: 'auth' | 'shape',
+    public readonly kind: 'auth' | 'shape' | 'status-blocked',
   ) {
     super(message);
   }
@@ -109,6 +117,20 @@ export async function postAction(path: string, params: Record<string, string | n
       throw new SystemicActionError(`"${json.msg}" from ${path} — looks like a stale session or CSRF token, not an ordinary rejection`, 'auth');
     }
 
+    // Confirmed real for hospitalized ("You can't do that while hospitalized!",
+    // a real Street Intel `scout`/`attempt` rejection caught 2026-08-29) — jailed
+    // and travelling are assumed to follow the same "You can't do that while X!"
+    // phrasing but have no confirmed capture yet, same unconfirmed-but-plausible
+    // footing as the CSRF-phrase guesses above. Checked against both `error` and
+    // `msg` for the same reason as the auth checks: different endpoints use
+    // different field names for the same kind of rejection.
+    if (json.ok === false && typeof json.error === 'string' && /can't do (?:that|this) while (?:jailed|hospitalized|travell?ing)/i.test(json.error)) {
+      throw new SystemicActionError(`"${json.error}" from ${path} — account is jailed/hospitalized/travelling, not an unrecognized response`, 'status-blocked');
+    }
+    if (json.ok === false && typeof json.msg === 'string' && /can't do (?:that|this) while (?:jailed|hospitalized|travell?ing)/i.test(json.msg)) {
+      throw new SystemicActionError(`"${json.msg}" from ${path} — account is jailed/hospitalized/travelling, not an unrecognized response`, 'status-blocked');
+    }
+
     // Confirmed real ("Slow down!" on a v2_draft call) — retried in place with a
     // growing pause rather than surfaced as an ordinary failure, since the
     // rejection has nothing to do with this particular call's own content.
@@ -130,6 +152,12 @@ export interface LiveStatus {
   travelling: boolean;
   jailed: boolean;
   hospitalized: boolean;
+  /** Seconds remaining, straight from `stats.php`'s own `status.*_seconds` —
+   *  lets a caller schedule an exact "resume at" alarm instead of a blind
+   *  fallback-interval retry when one of the booleans above is true. */
+  travelSeconds: number;
+  jailSeconds: number;
+  hospitalSeconds: number;
 }
 
 /** Fresh, uncached read of the handful of `stats.php` fields a pre-flight check
@@ -156,7 +184,22 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
     travelling: Boolean(json.status.travelling),
     jailed: Boolean(json.status.jailed),
     hospitalized: Boolean(json.status.hospitalized),
+    travelSeconds: Number(json.status.travel_seconds) || 0,
+    jailSeconds: Number(json.status.jail_seconds) || 0,
+    hospitalSeconds: Number(json.status.hospital_seconds) || 0,
   };
+}
+
+/** Earliest moment `status` is expected to clear, for whichever of
+ *  jailed/hospitalized/travelling is actually true — the max of the relevant
+ *  countdowns (a status-blocked rejection doesn't say which one it was blocked
+ *  by, so a caller reacting to one from mid-cycle rather than this function's
+ *  own live `status` fields should just take the longest of the three it has).
+ *  Adds a 2s buffer since these are the account's own countdowns, not a
+ *  guaranteed-precise server clock. */
+export function statusReleaseAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospitalSeconds' | 'travelSeconds'>): number {
+  const seconds = Math.max(status.jailSeconds, status.hospitalSeconds, status.travelSeconds);
+  return Date.now() + (seconds + 2) * 1000;
 }
 
 /**

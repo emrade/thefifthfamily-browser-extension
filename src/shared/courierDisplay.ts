@@ -26,6 +26,7 @@ export const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedRea
   'no-destination-available': "Neither of this hour's two open destinations is available — try again after the next rotation.",
   'session-error': 'Stopped early — the game rejected a request (stale session or token). Reload the game tab, view Smuggling once, then run again.',
   'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
+  'status-blocked': 'Stopped early — jailed, hospitalized, or travelling right now. Try again once that clears.',
 };
 
 /** The "N pets known: ..." line both surfaces show above the Run button. */

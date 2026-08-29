@@ -45,7 +45,7 @@ const DAILY_CAP_STOP_THRESHOLD = 1000;
  * identically to what the real client gets now that the game stopped sending it —
  * matching the client exactly removes that as a variable.
  */
-async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
+export async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, {
     credentials: 'include',
   });
@@ -82,14 +82,16 @@ async function fetchCashAndDistrict(): Promise<{ cash: number; bank: number; dis
  * `SystemicActionError` here is just as real a signal as one from any other call,
  * so it's left to propagate to the caller's own catch rather than being absorbed
  * into a generic message it wouldn't recognise as "stop everything."
+ *
+ * Takes a `pushError` callback rather than a whole `CourierRunSummary` so a
+ * caller with no batch summary of its own (the courier auto-watch's
+ * destination probe — see `courierWatch.ts` — drafts and immediately cancels
+ * a shipment just to read the destination list, outside any batch run) can
+ * reuse this without constructing a throwaway summary just to satisfy it.
  */
-async function cancelShipment(shipmentId: number, petName: string, summary: CourierRunSummary): Promise<void> {
+export async function cancelShipment(shipmentId: number, petName: string, pushError: (message: string) => void): Promise<void> {
   const resp = await postAction('/actions/smuggling.php', { action: 'v2_cancel', shipment_id: shipmentId });
-  // Module-level function, called with `summary` passed explicitly — `pushError`
-  // is a closure local to `executeCourierBatch` and isn't reachable from here, so
-  // this pushes directly (and skips the live-progress broadcast for this one,
-  // rare, cleanup-only case rather than threading emitProgress through as well).
-  if (!resp?.ok) summary.errors.push(`could not cancel ${petName}'s stuck shipment — it may still be blocking new drafts`);
+  if (!resp?.ok) pushError(`could not cancel ${petName}'s stuck shipment — it may still be blocking new drafts`);
 }
 
 function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
@@ -102,10 +104,23 @@ function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
  *  shorter `with courier` time — gets the pet back into service sooner. Sale rate
  *  is a flat ×1.20 everywhere (see docs/smuggling-v2-plan.md), so there's no profit
  *  difference between the two to weigh against travel time. */
-function pickDestination(destinations: DestinationOption[]): DestinationOption | null {
+export function pickDestination(destinations: DestinationOption[]): DestinationOption | null {
   const open = destinations.filter((d) => !d.locked);
   if (open.length === 0) return null;
   return open.reduce((best, d) => (d.courierMinutes < best.courierMinutes ? d : best));
+}
+
+/** Maps a `SystemicActionError` to the batch's own `stoppedReason` vocabulary.
+ *  `'status-blocked'` (jailed/hospitalized/travelling right now) is kept
+ *  distinct from `'shape-changed'` — see gameAction.ts's `SystemicActionError`
+ *  doc for the confirmed real incident this distinction fixes: a status
+ *  block is recoverable and expected, not a sign the game's response format
+ *  changed, so a caller (courierWatch's auto-dispatch) must not treat the two
+ *  the same way. */
+function classifyStop(err: SystemicActionError): CourierRunSummary['stoppedReason'] {
+  if (err.kind === 'auth') return 'session-error';
+  if (err.kind === 'status-blocked') return 'status-blocked';
+  return 'shape-changed';
 }
 
 /**
@@ -132,7 +147,7 @@ async function offloadReady(
     } catch (err) {
       if (err instanceof SystemicActionError) {
         pushError(err.message);
-        return err.kind === 'auth' ? 'session-error' : 'shape-changed';
+        return classifyStop(err);
       }
       pushError(`offload failed for ${entry.petName}: ${String(err)}`);
     }
@@ -240,7 +255,7 @@ async function executeOffloadBatch(): Promise<CourierRunSummary> {
   } catch (err) {
     if (err instanceof SystemicActionError) {
       pushError(err.message);
-      summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+      summary.stoppedReason = classifyStop(err);
       return summary;
     }
     console.error(LOG_PREFIX, 'offload batch failed', err);
@@ -325,7 +340,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // discovered pet-by-pet the way it was the first time this happened.
     const stuck = snapshot.fleet.find((f) => f.status === 'drafting');
     if (stuck) {
-      await cancelShipment(stuck.shipmentId, stuck.petName, summary);
+      await cancelShipment(stuck.shipmentId, stuck.petName, pushError);
       const fresh = await fetchPanel();
       if (fresh) snapshot = fresh;
     }
@@ -407,7 +422,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       } catch (err) {
         if (err instanceof SystemicActionError) {
           pushError(err.message);
-          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+          summary.stoppedReason = classifyStop(err);
           return summary;
         }
         pushError(`withdrawal failed: ${String(err)}`);
@@ -488,7 +503,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
             // ran: it produced the identical "no destination" outcome for every
             // pet after the first, just discovered the slow way.
             pushError(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
-            await cancelShipment(shipmentId, pet.name, summary);
+            await cancelShipment(shipmentId, pet.name, pushError);
             summary.stoppedReason = 'no-destination-available';
             return summary;
           }
@@ -553,21 +568,21 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
 
         if (qty === 0) {
           pushError(`could not load anything for ${pet.name}`);
-          await cancelShipment(shipmentId, pet.name, summary);
+          await cancelShipment(shipmentId, pet.name, pushError);
           continue;
         }
 
         const districtRow = await db.districts.where('name').equals(destination.district).first();
         if (!districtRow) {
           pushError(`unknown district "${destination.district}" — not in the local district table yet`);
-          await cancelShipment(shipmentId, pet.name, summary);
+          await cancelShipment(shipmentId, pet.name, pushError);
           continue;
         }
 
         const depart = await postAction('/actions/smuggling.php', { action: 'v2_depart', shipment_id: shipmentId, destination_city_id: districtRow.id });
         if (!depart?.ok) {
           pushError(`depart failed for ${pet.name}: ${depart?.error ?? 'unknown error'}`);
-          await cancelShipment(shipmentId, pet.name, summary);
+          await cancelShipment(shipmentId, pet.name, pushError);
           continue;
         }
 
@@ -579,10 +594,10 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       } catch (err) {
         if (err instanceof SystemicActionError) {
           pushError(err.message);
-          summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+          summary.stoppedReason = classifyStop(err);
           return summary;
         }
-        if (shipmentId !== null) await cancelShipment(shipmentId, pet.name, summary);
+        if (shipmentId !== null) await cancelShipment(shipmentId, pet.name, pushError);
         pushError(`run failed for ${pet.name}: ${String(err)}`);
       }
     }
@@ -595,7 +610,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // one from inside the loop.
     if (err instanceof SystemicActionError) {
       pushError(err.message);
-      summary.stoppedReason = err.kind === 'auth' ? 'session-error' : 'shape-changed';
+      summary.stoppedReason = classifyStop(err);
       return summary;
     }
     console.error(LOG_PREFIX, 'courier batch failed', err);

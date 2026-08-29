@@ -1,5 +1,10 @@
 import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
 import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petCourier';
+import {
+  handleCourierReturnAlarm,
+  handleDestPollAlarm,
+  init as initCourierWatch,
+} from './features/tradeAssistant/courierWatch';
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
 import {
@@ -54,6 +59,12 @@ initStreetIntelAuto();
 // No config gate: unlike the two auto-runners above, this is read-only data
 // collection with no gameplay action to enable/disable.
 initStockMarket();
+
+// Arms the pet courier auto-watch's hourly destination-rotation check — see
+// features/tradeAssistant/courierWatch.ts. No config gate either: detection
+// and notification always run; `CourierAutoConfig.autoDispatchEnabled` only
+// gates whether an open destination gets pets sent automatically.
+initCourierWatch().catch((err) => console.error(LOG_PREFIX, 'initCourierWatch failed', err));
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
@@ -170,4 +181,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));
   handleStreetIntelAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelAutoAlarm failed', err));
   handleStockMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStockMarketPollAlarm failed', err));
+  handleDestPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleDestPollAlarm failed', err));
+  handleCourierReturnAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCourierReturnAlarm failed', err));
 });
