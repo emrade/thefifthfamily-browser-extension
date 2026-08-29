@@ -3,8 +3,8 @@ import { LiveStats } from './LiveStats';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { CareerAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, CashIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, SettingsIcon } from './icons';
+import type { CareerAutoConfig, CourierAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
+import { ArchiveIcon, BriefcaseIcon, CashIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, SendIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenTradeAssistant: () => void;
@@ -12,6 +12,7 @@ interface HomeProps {
   onOpenRequestLog: () => void;
   onOpenCareerAuto: () => void;
   onOpenStreetIntelAuto: () => void;
+  onOpenPetCouriers: () => void;
   onOpenSettings: () => void;
 }
 
@@ -28,6 +29,12 @@ export function Home(props: HomeProps) {
   const [health, setHealth] = useState<FeatureHealthMap>({});
   const [careerAutoConfig, setCareerAutoConfig] = useState<CareerAutoConfig | null>(null);
   const [streetIntelAutoConfig, setStreetIntelAutoConfig] = useState<StreetIntelAutoConfig | null>(null);
+  const [courierAutoConfig, setCourierAutoConfig] = useState<CourierAutoConfig | null>(null);
+  // The icon badge's own count, read back rather than re-derived — the badge
+  // already *is* "how many pets need attention right now," so this row just
+  // surfaces the same number instead of running its own separate computation
+  // that could disagree with it.
+  const [courierBadge, setCourierBadge] = useState('');
 
   useEffect(() => {
     readFeatureHealth()
@@ -41,6 +48,14 @@ export function Home(props: HomeProps) {
       .getStreetIntelAutoConfig()
       .then(setStreetIntelAutoConfig)
       .catch((err) => console.error(LOG_PREFIX, 'failed to read street intel auto config', err));
+    storage
+      .getCourierAutoConfig()
+      .then(setCourierAutoConfig)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read courier auto config', err));
+    chrome.action
+      .getBadgeText({})
+      .then(setCourierBadge)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read courier badge text', err));
   }, []);
 
   const careerAutoStatus = !careerAutoConfig || careerAutoConfig.careerId == null
@@ -50,6 +65,12 @@ export function Home(props: HomeProps) {
       : 'Off';
 
   const streetIntelAutoStatus = streetIntelAutoConfig?.enabled ? 'Running' : 'Off';
+
+  const courierAutoStatus = courierBadge
+    ? `${courierBadge} pet${courierBadge === '1' ? '' : 's'} ready to send`
+    : courierAutoConfig?.autoDispatchEnabled || courierAutoConfig?.autoOffloadEnabled
+      ? 'Auto-watch on'
+      : 'Off';
 
   // Only broken features are listed. A healthy extension shows nothing here — this
   // is meant to be invisible until the day the game changes underneath it, which
@@ -121,6 +142,15 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">Street Intel Auto</div>
           <div class="ff-nav-row__status">{streetIntelAutoStatus}</div>
+        </div>
+        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      </button>
+
+      <button class="ff-nav-row" onClick={props.onOpenPetCouriers}>
+        <div class="ff-nav-row__icon"><SendIcon /></div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Pet Couriers</div>
+          <div class="ff-nav-row__status">{courierAutoStatus}</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

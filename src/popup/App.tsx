@@ -9,9 +9,10 @@ import { FightClubHome } from './features/fightClub/FightClubHome';
 import { RequestLogHome } from './features/requestLog/RequestLogHome';
 import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
 import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoHome';
+import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'settings';
+type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -42,6 +43,7 @@ export function App() {
             onOpenRequestLog={() => setView('requestLog')}
             onOpenCareerAuto={() => setView('careerAuto')}
             onOpenStreetIntelAuto={() => setView('streetIntelAuto')}
+            onOpenPetCouriers={() => setView('petCouriers')}
             onOpenSettings={() => setView('settings')}
           />
         )}
@@ -50,6 +52,7 @@ export function App() {
         {view === 'requestLog' && <RequestLogHome />}
         {view === 'careerAuto' && <CareerAutoHome />}
         {view === 'streetIntelAuto' && <StreetIntelAutoHome />}
+        {view === 'petCouriers' && <PetCouriersHome />}
         {view === 'settings' && <Settings />}
       </main>
 
