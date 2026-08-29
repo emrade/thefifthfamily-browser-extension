@@ -79,19 +79,6 @@ export function PetCouriersHome() {
     <>
       <label class="ff-toggle-row">
         <div class="ff-toggle-row__text">
-          <div class="ff-toggle-row__title">Auto-Offload</div>
-          <div class="ff-toggle-row__status">Collect a landed pet's cargo automatically.</div>
-        </div>
-        <input
-          type="checkbox"
-          class="ff-toggle"
-          checked={config.autoOffloadEnabled}
-          onChange={() => saveConfig({ ...config, autoOffloadEnabled: !config.autoOffloadEnabled })}
-        />
-      </label>
-
-      <label class="ff-toggle-row">
-        <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Auto-Dispatch</div>
           <div class="ff-toggle-row__status">Send idle pets automatically when a destination opens.</div>
         </div>
@@ -100,6 +87,19 @@ export function PetCouriersHome() {
           class="ff-toggle"
           checked={config.autoDispatchEnabled}
           onChange={() => saveConfig({ ...config, autoDispatchEnabled: !config.autoDispatchEnabled })}
+        />
+      </label>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Auto-Offload</div>
+          <div class="ff-toggle-row__status">Collect a landed pet's cargo automatically.</div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.autoOffloadEnabled}
+          onChange={() => saveConfig({ ...config, autoOffloadEnabled: !config.autoOffloadEnabled })}
         />
       </label>
 

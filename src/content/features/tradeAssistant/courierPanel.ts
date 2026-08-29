@@ -216,7 +216,7 @@ function renderSummary(run: CourierRunSummary | null): string {
 function renderWatchStatus(watch: CourierWatchSummary): string {
   const now = Date.now();
   const parts: string[] = [
-    `<div class="ff-cp-watch-row">Auto-offload: ${watch.autoOffloadEnabled ? 'ON' : 'OFF'} · Auto-dispatch: ${watch.autoDispatchEnabled ? 'ON' : 'OFF'}</div>`,
+    `<div class="ff-cp-watch-row">Auto-dispatch: ${watch.autoDispatchEnabled ? 'ON' : 'OFF'} · Auto-offload: ${watch.autoOffloadEnabled ? 'ON' : 'OFF'}</div>`,
   ];
 
   const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
@@ -362,17 +362,17 @@ function buildPanel(): HTMLDivElement {
       <div class="ff-cp-roster">Loading…</div>
       <label class="ff-cp-toggle-row">
         <div class="ff-cp-toggle-row__text">
-          <div class="ff-cp-toggle-row__title">Auto-offload</div>
-          <div class="ff-cp-toggle-row__status">Collect a landed pet's cargo automatically</div>
-        </div>
-        <input class="ff-cp-autooffload-toggle ff-cp-toggle" type="checkbox">
-      </label>
-      <label class="ff-cp-toggle-row">
-        <div class="ff-cp-toggle-row__text">
           <div class="ff-cp-toggle-row__title">Auto-dispatch</div>
           <div class="ff-cp-toggle-row__status">Send idle pets automatically when a destination opens</div>
         </div>
         <input class="ff-cp-autodispatch-toggle ff-cp-toggle" type="checkbox">
+      </label>
+      <label class="ff-cp-toggle-row">
+        <div class="ff-cp-toggle-row__text">
+          <div class="ff-cp-toggle-row__title">Auto-offload</div>
+          <div class="ff-cp-toggle-row__status">Collect a landed pet's cargo automatically</div>
+        </div>
+        <input class="ff-cp-autooffload-toggle ff-cp-toggle" type="checkbox">
       </label>
       <div class="ff-cp-watch"><div class="ff-cp-watch-row">Loading…</div></div>
       <div class="ff-cp-actions">

@@ -148,13 +148,15 @@ async function findGameTabId(): Promise<number | undefined> {
   return tabs[0]?.id;
 }
 
-/** Disables auto-dispatch, clears both alarms, and tells the player — reserved
- *  for a genuine `'shape'` error (an unrecognized response format), never for
- *  `'status-blocked'` (see the module doc above). Mirrors
+/** Disables both auto-offload and auto-dispatch, clears both alarms, and
+ *  tells the player — reserved for a genuine `'shape'` error (an
+ *  unrecognized response format), never for `'status-blocked'` (see the
+ *  module doc above). Both toggles, not just dispatch: both alarms get
+ *  cleared here, so nothing automated is running regardless — leaving
+ *  `autoOffloadEnabled` on would misrepresent that as still-active. Mirrors
  *  `careerAuto/runner.ts`'s and `streetIntel/actionRunner.ts`'s `pause()`. */
 async function disableAutoWatch(message: string): Promise<void> {
-  const config = await storage.getCourierAutoConfig();
-  await storage.setCourierAutoConfig({ ...config, autoDispatchEnabled: false });
+  await storage.setCourierAutoConfig({ autoDispatchEnabled: false, autoOffloadEnabled: false });
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_DEST_POLL);
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
   await notify('courierAutoStopped', {
