@@ -412,6 +412,12 @@ function buildPanel(): HTMLDivElement {
       storage
         .getCourierAutoConfig()
         .then((config) => storage.setCourierAutoConfig({ ...config, autoOffloadEnabled: offloadToggle.checked }))
+        // Nothing in the background reacts immediately to this one (offload
+        // only ever runs from the return alarm, on its own schedule) — this
+        // refresh just reflects the toggle's own new state right away
+        // instead of leaving it to the next 30s tick, same reasoning as the
+        // dispatch toggle below without needing the follow-up refresh.
+        .then(() => refresh())
         .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-offload config write failed', err));
     });
 
@@ -419,6 +425,16 @@ function buildPanel(): HTMLDivElement {
       storage
         .getCourierAutoConfig()
         .then((config) => storage.setCourierAutoConfig({ ...config, autoDispatchEnabled: dispatchToggle.checked }))
+        .then(() => {
+          refresh();
+          // Turning this on triggers courierWatch.ts's own immediate check
+          // (~3s later, see COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS) — without
+          // this, its result (destination/next-check line) would just sit
+          // showing pre-toggle data until the next unrelated 30s tick,
+          // confirmed real: up to ~40s of the panel looking like nothing
+          // happened while the background had already finished reacting.
+          if (dispatchToggle.checked) setTimeout(() => void refresh(), 6_000);
+        })
         .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-dispatch config write failed', err));
     });
   }
