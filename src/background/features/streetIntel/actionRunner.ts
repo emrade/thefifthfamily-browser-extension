@@ -122,7 +122,7 @@ async function pause(message: string): Promise<void> {
 
   await notify('streetIntelAutoStopped', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Street Intel auto-runner stopped',
     message,
   });

@@ -170,7 +170,7 @@ export async function pollNow(): Promise<void> {
     // behavior actually being guarded against.
     await notify('stockMarketTrackerPaused', {
       type: 'basic',
-      iconUrl: 'icons/icon-128.png',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: 'Stock Market Tracker is still paused',
       message: alreadyPaused.lastError ?? 'An unrecognized response stopped data collection.',
     });
@@ -240,7 +240,7 @@ async function pause(message: string): Promise<void> {
   await storage.setStockMarketPollStatus({ lastPollAt: (await storage.getStockMarketPollStatus()).lastPollAt, lastError: message, paused: true });
   await notify('stockMarketTrackerPaused', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Stock Market Tracker paused itself',
     message: `An unrecognized response stopped data collection: ${message}`,
   });

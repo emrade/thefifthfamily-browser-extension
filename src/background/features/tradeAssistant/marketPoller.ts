@@ -100,7 +100,7 @@ export async function pollNow(opts: { skipTravellingCheck?: boolean } = {}): Pro
 async function notifyRaidDetected(district: string) {
   await notify('customsRaid', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Customs raid detected',
     message: `Border agents flagged your cargo in ${district}. Resolve it in-game whenever you're ready.`,
   });

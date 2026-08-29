@@ -57,7 +57,7 @@ export async function checkSellOpportunity(result: SmugglingListing, district: s
 
   await notify('sellOpportunity', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Sell opportunity',
     message: `${held.item} is now worth selling in ${district} — an estimated $${Math.round(estimatedProfit).toLocaleString()}${roiSuffix} profit.`,
   });

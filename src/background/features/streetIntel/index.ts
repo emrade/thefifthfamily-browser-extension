@@ -114,7 +114,7 @@ async function notifyOpportunities(opportunities: StreetIntelOpportunity[]): Pro
 
   await notify('streetIntelOpportunity', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: opportunities.length > 1 ? 'Street Intel opportunities' : 'Street Intel opportunity',
     message,
   });

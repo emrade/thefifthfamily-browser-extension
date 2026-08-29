@@ -98,7 +98,7 @@ async function confirmArrival(retriesLeft = ARRIVAL_CONFIRM_RETRIES) {
 async function notifyArrived(destinationName: string) {
   await notify('travelArrival', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'You have arrived',
     message: `Touched down in ${destinationName}.`,
   });

@@ -1,4 +1,4 @@
-import { ALARM_NAMES, COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS, COURIER_DEST_POLL_BUFFER_MS, COURIER_RETURN_BUFFER_MS, STORAGE_KEYS } from '@/shared/constants';
+import { ALARM_NAMES, COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS, COURIER_DEST_POLL_BUFFER_MS, COURIER_RETURN_BUFFER_MS, GAME_ORIGIN, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
@@ -45,6 +45,15 @@ import type { CourierAutoConfig, CourierRunSummary, CourierWatchState, CourierWa
  * genuine `'shape'` error does (via `disableAutoWatch`).
  */
 
+// Temporary tracing — 2026-08-29, tracking down a confirmed real gap where the
+// return alarm never got (re)armed after a successful auto-dispatch (no
+// console evidence recoverable after the fact, since an MV3 service worker's
+// console doesn't survive its own frequent suspend/restart cycle). Remove
+// once the actual failure point is caught live.
+function trace(message: string): void {
+  console.log(`${LOG_PREFIX} [courierWatch trace]`, message);
+}
+
 function nextHourBoundary(): number {
   return (Math.floor(Date.now() / 3_600_000) + 1) * 3_600_000;
 }
@@ -77,15 +86,28 @@ function watchConfigChanges(): void {
 }
 
 /** Arms/re-arms the hourly check on every wake — cheap no-op after the first
- *  run, same "runs on every service-worker wake" shape as `ensureSweepAlarm`.
- *  No equivalent rehydration is needed for `SMUGGLING_COURIER_RETURN`: it's
- *  recomputed from live fleet state every time `recordFleetReturns` runs
- *  (the next hourly check, if nothing else), so there's no persisted "should
- *  exist" state to restore it from at startup. */
+ *  run, same "runs on every service-worker wake" shape as `ensureSweepAlarm`. */
 export async function init(): Promise<void> {
   watchConfigChanges();
   const existing = await chrome.alarms.get(ALARM_NAMES.SMUGGLING_DEST_POLL);
   if (!existing) scheduleHourlyDestCheck();
+
+  // Confirmed real (2026-08-29): `chrome.alarms` don't survive an extension
+  // reload/update the way `chrome.storage` does. `recordFleetReturns` had
+  // already run and correctly persisted 9 pets to `PendingCourierReturns`
+  // before a reload wiped `SMUGGLING_COURIER_RETURN` — and nothing else was
+  // ever going to re-arm it: that only happens inside a probe/dispatch cycle,
+  // which needs an *idle* pet to trigger at all, and every pet was still away.
+  // A reload while pets are mid-flight would strand them indefinitely without
+  // this — the assumption that this alarm never needed its own rehydration
+  // (only reasonable-sounding until traced through what actually re-triggers
+  // it) was wrong.
+  const pendingReturns = await storage.getPendingCourierReturns();
+  if (pendingReturns.length > 0 && !(await chrome.alarms.get(ALARM_NAMES.SMUGGLING_COURIER_RETURN))) {
+    const earliest = Math.min(...pendingReturns.map((p) => p.arrivesAt));
+    trace(`init: rehydrating SMUGGLING_COURIER_RETURN from ${pendingReturns.length} persisted pending return(s), earliest ${new Date(earliest).toISOString()}`);
+    chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
+  }
 }
 
 /** Assembled fresh from live alarm state + storage for the in-page panel —
@@ -125,6 +147,20 @@ async function updateBadge(idleCount: number): Promise<void> {
   await chrome.action.setBadgeBackgroundColor({ color: '#2f9e44' });
 }
 
+/** The manual "Run" button gets live per-step progress in the panel because
+ *  it passes its own tab id into `runCourierBatch`/`runOffloadBatch`, which
+ *  `emitProgress` (petCourier.ts) needs to know where to `chrome.tabs.sendMessage`
+ *  to — an alarm has no click to get a tab id from, so without this an
+ *  auto-dispatched run went completely silent until it finished, even with
+ *  the panel open and watching. If the smuggling page happens to be open
+ *  right now, this finds it so auto-dispatch gets the exact same live
+ *  progress a manual run does; if it isn't, `emitProgress` no-ops exactly as
+ *  before. */
+async function findGameTabId(): Promise<number | undefined> {
+  const tabs = await chrome.tabs.query({ url: `${GAME_ORIGIN}/*` });
+  return tabs[0]?.id;
+}
+
 /** Disables auto-dispatch, clears both alarms, and tells the player — reserved
  *  for a genuine `'shape'` error (an unrecognized response format), never for
  *  `'status-blocked'` (see the module doc above). Mirrors
@@ -136,7 +172,7 @@ async function disableAutoWatch(message: string): Promise<void> {
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
   await notify('courierAutoStopped', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Pet courier auto-watch stopped',
     message,
   });
@@ -187,11 +223,14 @@ export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
   await storage.setPendingCourierReturns(pending);
 
   if (pending.length === 0) {
+    trace('recordFleetReturns: nothing moving, clearing SMUGGLING_COURIER_RETURN');
     chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
     return;
   }
   const earliest = Math.min(...pending.map((p) => p.arrivesAt));
-  chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
+  const when = earliest + COURIER_RETURN_BUFFER_MS;
+  trace(`recordFleetReturns: ${pending.length} pet(s) moving, arming SMUGGLING_COURIER_RETURN for ${new Date(when).toISOString()} (${pending.map((p) => p.petName).join(', ')})`);
+  chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when });
 }
 
 /** Drafts with one idle pet purely to read the destination list (the only way
@@ -227,12 +266,17 @@ async function probeDestination(idlePet: PetRosterEntry): Promise<{ open: boolea
 async function actOnOpenDestination(idleCount: number, districtName: string | null, alarmName: string): Promise<boolean> {
   const config = await storage.getCourierAutoConfig();
   if (config.autoDispatchEnabled) {
-    const summary = await runCourierBatch();
-    if (await handleBatchStop(summary, alarmName)) return true;
+    trace(`actOnOpenDestination: calling runCourierBatch() for ${idleCount} idle pet(s)`);
+    const summary = await runCourierBatch(await findGameTabId());
+    trace(`actOnOpenDestination: runCourierBatch returned stoppedReason=${summary.stoppedReason} sent=${summary.sent.length}`);
+    if (await handleBatchStop(summary, alarmName)) {
+      trace('actOnOpenDestination: handleBatchStop handled it (status-blocked/shape/session-error) — returning stopped=true');
+      return true;
+    }
     if (summary.sent.length > 0) {
       await notify('courierAutoDispatched', {
         type: 'basic',
-        iconUrl: 'icons/icon-128.png',
+        iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
         title: 'Pet couriers auto-dispatched',
         message: `Sent ${summary.sent.length} pet${summary.sent.length === 1 ? '' : 's'} to ${districtName ?? 'the open destination'}.`,
       });
@@ -241,7 +285,7 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
   } else {
     await notify('courierDestinationOpen', {
       type: 'basic',
-      iconUrl: 'icons/icon-128.png',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: 'Smuggling destination open',
       message: `${districtName ?? 'A destination'} is open — ${idleCount} pet${idleCount === 1 ? '' : 's'} ready to send.`,
     });
@@ -266,11 +310,17 @@ async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string
   const watchState = await storage.getCourierWatchState();
   const haveThisHoursAnswer =
     watchState.lastProbeResult !== null && watchState.lastProbeResult !== 'skipped-no-idle-pets' && watchState.lastCheckedAt >= currentHourStart();
+  trace(
+    `evaluateDestination: idlePets=${idlePets.length} watchState=${JSON.stringify(watchState)} currentHourStart=${new Date(currentHourStart()).toISOString()} haveThisHoursAnswer=${haveThisHoursAnswer}`,
+  );
 
   if (idlePets.length === 0) {
     if (!haveThisHoursAnswer) {
       const next: CourierWatchState = { ...watchState, lastCheckedAt: Date.now(), lastProbeResult: 'skipped-no-idle-pets' };
+      trace(`evaluateDestination: no idle pets, marking skipped-no-idle-pets: ${JSON.stringify(next)}`);
       await storage.setCourierWatchState(next);
+    } else {
+      trace('evaluateDestination: no idle pets, but already have this hour\'s answer — leaving watch state untouched');
     }
     await updateBadge(0);
     return false;
@@ -278,6 +328,7 @@ async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string
 
   if (haveThisHoursAnswer) {
     const stillOpen = watchState.destinationOpenUntil !== null && watchState.destinationOpenUntil > Date.now();
+    trace(`evaluateDestination: reusing this hour's answer, stillOpen=${stillOpen}`);
     if (!stillOpen) {
       await updateBadge(0);
       return false;
@@ -287,7 +338,10 @@ async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string
     return actOnOpenDestination(idlePets.length, null, alarmName);
   }
 
+  trace(`evaluateDestination: probing fresh with ${idlePets[0].name}`);
+
   const probe = await probeDestination(idlePets[0]);
+  trace(`evaluateDestination: probe result open=${probe.open} district=${probe.districtName}`);
 
   if (!probe.open) {
     await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
@@ -301,13 +355,16 @@ async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string
 
 export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.SMUGGLING_DEST_POLL) return;
+  trace('handleDestPollAlarm: fired');
 
   const status = await fetchLiveStatus();
   if (!status) {
+    trace('handleDestPollAlarm: fetchLiveStatus returned null, rescheduling');
     scheduleHourlyDestCheck();
     return;
   }
   if (status.travelling || status.jailed || status.hospitalized) {
+    trace(`handleDestPollAlarm: status-gated (travelling=${status.travelling} jailed=${status.jailed} hospitalized=${status.hospitalized}), rescheduling for release`);
     chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: statusReleaseAt(status) });
     return;
   }
@@ -315,29 +372,36 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
   try {
     const snapshot = await fetchPanel();
     if (!snapshot) {
+      trace('handleDestPollAlarm: initial fetchPanel returned null, rescheduling');
       scheduleHourlyDestCheck();
       return;
     }
     await recordFleetReturns(snapshot.fleet);
     const idlePets = await getIdlePets(snapshot.fleet);
+    trace(`handleDestPollAlarm: ${idlePets.length} idle pet(s) before evaluateDestination`);
 
     const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_DEST_POLL);
+    trace(`handleDestPollAlarm: evaluateDestination returned stopped=${stopped}`);
     if (stopped) return;
 
     // A dispatch (if one happened) creates new shipments — re-read so the
     // return alarm reflects them immediately rather than waiting for
     // whichever fetch happens to come next.
     const fresh = await fetchPanel();
+    trace(`handleDestPollAlarm: trailing fetchPanel ${fresh ? 'succeeded' : 'returned null'}`);
     if (fresh) await recordFleetReturns(fresh.fleet);
 
     scheduleHourlyDestCheck();
+    trace('handleDestPollAlarm: cycle complete, hourly check rescheduled');
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
+      trace(`handleDestPollAlarm: caught status-blocked SystemicActionError: ${err.message}`);
       const freshStatus = await fetchLiveStatus();
       chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
       return;
     }
     if (err instanceof SystemicActionError) {
+      trace(`handleDestPollAlarm: caught ${err.kind} SystemicActionError, disabling: ${err.message}`);
       await disableAutoWatch(err.message);
       return;
     }
@@ -348,37 +412,53 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
 
 export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.SMUGGLING_COURIER_RETURN) return;
+  trace('handleCourierReturnAlarm: fired');
 
   const status = await fetchLiveStatus();
   if (!status) {
+    trace('handleCourierReturnAlarm: fetchLiveStatus returned null, retrying in 60s');
     chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + 60_000 });
     return;
   }
   if (status.travelling || status.jailed || status.hospitalized) {
+    trace(`handleCourierReturnAlarm: status-gated (travelling=${status.travelling} jailed=${status.jailed} hospitalized=${status.hospitalized}), rescheduling for release`);
     chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: statusReleaseAt(status) });
     return;
   }
 
   try {
-    const offloadSummary = await runOffloadBatch();
-    if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
+    const offloadSummary = await runOffloadBatch(await findGameTabId());
+    trace(`handleCourierReturnAlarm: runOffloadBatch returned stoppedReason=${offloadSummary.stoppedReason} offloaded=${offloadSummary.offloaded.length}`);
+    if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) {
+      trace('handleCourierReturnAlarm: handleBatchStop handled the offload result — stopping here');
+      return;
+    }
 
     const afterOffload = await fetchPanel();
-    if (!afterOffload) return; // nothing more learnable this cycle — next return/hourly alarm tries again
+    if (!afterOffload) {
+      trace('handleCourierReturnAlarm: post-offload fetchPanel returned null, stopping — next return/hourly alarm tries again');
+      return; // nothing more learnable this cycle — next return/hourly alarm tries again
+    }
 
     const idlePets = await getIdlePets(afterOffload.fleet);
+    trace(`handleCourierReturnAlarm: ${idlePets.length} idle pet(s) after offload, before evaluateDestination`);
     const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+    trace(`handleCourierReturnAlarm: evaluateDestination returned stopped=${stopped}`);
     if (stopped) return;
 
     const fresh = await fetchPanel();
+    trace(`handleCourierReturnAlarm: trailing fetchPanel ${fresh ? 'succeeded' : 'returned null'}`);
     if (fresh) await recordFleetReturns(fresh.fleet);
+    trace('handleCourierReturnAlarm: cycle complete');
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
+      trace(`handleCourierReturnAlarm: caught status-blocked SystemicActionError: ${err.message}`);
       const freshStatus = await fetchLiveStatus();
       chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
       return;
     }
     if (err instanceof SystemicActionError) {
+      trace(`handleCourierReturnAlarm: caught ${err.kind} SystemicActionError, disabling: ${err.message}`);
       await disableAutoWatch(err.message);
       return;
     }

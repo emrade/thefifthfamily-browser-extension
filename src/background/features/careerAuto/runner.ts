@@ -99,7 +99,7 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
 
   await notify('careerAutoStopped', {
     type: 'basic',
-    iconUrl: 'icons/icon-128.png',
+    iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
     title: 'Career auto-runner stopped',
     message,
   });

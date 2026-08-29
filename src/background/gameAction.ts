@@ -1,4 +1,5 @@
 import { GAME_ORIGIN } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { getCsrfToken } from './csrfToken';
 
@@ -167,10 +168,32 @@ export interface LiveStatus {
  *  the game tab isn't open. No CSRF needed; it's a GET. */
 export async function fetchLiveStatus(): Promise<LiveStatus | null> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/stats.php`, { credentials: 'include' });
+  // Cloned *before* any read — `Response.clone()` throws once the body has
+  // already been consumed, so the fallback text check below needs its own
+  // untouched copy taken up front, not grabbed after `.json()` has already
+  // failed partway through reading it.
+  const textFallback = res.clone();
   let json: any;
   try {
     json = await res.json();
   } catch {
+    // Confirmed real (2026-08-29): `stats.php` came back as a Cloudflare page
+    // (HTML carrying `#cf-browser-status`/`#cf-error-details`/etc, caught by
+    // the structural-change detector) instead of JSON — that specific instance
+    // was a real Cloudflare 526 ("Invalid SSL certificate", origin failing
+    // Cloudflare's own health check), but Cloudflare fronts this failure mode
+    // for plenty of unrelated causes too (rate limiting, an interstitial
+    // challenge, other origin errors) — this check only identifies "the page
+    // wasn't real JSON, it was some Cloudflare-branded page," not which one.
+    // Every caller of this function silently no-ops at its very first gate
+    // for as long as whatever's actually wrong lasts, with nothing pointing at
+    // Cloudflare as the reason — worth a specific console note instead of
+    // folding invisibly into the same silent `null` as any other parse
+    // failure, so this doesn't have to be rediscovered the hard way again.
+    const text = await textFallback.text().catch(() => '');
+    if (/cf-browser-status|cf-error-details|cf-wrapper|Cloudflare/i.test(text)) {
+      console.warn(`${LOG_PREFIX} stats.php returned a Cloudflare page instead of JSON (interstitial, rate limit, or an origin error like an SSL failure) — check https://www.thefifthfamily.com directly in a tab`);
+    }
     return null;
   }
   if (!json?.ok || !json.stats || !json.status) return null;
