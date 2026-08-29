@@ -261,6 +261,23 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
   if (config.autoDispatchEnabled) {
     const summary = await runCourierBatch(await findGameTabId());
     if (await handleBatchStop(summary, alarmName)) return true;
+
+    // Confirmed real: this used to happen only in the caller's own *outer*
+    // trailing fetchPanel/recordFleetReturns — which runs after this whole
+    // function returns, i.e. after the notification below already fired.
+    // The player saw the "sent" notification and a panel that still looked
+    // empty for several more seconds, because the fleet-tracking data (the
+    // "En route" list) genuinely hadn't been written yet at that point.
+    // Doing it here, before notifying, means anything reacting to "a
+    // dispatch just happened" — the notification, or the panel's own
+    // `refresh()` on the progress stream's `finished` event — sees data
+    // that's actually current. The caller's own trailing fetch afterward is
+    // now redundant for this path but harmless (a plain GET).
+    if (summary.sent.length > 0) {
+      const fresh = await fetchPanel();
+      if (fresh) await recordFleetReturns(fresh.fleet);
+    }
+
     if (summary.sent.length > 0 && announceIfDispatched) {
       await notify('courierAutoDispatched', {
         type: 'basic',

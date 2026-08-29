@@ -308,6 +308,7 @@ async function handleAction(kind: 'run' | 'offload') {
     console.error(LOG_PREFIX, `courier panel ${kind} failed`, err);
   } finally {
     activeAction = null;
+    liveRenderActive = false; // belt-and-suspenders — the listener's own 'finished' branch already clears this in the normal case
     if (runBtn) {
       runBtn.disabled = false;
       runBtn.textContent = 'Run';
@@ -319,12 +320,49 @@ async function handleAction(kind: 'run' | 'offload') {
   }
 }
 
+// Gates rendering on this instead of `activeAction` — `activeAction` only
+// exists for a *manually* clicked Run/Offload (button disable/text swap), so
+// a background-triggered auto-dispatch run (which sends these same
+// `courier-run-progress` messages, since courierWatch.ts now passes its own
+// tab id into runCourierBatch/runOffloadBatch the same way a manual click
+// does) was silently discarded here — confirmed real, the exact "why doesn't
+// auto-dispatch show a breakdown like manual Run" gap. Driven by the
+// messages themselves (started/finished) instead, so both paths converge on
+// one mechanism regardless of who triggered the run.
+let liveRenderActive = false;
+
 chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
-  if (msg.type !== 'courier-run-progress' || !activeAction || !panelEl) return;
+  if (msg.type !== 'courier-run-progress' || !panelEl) return;
+  const summaryEl = panelEl.querySelector('.ff-cp-summary');
+
+  if (msg.event.kind === 'started') {
+    liveRenderActive = true;
+    liveLines = [];
+    if (summaryEl) summaryEl.innerHTML = renderLive();
+    return;
+  }
+  if (msg.event.kind === 'finished') {
+    liveRenderActive = false;
+    // A manual run already renders its own real final summary once
+    // `handleAction`'s `chrome.runtime.sendMessage` call resolves — only an
+    // auto-triggered run (no local `activeAction` driving it) needs this
+    // event as the signal to go fetch what actually happened.
+    if (!activeAction) {
+      refresh();
+      // `finished` fires from *inside* runCourierBatch, before its caller
+      // (courierWatch.ts) has done its own follow-up fetchPanel/
+      // recordFleetReturns — an immediate refresh here can still catch the
+      // "En route" list a beat before that write lands. One follow-up a
+      // couple seconds later closes that gap for real instead of leaving it
+      // to whatever the next unrelated 30s tick happens to be.
+      setTimeout(() => void refresh(), 2_000);
+    }
+    return;
+  }
+  if (!liveRenderActive) return;
   const line = describeProgressEvent(msg.event);
   if (!line) return;
   liveLines.push(line);
-  const summaryEl = panelEl.querySelector('.ff-cp-summary');
   if (summaryEl) summaryEl.innerHTML = renderLive();
 });
 
