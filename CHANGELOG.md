@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.15.1] - 2026-08-29
+
+### Fixed
+- Pet Couriers: a genuine unrecognized-response error now disables both
+  auto-offload and auto-dispatch, not just dispatch — both alarms already
+  get cleared on this path, so leaving one toggle showing "on" misrepresented
+  it as still active.
+- Pet Couriers: the in-page panel's toggles now refresh the status display
+  immediately on change, and toggling auto-dispatch on schedules a follow-up
+  refresh a few seconds later to catch the background's own immediate check
+  — previously the display could sit showing pre-toggle data for up to ~30s
+  (whatever was left of the panel's unrelated periodic refresh) with no
+  indication anything had happened.
+- Pet Couriers: swapped the toggle order (Auto-Dispatch before Auto-Offload)
+  in both the in-page panel and the popup page, matching the logical flow of
+  sending pets before collecting their cargo.
+
 ## [0.15.0] - 2026-08-29
 
 ### Added
