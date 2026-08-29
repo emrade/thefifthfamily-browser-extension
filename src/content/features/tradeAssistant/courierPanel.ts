@@ -80,14 +80,35 @@ const PANEL_CSS = `
 
 .ff-cp-roster { font-size: 10px; color: #8b8f9e; margin-bottom: 12px; line-height: 1.5; }
 
-.ff-cp-autowatch {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px; margin-bottom: 12px;
-  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px; font-size: 10px; color: #ccc;
+/* Ported from the popup's own .ff-toggle-row/.ff-toggle (src/design/tokens.css
+ * + src/popup/app.css) with its CSS custom properties resolved to literal
+ * values — a content script runs on the game's own page, outside the
+ * popup's :root token scope, so the vars themselves aren't reachable here. */
+.ff-cp-toggle-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 11px 12px; margin-bottom: 8px;
+  background: #17130e; border: 1px solid rgba(201,168,76,0.16);
+  border-radius: 10px; cursor: pointer;
 }
-.ff-cp-autowatch-label { display: flex; flex-direction: column; gap: 2px; }
-.ff-cp-autowatch-hint { font-size: 8.5px; color: #6b6455; }
+.ff-cp-toggle-row__text { flex: 1; min-width: 0; }
+.ff-cp-toggle-row__title { font-family: 'Inter', system-ui, sans-serif; font-weight: 700; font-size: 12.5px; color: #f1ede2; }
+.ff-cp-toggle-row__status { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 9.5px; color: #6b6455; margin-top: 1px; line-height: 1.4; }
+
+.ff-cp-toggle {
+  flex-shrink: 0; appearance: none; -webkit-appearance: none;
+  width: 34px; height: 20px; border-radius: 10px;
+  background: rgba(0,0,0,0.5); border: 1px solid rgba(201,168,76,0.34);
+  position: relative; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ff-cp-toggle::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #6b6455;
+  transition: transform 0.15s cubic-bezier(.22,1,.36,1), background 0.15s;
+}
+.ff-cp-toggle:checked { background: rgba(251,191,36,0.18); border-color: #fbbf24; }
+.ff-cp-toggle:checked::before { transform: translateX(14px); background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
 
 .ff-cp-watch {
   padding: 8px 10px; margin-bottom: 12px;
@@ -195,7 +216,7 @@ function renderSummary(run: CourierRunSummary | null): string {
 function renderWatchStatus(watch: CourierWatchSummary): string {
   const now = Date.now();
   const parts: string[] = [
-    `<div class="ff-cp-watch-row">Auto-watch: ${watch.autoDispatchEnabled ? 'ON — will send pets automatically' : 'OFF — notify only'}</div>`,
+    `<div class="ff-cp-watch-row">Auto-offload: ${watch.autoOffloadEnabled ? 'ON' : 'OFF'} · Auto-dispatch: ${watch.autoDispatchEnabled ? 'ON' : 'OFF'}</div>`,
   ];
 
   const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
@@ -339,12 +360,19 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-cp-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-cp-roster">Loading…</div>
-      <label class="ff-cp-autowatch">
-        <span class="ff-cp-autowatch-label">
-          Auto-dispatch
-          <span class="ff-cp-autowatch-hint">Send pets automatically when a destination opens</span>
-        </span>
-        <input class="ff-cp-autowatch-checkbox" type="checkbox">
+      <label class="ff-cp-toggle-row">
+        <div class="ff-cp-toggle-row__text">
+          <div class="ff-cp-toggle-row__title">Auto-offload</div>
+          <div class="ff-cp-toggle-row__status">Collect a landed pet's cargo automatically</div>
+        </div>
+        <input class="ff-cp-autooffload-toggle ff-cp-toggle" type="checkbox">
+      </label>
+      <label class="ff-cp-toggle-row">
+        <div class="ff-cp-toggle-row__text">
+          <div class="ff-cp-toggle-row__title">Auto-dispatch</div>
+          <div class="ff-cp-toggle-row__status">Send idle pets automatically when a destination opens</div>
+        </div>
+        <input class="ff-cp-autodispatch-toggle ff-cp-toggle" type="checkbox">
       </label>
       <div class="ff-cp-watch"><div class="ff-cp-watch-row">Loading…</div></div>
       <div class="ff-cp-actions">
@@ -363,20 +391,34 @@ function buildPanel(): HTMLDivElement {
   // Read/written straight through storage.ts rather than a message round-trip —
   // it's a plain config flag with no live network call behind it, same direct
   // pattern the popup uses for e.g. Career Auto's config. Detection/notification
-  // from the background courier-watch alarm run regardless of this flag; it only
-  // gates whether an open destination gets pets dispatched automatically.
-  const autoCheckbox = el.querySelector<HTMLInputElement>('.ff-cp-autowatch-checkbox');
-  if (autoCheckbox) {
+  // from the background courier-watch alarm run regardless of either flag; they
+  // only gate whether a landed pet gets auto-offloaded and an open destination
+  // gets pets auto-dispatched. Two independent toggles, not one — this system's
+  // own convention (every auto feature) is that anything automated can be
+  // turned off on its own, and offload/dispatch are genuinely different
+  // actions with different risk profiles.
+  const offloadToggle = el.querySelector<HTMLInputElement>('.ff-cp-autooffload-toggle');
+  const dispatchToggle = el.querySelector<HTMLInputElement>('.ff-cp-autodispatch-toggle');
+  if (offloadToggle && dispatchToggle) {
     storage
       .getCourierAutoConfig()
       .then((config) => {
-        autoCheckbox.checked = config.autoDispatchEnabled;
+        offloadToggle.checked = config.autoOffloadEnabled;
+        dispatchToggle.checked = config.autoDispatchEnabled;
       })
-      .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-dispatch config read failed', err));
+      .catch((err) => console.error(LOG_PREFIX, 'courier panel auto config read failed', err));
 
-    autoCheckbox.addEventListener('change', () => {
+    offloadToggle.addEventListener('change', () => {
       storage
-        .setCourierAutoConfig({ autoDispatchEnabled: autoCheckbox.checked })
+        .getCourierAutoConfig()
+        .then((config) => storage.setCourierAutoConfig({ ...config, autoOffloadEnabled: offloadToggle.checked }))
+        .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-offload config write failed', err));
+    });
+
+    dispatchToggle.addEventListener('change', () => {
+      storage
+        .getCourierAutoConfig()
+        .then((config) => storage.setCourierAutoConfig({ ...config, autoDispatchEnabled: dispatchToggle.checked }))
         .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-dispatch config write failed', err));
     });
   }

@@ -396,6 +396,7 @@ export type CourierProgressEvent =
  *  on every request from live alarm state + storage, not itself persisted. */
 export interface CourierWatchSummary {
   autoDispatchEnabled: boolean;
+  autoOffloadEnabled: boolean;
   /** Epoch ms the current rotation closes at, or `null` if the last probe
    *  found both destinations locked (or nothing has probed yet). Only ever
    *  set by an actual probe — see `lastProbeResult`. */
@@ -428,14 +429,20 @@ export interface CourierStatus {
   watch: CourierWatchSummary;
 }
 
-/** User toggle for the courier auto-watch background feature (see
+/** User toggles for the courier auto-watch background feature (see
  *  `courierWatch.ts`) — read/written directly by the in-page courier panel,
- *  same direct-storage pattern as `CareerAutoConfig`. Detection and
- *  notification always run regardless of this flag; it only gates whether an
- *  open destination gets pets dispatched automatically versus just notified
- *  about. */
+ *  same direct-storage pattern as `CareerAutoConfig`. Two independent
+ *  switches, not one — this system's own convention (applied consistently
+ *  across every auto feature) is that anything automated can be turned off
+ *  on its own, and offload/dispatch are genuinely two different automated
+ *  actions with two different risk profiles (offload only collects what's
+ *  already landed; dispatch spends cash and commits a pet to a new trip).
+ *  Detection and notification always run regardless of either flag; they
+ *  only gate whether a landed pet gets auto-offloaded and an open
+ *  destination gets pets auto-dispatched, versus just left for the player. */
 export interface CourierAutoConfig {
   autoDispatchEnabled: boolean;
+  autoOffloadEnabled: boolean;
 }
 
 /** Background-owned runtime state for the hourly destination-rotation check —

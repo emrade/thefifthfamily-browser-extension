@@ -5,7 +5,7 @@ import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, fetchLiveStatus, postAction, sleep, statusReleaseAt } from '../../gameAction';
 import { cancelShipment, fetchPanel, pickDestination, runCourierBatch, runOffloadBatch } from './petCourier';
-import type { CourierAutoConfig, CourierRunSummary, CourierWatchState, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
+import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
 
 /**
  * Watches for the hourly smuggling destination rotation and reacts to it in the
@@ -110,6 +110,7 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
 
   return {
     autoDispatchEnabled: config.autoDispatchEnabled,
+    autoOffloadEnabled: config.autoOffloadEnabled,
     destinationOpenUntil: watchState.destinationOpenUntil,
     lastCheckedAt: watchState.lastCheckedAt,
     lastProbeResult: watchState.lastProbeResult,
@@ -389,8 +390,11 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
   }
 
   try {
-    const offloadSummary = await runOffloadBatch(await findGameTabId());
-    if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
+    const config = await storage.getCourierAutoConfig();
+    if (config.autoOffloadEnabled) {
+      const offloadSummary = await runOffloadBatch(await findGameTabId());
+      if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
+    }
 
     const afterOffload = await fetchPanel();
     if (!afterOffload) return; // nothing more learnable this cycle — next return/hourly alarm tries again

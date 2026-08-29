@@ -39,11 +39,12 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 };
 
-// Defaults off — an install shouldn't start spending cash/pets automatically
-// before the player has opted in from the Pet Couriers panel, even though
-// auto-dispatch (once turned on) is the primary intended behavior.
+// Both default off — an install shouldn't do anything automated to the
+// account before the player has explicitly opted in from the Pet Couriers
+// panel, matching every other auto feature's own off-by-default convention.
 const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
   autoDispatchEnabled: false,
+  autoOffloadEnabled: false,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
