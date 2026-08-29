@@ -394,9 +394,28 @@ export type CourierProgressEvent =
  *  triggering a run — the panel runs on the *game's* origin, not the
  *  extension's, so it can't reach `db.petRoster`/`storage` directly and has to
  *  ask background for this the same way it asks for a run. */
+/** Read-only view into what the courier auto-watch background feature is
+ *  currently tracking — the player's own ask: "even when it is active i have
+ *  no idea what it is doing or even if it is doing anything." Assembled fresh
+ *  on every request from live alarm state + storage, not itself persisted. */
+export interface CourierWatchSummary {
+  autoDispatchEnabled: boolean;
+  /** Epoch ms the current rotation closes at, or `null` if the last hourly
+   *  check found both destinations locked (or nothing has checked yet). */
+  destinationOpenUntil: number | null;
+  /** Epoch ms of the last hourly check, or `0` if none has run yet. */
+  lastCheckedAt: number;
+  /** Epoch ms the next hourly check is scheduled for, or `null` if — for
+   *  whatever reason — no alarm is currently armed. */
+  nextDestCheckAt: number | null;
+  /** Every pet currently in flight and when it's due back, soonest first. */
+  pendingReturns: { petName: string; arrivesAt: number }[];
+}
+
 export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;
+  watch: CourierWatchSummary;
 }
 
 /** User toggle for the courier auto-watch background feature (see

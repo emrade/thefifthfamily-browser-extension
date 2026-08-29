@@ -270,3 +270,8 @@ export const COURIER_DEST_POLL_BUFFER_MS = 60_000;
 // Same reasoning as CAREER_AUTO_BUFFER_MS/STREET_INTEL_AUTO_BUFFER_MS — a small
 // guard so a status-blocked or fleet-return alarm doesn't fire a moment early.
 export const COURIER_RETURN_BUFFER_MS = 2_000;
+
+// Same reasoning as CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS — flipping
+// auto-dispatch on from the panel shouldn't wait out however much of the
+// current hourly cycle is left before it does anything.
+export const COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;

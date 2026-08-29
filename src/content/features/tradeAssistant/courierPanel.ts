@@ -1,10 +1,10 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { CourierRunSummary, CourierStatus } from '@/shared/types';
+import type { CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/shared/types';
 
 /**
  * A floating panel on the live Smuggling page — collapsed to a small badge by
@@ -88,6 +88,17 @@ const PANEL_CSS = `
 }
 .ff-cp-autowatch-label { display: flex; flex-direction: column; gap: 2px; }
 .ff-cp-autowatch-hint { font-size: 8.5px; color: #6b6455; }
+
+.ff-cp-watch {
+  padding: 8px 10px; margin-bottom: 12px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
+.ff-cp-watch-row { font-size: 9.5px; color: #ccc; padding: 1px 0; line-height: 1.5; }
+.ff-cp-watch-row-head {
+  font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #6b6455; margin: 6px 0 2px;
+}
 
 .ff-cp-actions { display: flex; gap: 8px; margin-bottom: 12px; }
 
@@ -177,6 +188,47 @@ function renderSummary(run: CourierRunSummary | null): string {
   return parts.join('');
 }
 
+/** Answers "even when it is active i have no idea what it is doing" — a plain
+ *  status readout of what the background courier-watch is currently tracking:
+ *  whether the destination is open, when it'll next check, and when each
+ *  in-flight pet is due back. Purely descriptive; never triggers anything. */
+function renderWatchStatus(watch: CourierWatchSummary): string {
+  const now = Date.now();
+  const parts: string[] = [
+    `<div class="ff-cp-watch-row">Auto-watch: ${watch.autoDispatchEnabled ? 'ON — will send pets automatically' : 'OFF — notify only'}</div>`,
+  ];
+
+  const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
+  if (watch.lastCheckedAt === 0) {
+    parts.push('<div class="ff-cp-watch-row">Destination: not checked yet.</div>');
+  } else if (destOpen) {
+    parts.push(
+      `<div class="ff-cp-watch-row">Destination: open, closes in ${formatRelativeTime(watch.destinationOpenUntil!, now)} (${new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).</div>`,
+    );
+  } else {
+    parts.push(`<div class="ff-cp-watch-row">Destination: locked (checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
+  }
+
+  if (watch.nextDestCheckAt !== null) {
+    parts.push(
+      `<div class="ff-cp-watch-row">Next check: in ${formatRelativeTime(watch.nextDestCheckAt, now)} (${new Date(watch.nextDestCheckAt).toLocaleTimeString()}).</div>`,
+    );
+  }
+
+  if (watch.pendingReturns.length === 0) {
+    parts.push('<div class="ff-cp-watch-row">No pets currently en route.</div>');
+  } else {
+    parts.push('<div class="ff-cp-watch-row-head">En route</div>');
+    parts.push(
+      ...watch.pendingReturns.map(
+        (p) => `<div class="ff-cp-watch-row">${p.petName} — back in ${formatRelativeTime(p.arrivesAt, now)}</div>`,
+      ),
+    );
+  }
+
+  return parts.join('');
+}
+
 function renderLive(): string {
   if (liveLines.length === 0) return '<div class="ff-cp-row">Starting…</div>';
   return liveLines.map((line) => `<div class="ff-cp-row">${line}</div>`).join('');
@@ -186,10 +238,12 @@ async function refresh() {
   if (!panelEl) return;
   const rosterEl = panelEl.querySelector('.ff-cp-roster');
   const summaryEl = panelEl.querySelector('.ff-cp-summary');
+  const watchEl = panelEl.querySelector('.ff-cp-watch');
   try {
     const status = (await chrome.runtime.sendMessage({ type: 'courier-status-requested' })) as CourierStatus;
     if (rosterEl) rosterEl.textContent = describeRoster(status.roster);
     if (summaryEl) summaryEl.innerHTML = renderSummary(status.lastRun);
+    if (watchEl) watchEl.innerHTML = renderWatchStatus(status.watch);
   } catch (err) {
     console.error(LOG_PREFIX, 'courier panel status refresh failed', err);
   }
@@ -240,10 +294,22 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
   if (summaryEl) summaryEl.innerHTML = renderLive();
 });
 
+// Only runs while the panel is open — the watch summary's relative times
+// ("back in 12m") would otherwise go stale for as long as the panel sits
+// expanded, since nothing else re-triggers `refresh()` on its own. A plain
+// status read (no game API call), so a 30s cadence costs nothing.
+let watchRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
 function setExpanded(next: boolean) {
   expanded = next;
   panelEl?.classList.toggle('ff-cp-expanded', expanded);
-  if (expanded) refresh();
+  if (expanded) {
+    refresh();
+    if (watchRefreshTimer === null) watchRefreshTimer = setInterval(() => void refresh(), 30_000);
+  } else if (watchRefreshTimer !== null) {
+    clearInterval(watchRefreshTimer);
+    watchRefreshTimer = null;
+  }
 }
 
 function buildPanel(): HTMLDivElement {
@@ -267,6 +333,7 @@ function buildPanel(): HTMLDivElement {
         </span>
         <input class="ff-cp-autowatch-checkbox" type="checkbox">
       </label>
+      <div class="ff-cp-watch"><div class="ff-cp-watch-row">Loading…</div></div>
       <div class="ff-cp-actions">
         <button class="ff-cp-run" type="button">Run</button>
         <button class="ff-cp-offload" type="button">Offload All</button>

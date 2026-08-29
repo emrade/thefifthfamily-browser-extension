@@ -1,6 +1,7 @@
 import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
 import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petCourier';
 import {
+  getWatchSummary as getCourierWatchSummary,
   handleCourierReturnAlarm,
   handleDestPollAlarm,
   init as initCourierWatch,
@@ -112,8 +113,8 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // can't reach `db`/`storage` directly the way the popup does, since it runs on
   // the game's own origin.
   if (msg.type === 'courier-status-requested') {
-    return Promise.all([getRoster(), storage.getLastCourierRun()]).then(
-      ([roster, lastRun]): CourierStatus => ({ roster, lastRun }),
+    return Promise.all([getRoster(), storage.getLastCourierRun(), getCourierWatchSummary()]).then(
+      ([roster, lastRun, watch]): CourierStatus => ({ roster, lastRun, watch }),
     );
   }
 

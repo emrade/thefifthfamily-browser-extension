@@ -11,6 +11,21 @@ export function formatCourierMoney(n: number): string {
   return `$${n.toLocaleString()}`;
 }
 
+/** "in 12m" / "in 1h 20m" / "any moment" — used for both the next hourly
+ *  check and each en-route pet's ETA, so the two read consistently. Absolute
+ *  time is shown alongside this wherever it's used (the panel isn't polled
+ *  continuously, so a bare relative string would go stale between refreshes). */
+export function formatRelativeTime(atMs: number, nowMs: number = Date.now()): string {
+  const diff = atMs - nowMs;
+  if (diff <= 0) return 'any moment';
+  const totalMinutes = Math.round(diff / 60_000);
+  if (totalMinutes < 1) return 'under a minute';
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 /** A shipment's cargo can be mixed — draining pre-existing stash into it ahead of
  *  any new buying (see petCourier.ts) means "what got loaded" is a list, not
  *  always a single item — formatted here once rather than in each of the two

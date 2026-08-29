@@ -546,7 +546,39 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           }
 
           const buyQty = Math.min(remainingNeeded, availableRoom);
-          const buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
+          let buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
+
+          // Confirmed real (2026-08-29, cross-checked against both browsers'
+          // request archives): the account was logged into two entirely separate
+          // browsers at once (this batch running in one, Street Intel's
+          // auto-runner running in the other), and Street Intel's own "sweep
+          // leftover cash so it can't be mugged" cleanup (`depositCashOnHand`)
+          // fired mid-batch — `action=deposit&amount=ALL` zeroed out the shared
+          // account-wide cash-on-hand this batch's own withdrawal above had
+          // already sized and set aside, moments before this buy. Not a pricing
+          // effect; the item's price was flat throughout (confirmed from
+          // `cargo_basis` on each successful load). Nothing in this browser can
+          // see or coordinate with a second, independent browser instance of the
+          // same account, so the only real fix is reacting live to whatever cash
+          // actually turns out to be there: a top-up withdrawal at whatever
+          // amount the rejection itself just quoted, then one retry of this
+          // exact call. Not attempted for any other rejection (cargo-full,
+          // wrong-district, etc.) — those aren't a funds problem, so a
+          // withdrawal wouldn't fix them.
+          const insufficientFundsMatch = !buy?.ok && typeof buy?.error === 'string' ? buy.error.match(/Need \$?([\d,]+) for one/i) : null;
+          if (insufficientFundsMatch) {
+            const neededTotal = Number(insufficientFundsMatch[1].replace(/,/g, '')) * buyQty;
+            const funds = await fetchCashAndDistrict();
+            if (funds && neededTotal > funds.cash && funds.bank > 0) {
+              const topUp = Math.min(funds.bank, neededTotal - funds.cash);
+              const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
+              if (withdraw?.ok) {
+                summary.cashWithdrawn += topUp;
+                buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
+              }
+            }
+          }
+
           if (!buy?.ok) {
             pushError(`buy failed for ${pet.name}: ${buy?.error ?? 'unknown error'}`);
             break;

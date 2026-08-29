@@ -1,11 +1,11 @@
-import { ALARM_NAMES, COURIER_DEST_POLL_BUFFER_MS, COURIER_RETURN_BUFFER_MS } from '@/shared/constants';
+import { ALARM_NAMES, COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS, COURIER_DEST_POLL_BUFFER_MS, COURIER_RETURN_BUFFER_MS, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, fetchLiveStatus, postAction, sleep, statusReleaseAt } from '../../gameAction';
 import { cancelShipment, fetchPanel, pickDestination, runCourierBatch, runOffloadBatch } from './petCourier';
-import type { CourierRunSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
+import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
 
 /**
  * Watches for the hourly smuggling destination rotation and reacts to it in the
@@ -49,15 +49,56 @@ export function scheduleHourlyDestCheck(): void {
   chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: nextHourBoundary() + COURIER_DEST_POLL_BUFFER_MS });
 }
 
-/** Arms/re-arms itself on every wake — cheap no-op after the first run, same
- *  "runs on every service-worker wake" shape as `ensureSweepAlarm`. No
- *  equivalent rehydration is needed for `SMUGGLING_COURIER_RETURN`: it's
+/** Reacts live to the panel's checkbox writing a new config — same
+ *  "chrome.storage.onChanged, registered once at module load" pattern as
+ *  `careerAuto/index.ts`'s `watchConfigChanges`. Only the off→on transition
+ *  does anything: flipping auto-dispatch on shouldn't wait out however much
+ *  of the current hourly cycle is left before it first acts, the same
+ *  reasoning as `CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS`. Turning it off needs
+ *  no special reaction — detection keeps running on its own schedule either
+ *  way (see the module doc above), so there's nothing to reschedule. */
+function watchConfigChanges(): void {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
+    const next = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue as CourierAutoConfig | undefined;
+    const prev = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].oldValue as CourierAutoConfig | undefined;
+    if (next?.autoDispatchEnabled && !prev?.autoDispatchEnabled) {
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+    }
+  });
+}
+
+/** Arms/re-arms the hourly check on every wake — cheap no-op after the first
+ *  run, same "runs on every service-worker wake" shape as `ensureSweepAlarm`.
+ *  No equivalent rehydration is needed for `SMUGGLING_COURIER_RETURN`: it's
  *  recomputed from live fleet state every time `recordFleetReturns` runs
  *  (the next hourly check, if nothing else), so there's no persisted "should
  *  exist" state to restore it from at startup. */
 export async function init(): Promise<void> {
+  watchConfigChanges();
   const existing = await chrome.alarms.get(ALARM_NAMES.SMUGGLING_DEST_POLL);
   if (!existing) scheduleHourlyDestCheck();
+}
+
+/** Assembled fresh from live alarm state + storage for the in-page panel —
+ *  see `CourierWatchSummary`'s own doc for why this exists at all. Read-only;
+ *  never mutates anything, so it's safe to call as often as the panel wants
+ *  (on expand, and on its own 30s refresh timer while open). */
+export async function getWatchSummary(): Promise<CourierWatchSummary> {
+  const [config, watchState, pendingReturns, destAlarm] = await Promise.all([
+    storage.getCourierAutoConfig(),
+    storage.getCourierWatchState(),
+    storage.getPendingCourierReturns(),
+    chrome.alarms.get(ALARM_NAMES.SMUGGLING_DEST_POLL),
+  ]);
+
+  return {
+    autoDispatchEnabled: config.autoDispatchEnabled,
+    destinationOpenUntil: watchState.destinationOpenUntil,
+    lastCheckedAt: watchState.lastCheckedAt,
+    nextDestCheckAt: destAlarm?.scheduledTime ?? null,
+    pendingReturns: [...pendingReturns].sort((a, b) => a.arrivesAt - b.arrivesAt).map((p) => ({ petName: p.petName, arrivesAt: p.arrivesAt })),
+  };
 }
 
 async function getIdlePets(fleet: FleetEntry[]): Promise<PetRosterEntry[]> {
