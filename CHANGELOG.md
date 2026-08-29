@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.15.0] - 2026-08-29
+
+### Added
+- Pet Couriers: a popup page (Home → Pet Couriers) showing the same live
+  watch status the in-page panel does — destination state, next check, pets
+  en route, last run — plus both auto toggles, reachable without being on
+  the smuggling page. Opening it clears the icon badge, and the Home
+  screen's own Pet Couriers row now shows the same count the badge does
+  rather than leaving it a mystery until you dig in.
+
+### Fixed
+- Pet Couriers: auto-offload and auto-dispatch are now independent toggles —
+  offload had no toggle at all (always ran unconditionally), inconsistent
+  with this system's own convention that any automated action can be turned
+  off on its own. Both default off. The panel's checkbox is also now the
+  same toggle-switch styling used everywhere else in the app.
+- `npm run preflight` now hard-fails if `package.json` and `manifest.json`
+  disagree on version, and reminds (non-blocking) of the versioning
+  convention: minor bump for a new feature, patch bump for a fix.
+
 ## [0.14.0] - 2026-08-29
 
 ### Added
