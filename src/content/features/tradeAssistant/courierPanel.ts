@@ -450,12 +450,16 @@ function buildPanel(): HTMLDivElement {
       storage
         .getCourierAutoConfig()
         .then((config) => storage.setCourierAutoConfig({ ...config, autoOffloadEnabled: offloadToggle.checked }))
-        // Nothing in the background reacts immediately to this one (offload
-        // only ever runs from the return alarm, on its own schedule) — this
-        // refresh just reflects the toggle's own new state right away
-        // instead of leaving it to the next 30s tick, same reasoning as the
-        // dispatch toggle below without needing the follow-up refresh.
-        .then(() => refresh())
+        .then(() => {
+          refresh();
+          // Turning this on triggers courierWatch.ts's own immediate check
+          // (~3s later, see COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS) — same as
+          // the dispatch toggle below, and for the same reason: an
+          // already-landed pet needs this to actually get offloaded, since
+          // the return alarm that would otherwise catch it may already have
+          // been cleared (see watchConfigChanges's own doc in courierWatch.ts).
+          if (offloadToggle.checked) setTimeout(() => void refresh(), 6_000);
+        })
         .catch((err) => console.error(LOG_PREFIX, 'courier panel auto-offload config write failed', err));
     });
 

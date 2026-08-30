@@ -59,12 +59,27 @@ export function scheduleHourlyDestCheck(): void {
 
 /** Reacts live to the panel's checkbox writing a new config — same
  *  "chrome.storage.onChanged, registered once at module load" pattern as
- *  `careerAuto/index.ts`'s `watchConfigChanges`. Only the off→on transition
- *  does anything: flipping auto-dispatch on shouldn't wait out however much
- *  of the current hourly cycle is left before it first acts, the same
- *  reasoning as `CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS`. Turning it off needs
- *  no special reaction — detection keeps running on its own schedule either
- *  way (see the module doc above), so there's nothing to reschedule. */
+ *  `careerAuto/index.ts`'s `watchConfigChanges`. Only an off→on transition
+ *  does anything, for either flag: flipping auto-dispatch or auto-offload on
+ *  shouldn't wait out however much of the current cycle is left before it
+ *  first acts, the same reasoning as `CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS`.
+ *  Turning either off needs no special reaction — detection keeps running on
+ *  its own schedule either way (see the module doc above), so there's
+ *  nothing to reschedule.
+ *
+ *  The auto-offload branch exists because `SMUGGLING_COURIER_RETURN` only
+ *  stays armed while a pet is still in flight — `recordFleetReturns` clears
+ *  it outright once nothing is `'moving'` (see its own doc). A pet that
+ *  lands while auto-offload is off drops out of that alarm entirely: nothing
+ *  is left to notice it later, so flipping the toggle back on wouldn't do
+ *  anything on its own. Confirmed real (2026-08-30): dispatch enabled first,
+ *  a pet landed before offload got turned on, and it just sat there
+ *  `ready-to-offload` until the player happened to re-toggle offload — which,
+ *  before this fix, only appeared to help because of an unrelated cycle
+ *  (another pet's own dispatch/return) sweeping it up in passing.
+ *  `handleCourierReturnAlarm` reads the fleet fresh from `fetchPanel()`
+ *  itself rather than off the (already-empty) pending-returns list, so firing
+ *  it here picks up an already-landed pet correctly. */
 function watchConfigChanges(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
@@ -72,6 +87,9 @@ function watchConfigChanges(): void {
     const prev = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].oldValue as CourierAutoConfig | undefined;
     if (next?.autoDispatchEnabled && !prev?.autoDispatchEnabled) {
       chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+    }
+    if (next?.autoOffloadEnabled && !prev?.autoOffloadEnabled) {
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
     }
   });
 }
