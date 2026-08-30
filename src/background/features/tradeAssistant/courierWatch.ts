@@ -79,14 +79,31 @@ export function scheduleHourlyDestCheck(): void {
  *  (another pet's own dispatch/return) sweeping it up in passing.
  *  `handleCourierReturnAlarm` reads the fleet fresh from `fetchPanel()`
  *  itself rather than off the (already-empty) pending-returns list, so firing
- *  it here picks up an already-landed pet correctly. */
+ *  it here picks up an already-landed pet correctly.
+ *
+ *  The dispatch branch also wipes the stored watch state before arming the
+ *  alarm, rather than just arming it. Without that, `evaluateDestination`'s
+ *  own same-hour cache (`haveThisHoursAnswer` — see its doc) would just
+ *  re-serve whatever verdict is already on file instead of actually
+ *  re-probing: confirmed real (2026-08-30) as a `'locked'` verdict from
+ *  earlier in the hour surviving an off→on toggle untouched, silently
+ *  skipping the probe the player was toggling specifically to force. Clearing
+ *  `lastProbeResult`/`lastCheckedAt` here makes toggling dispatch back on
+ *  double as "check again right now," which is exactly what a player
+ *  re-flipping it after a suspected-wrong verdict actually wants — cheaper
+ *  than a dedicated recheck button, and there's no dedicated affordance for
+ *  this elsewhere in the panel to begin with. */
 function watchConfigChanges(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
     const next = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue as CourierAutoConfig | undefined;
     const prev = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].oldValue as CourierAutoConfig | undefined;
     if (next?.autoDispatchEnabled && !prev?.autoDispatchEnabled) {
-      chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+      void (async () => {
+        const watchState = await storage.getCourierWatchState();
+        await storage.setCourierWatchState({ ...watchState, lastCheckedAt: 0, lastProbeResult: null });
+        chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+      })();
     }
     if (next?.autoOffloadEnabled && !prev?.autoOffloadEnabled) {
       chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
