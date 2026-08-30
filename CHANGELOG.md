@@ -9,6 +9,22 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.15.3] - 2026-08-30
+
+### Fixed
+- Pet Couriers: turning auto-offload on now immediately checks for a pet
+  that already landed while it was off. The return alarm that drives
+  offloading only stays armed while a pet is still in flight — it gets
+  cleared once nothing is `'moving'` — so a pet that landed before the
+  toggle was flipped on had nothing left to notice it, and previously only
+  appeared to get picked up by an unrelated pet's own dispatch/return cycle.
+- Pet Couriers: turning auto-dispatch back on now forces a fresh destination
+  probe instead of re-serving a cached verdict from earlier in the same
+  rotation hour. A `'locked'` verdict from an earlier check was being reused
+  as-is on every subsequent toggle, so re-enabling dispatch after a
+  suspected-wrong "locked" reading did nothing — the toggle now doubles as a
+  manual recheck, since the panel had no dedicated affordance for that.
+
 ## [0.15.2] - 2026-08-29
 
 ### Fixed
