@@ -250,11 +250,10 @@ async function findScoutedCandidate(
     const top = sorted[0];
     const bestPct: number | null = top && typeof top.estimate_pct === 'number' ? top.estimate_pct : null;
     const bestKey: string | null = top ? String(top.key) : null;
-    // Affordability re-checked against Stamina actually left after every
-    // scout so far this cycle, not the cycle-start figure — see the
-    // `availableStamina` doc note above.
-    const affordableToAttempt = availableStamina - staminaSpentScouting >= candidate.staminaCost;
-    const passesBar = bestPct !== null && bestPct >= minSuccessPct && affordableToAttempt;
+    // Affordability is *not* checked here against the running scouting spend —
+    // see the staminaLeftAfterScouting comment below for why that has to wait
+    // until every candidate this cycle has been scouted.
+    const passesBar = bestPct !== null && bestPct >= minSuccessPct;
 
     log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: bestKey, estimatePct: bestPct, chosen: false });
 
@@ -271,18 +270,33 @@ async function findScoutedCandidate(
     });
   }
 
-  // Highest EV (odds × reward) among everything that cleared the floor —
-  // see the function's own doc comment for why EV-among-floor-clearers beats
-  // both "biggest reward" and "highest odds alone" against real history.
-  let winner: { choice: ScoutedChoice; logIndex: number } | null = null;
-  if (cleared.length > 0) {
-    winner = cleared.reduce((a, b) => {
-      const evA = (a.choice.estimatePct / 100) * rewardMidpoint(a.choice.opportunity);
-      const evB = (b.choice.estimatePct / 100) * rewardMidpoint(b.choice.opportunity);
-      return evB > evA ? b : a;
-    });
-    log[winner.logIndex].chosen = true;
-  }
+  // Stamina actually left once ALL of this cycle's scouting is done — not the
+  // running total at the moment any one candidate cleared the bar above, which
+  // goes stale the instant a *later* candidate in this same loop also gets
+  // scouted (every scout call really spends stamina server-side). Real
+  // capture, 2026-09-01: two candidates scouted (3 stamina each); the first
+  // cleared the bar checking only its own scout cost against the cycle-start
+  // total, but by the time its attempt actually fired, the second candidate's
+  // scout had also been spent server-side — 3 stamina short, the attempt came
+  // back `ok:false` ("Not enough stamina! Need 3"), and that unrecognized
+  // response paused the whole automation over what was really just a stale
+  // affordability check, not a real break. Checking against the final total
+  // (which can only be smaller, since scouting only ever spends more) is
+  // strictly safe: anything that fits here would have fit at any earlier
+  // point in the loop too.
+  const staminaLeftAfterScouting = availableStamina - staminaSpentScouting;
+
+  // Highest EV (odds × reward) first — see the function's own doc comment for
+  // why EV-among-floor-clearers beats both "biggest reward" and "highest odds
+  // alone" against real history — falling through to the next-best EV
+  // candidate whenever the top one no longer fits in what's actually left.
+  const byEvDesc = [...cleared].sort((a, b) => {
+    const evA = (a.choice.estimatePct / 100) * rewardMidpoint(a.choice.opportunity);
+    const evB = (b.choice.estimatePct / 100) * rewardMidpoint(b.choice.opportunity);
+    return evB - evA;
+  });
+  const winner = byEvDesc.find((c) => c.choice.opportunity.staminaCost <= staminaLeftAfterScouting) ?? null;
+  if (winner) log[winner.logIndex].chosen = true;
 
   return { choice: winner?.choice ?? null, log };
 }
