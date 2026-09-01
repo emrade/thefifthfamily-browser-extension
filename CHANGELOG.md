@@ -9,6 +9,19 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.15.4] - 2026-09-01
+
+### Fixed
+- Street Intel Auto: stopped a spurious "Not enough stamina!" pause that
+  could hit even when the chosen opportunity looked affordable. A cycle that
+  scouts more than one candidate spends real stamina on each scout call, but
+  the affordability check for an earlier candidate was only measured against
+  the stamina spent *up to that point* — so a later candidate's scout cost in
+  the same cycle wasn't accounted for by the time the top pick's attempt
+  actually fired. The check now runs once, after all of that cycle's
+  scouting is done, against the true remaining stamina, and falls through to
+  the next-best-EV candidate if the top pick no longer fits.
+
 ## [0.15.3] - 2026-08-30
 
 ### Fixed
