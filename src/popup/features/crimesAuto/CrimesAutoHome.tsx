@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import type { CrimesAutoConfig, CrimesAutoStatus } from '@/shared/types';
 
@@ -15,12 +15,31 @@ function formatOutcome(outcome: NonNullable<CrimesAutoStatus['lastAttempt']>['ou
   }
 }
 
+/** e.g. "4:15 PM · in 3:42" — same format as CareerAutoHome's/StreetIntelAutoHome's.
+ *  Clock time first (what was actually asked for), ticking countdown after.
+ *  Drops the countdown entirely once due rather than showing "in 0:00". */
+function formatNextRun(nextRunAt: number, now: number): string {
+  const clock = new Date(nextRunAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const remainingSeconds = Math.max(0, Math.round((nextRunAt - now) / 1000));
+  if (remainingSeconds === 0) return `${clock} · due now`;
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${clock} · in ${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function CrimesAutoHome() {
   const [config, setConfig] = useState<CrimesAutoConfig | null>(null);
   const [status, setStatus] = useState<CrimesAutoStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [checkingNow, setCheckingNow] = useState(false);
   const [checkNowError, setCheckNowError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+  // There's no tracked "next eligible" time in `CrimesAutoStatus` the way
+  // Career Auto has for its cooldown — every wait this runner computes
+  // (Nerve regen, jail/hospital release, the plain fallback poll) only ever
+  // exists as the live `chrome.alarms` entry, so that's read directly here
+  // instead, same fallback source CareerAutoHome uses before its first shift.
+  const [nextAlarmAt, setNextAlarmAt] = useState<number | null>(null);
 
   useEffect(() => {
     Promise.all([storage.getCrimesAutoConfig(), storage.getCrimesAutoStatus()]).then(([c, s]) => {
@@ -39,6 +58,26 @@ export function CrimesAutoHome() {
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
+
+  // Only ticking while automation is actually on — no point in a per-second
+  // re-render, or in polling the alarm, otherwise. The alarm isn't
+  // observable via an event (unlike storage), so this re-reads it on every
+  // tick rather than only once — cheap, and it's what picks up a
+  // reschedule (e.g. a Nerve wait recalculated after an attempt) without
+  // needing its own separate signal. Same pattern as CareerAutoHome.
+  useEffect(() => {
+    if (!config?.enabled) {
+      setNextAlarmAt(null);
+      return;
+    }
+    const tick = () => {
+      setNow(Date.now());
+      chrome.alarms.get(ALARM_NAMES.CRIMES_AUTO).then((alarm) => setNextAlarmAt(alarm?.scheduledTime ?? null));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [config?.enabled]);
 
   async function toggleEnabled() {
     if (!config) return;
@@ -79,6 +118,8 @@ export function CrimesAutoHome() {
   }
 
   if (!loaded || !config) return null;
+
+  const nextRunAt = config.enabled ? nextAlarmAt : null;
 
   return (
     <>
@@ -133,11 +174,19 @@ export function CrimesAutoHome() {
 
       <div class="ff-section-label">Status</div>
 
-      {!status?.lastAttempt && <div class="ff-empty">No attempts yet.</div>}
+      {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts yet.</div>}
+
+      {!status?.lastAttempt && nextRunAt && (
+        <div class="ff-auto-row">First eligibility check: {formatNextRun(nextRunAt, now)}</div>
+      )}
 
       {status?.lastAttempt && (
         <>
           <div class="ff-stat-grid">
+            <div class="ff-stat-tile">
+              <div class="ff-stat-tile__value ff-mono">{nextRunAt ? formatNextRun(nextRunAt, now) : '—'}</div>
+              <div class="ff-stat-tile__label">Next Check</div>
+            </div>
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{status.attempts}</div>
               <div class="ff-stat-tile__label">Attempts</div>
