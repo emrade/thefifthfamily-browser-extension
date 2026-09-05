@@ -9,6 +9,37 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.16.0] - 2026-09-06
+
+### Added
+- Crimes Auto: new automation for Crime Alley. Reads the live crime panel
+  and always targets whichever crime in your current district isn't
+  Mastered yet, one at a time, in the order the page lists them, so a
+  district's crimes get worked through the same way a player grinding by
+  hand would rather than round-robining across all of them at once. Pre-checks
+  Nerve against the account's own `stats.php` regen timer before ever
+  attempting a crime, so it waits for the exact moment enough Nerve should
+  be available instead of blind-polling and letting the game reject the
+  attempt. Pays bail immediately if a bust lands you in jail, and pays the
+  heat-cap bribe immediately if "the streets are too hot to work" — both are
+  cheap next to what a crime pays. Automatically disables itself and
+  notifies once every crime in the current district reaches Mastered, so
+  you know to go challenge the boss. Includes a "Check Now" button in the
+  popup to force an immediate recheck (e.g. after manually using a Nerve
+  consumable, which the scheduled wait has no way to notice on its own).
+
+### Fixed
+- Pet Couriers: fixed a false "locked" destination reading. The hourly
+  auto-watch probe drafts a shipment just to read the destination list, but
+  if a stuck `'drafting'` shipment (left over from an interrupted cycle, or
+  another concurrent one) was already blocking new drafts, the probe's own
+  draft call got rejected with "You already have a delivery being loaded."
+  — and that rejection was being cached as a confident "locked" verdict for
+  the rest of the rotation hour, even though the destination itself was
+  never actually seen. The probe now cleans up any stuck draft first (the
+  same cleanup a manual Run already does), and treats a draft failure or an
+  unreadable panel as inconclusive rather than caching it as "locked".
+
 ## [0.15.4] - 2026-09-01
 
 ### Fixed
