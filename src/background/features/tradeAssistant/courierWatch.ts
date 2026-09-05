@@ -258,25 +258,50 @@ export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
  *  to see it — see docs/smuggling-v2-plan.md's "only non-empty once a draft
  *  exists" note), then cancels that draft regardless of the outcome. Same
  *  one-retry-with-a-pause pattern as `petCourier.ts`'s own destination
- *  resolution, and opportunistically records fleet returns off the same fetch. */
-async function probeDestination(idlePet: PetRosterEntry): Promise<{ open: boolean; districtName: string | null }> {
+ *  resolution, and opportunistically records fleet returns off the same fetch.
+ *
+ *  Cancels any pet already stuck mid-`'drafting'` first — the same cleanup
+ *  `executeCourierBatch` does at the start of every batch (see its own doc) —
+ *  because a stuck draft blocks *any* new `v2_draft` account-wide with "You
+ *  already have a delivery being loaded.", which this function has no way to
+ *  tell apart from a genuine locked-destination response otherwise. Confirmed
+ *  real (2026-09-05) from the account's own request archive: the hourly probe
+ *  drafted with an idle pet, got exactly that rejection with nothing else on
+ *  the account holding a shipment open moments before or after, and cached
+ *  the resulting failure as a confident 'locked' verdict for the rest of the
+ *  hour — while a manual run minutes later, which does this same cleanup,
+ *  found the destination genuinely open the whole time.
+ *
+ *  Returns `'inconclusive'` — instead of a confident open/locked verdict —
+ *  when the draft call itself failed (even after the cleanup above) or the
+ *  panel couldn't be read afterward, so the caller doesn't cache a false
+ *  'locked' answer for something that was never actually seen. */
+async function probeDestination(idlePet: PetRosterEntry, fleet: FleetEntry[]): Promise<{ open: boolean; districtName: string | null } | 'inconclusive'> {
+  const stuck = fleet.find((f) => f.status === 'drafting');
+  if (stuck) {
+    await cancelShipment(stuck.shipmentId, stuck.petName, (msg) => console.error(LOG_PREFIX, msg));
+  }
+
   const draft = await postAction('/actions/smuggling.php', { action: 'v2_draft', user_pet_id: idlePet.userPetId });
   if (!draft?.ok) {
     console.error(LOG_PREFIX, `courier watch probe draft failed for ${idlePet.name}: ${draft?.error ?? 'unknown error'}`);
-    return { open: false, districtName: null };
+    return 'inconclusive';
   }
   const shipmentId = Number(draft.shipment_id);
 
   let districtName: string | null = null;
+  let sawPanel = false;
   for (let attempt = 0; attempt < 2 && !districtName; attempt++) {
     if (attempt > 0) await sleep(1500);
     const afterDraft = await fetchPanel();
     if (!afterDraft) continue;
+    sawPanel = true;
     await recordFleetReturns(afterDraft.fleet);
     districtName = pickDestination(afterDraft.destinations)?.district ?? null;
   }
 
   await cancelShipment(shipmentId, idlePet.name, (msg) => console.error(LOG_PREFIX, msg));
+  if (!sawPanel) return 'inconclusive';
   return { open: districtName !== null, districtName };
 }
 
@@ -346,7 +371,7 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
  * if the caller should stop immediately (a dispatch's own error was already
  * handled).
  */
-async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string): Promise<boolean> {
+async function evaluateDestination(idlePets: PetRosterEntry[], fleet: FleetEntry[], alarmName: string): Promise<boolean> {
   const watchState = await storage.getCourierWatchState();
   const haveThisHoursAnswer =
     watchState.lastProbeResult !== null && watchState.lastProbeResult !== 'skipped-no-idle-pets' && watchState.lastCheckedAt >= currentHourStart();
@@ -371,7 +396,18 @@ async function evaluateDestination(idlePets: PetRosterEntry[], alarmName: string
     return actOnOpenDestination(idlePets.length, null, alarmName, false);
   }
 
-  const probe = await probeDestination(idlePets[0]);
+  const probe = await probeDestination(idlePets[0], fleet);
+
+  // Couldn't actually see the destination list this cycle (draft rejected,
+  // or the panel came back unreadable both retries) — leaving the existing
+  // watch state untouched, rather than writing 'locked', means this doesn't
+  // get treated as a confirmed verdict: the next probe opportunity (the
+  // following hourly tick, or the next pet to go idle) gets to try again
+  // instead of the panel showing a false "locked" for the rest of the hour.
+  if (probe === 'inconclusive') {
+    await updateBadge(0);
+    return false;
+  }
 
   if (!probe.open) {
     await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
@@ -405,7 +441,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
     await recordFleetReturns(snapshot.fleet);
     const idlePets = await getIdlePets(snapshot.fleet);
 
-    const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_DEST_POLL);
+    const stopped = await evaluateDestination(idlePets, snapshot.fleet, ALARM_NAMES.SMUGGLING_DEST_POLL);
     if (stopped) return;
 
     // A dispatch (if one happened) creates new shipments — re-read so the
@@ -454,7 +490,7 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     if (!afterOffload) return; // nothing more learnable this cycle — next return/hourly alarm tries again
 
     const idlePets = await getIdlePets(afterOffload.fleet);
-    const stopped = await evaluateDestination(idlePets, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+    const stopped = await evaluateDestination(idlePets, afterOffload.fleet, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
     if (stopped) return;
 
     const fresh = await fetchPanel();
