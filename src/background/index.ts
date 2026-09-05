@@ -15,6 +15,7 @@ import {
   initAuto as initStreetIntelAuto,
 } from './features/streetIntel';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
+import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import {
   getStatus as getStockTrackerStatus,
   handlePollAlarm as handleStockMarketPollAlarm,
@@ -55,6 +56,10 @@ initCareerAuto();
 // Same idea, for the Street Intel auto-attempt runner — see
 // features/streetIntel/index.ts's initAuto.
 initStreetIntelAuto();
+
+// Same idea, for the Crime Alley auto-runner — see
+// features/crimesAuto/index.ts's init.
+initCrimesAuto();
 
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
 // No config gate: unlike the two auto-runners above, this is read-only data
@@ -146,6 +151,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return fetchCareerCatalog();
   }
 
+  // Sent by the popup's Crimes Auto "Check Now" button — see that message
+  // type's own doc comment in shared/messaging.ts for why a purely
+  // time-based schedule needs this escape hatch.
+  if (msg.type === 'crimes-check-requested') {
+    return runCrimesAutoCheckNow();
+  }
+
   // Archive writes are split off onto their own queue rather than joining the
   // ordered feature queue above. They need serializing among themselves (the shape
   // index does a read-then-write), but they must not sit in front of feature work:
@@ -184,4 +196,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleStockMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStockMarketPollAlarm failed', err));
   handleDestPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleDestPollAlarm failed', err));
   handleCourierReturnAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCourierReturnAlarm failed', err));
+  handleCrimesAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCrimesAutoAlarm failed', err));
 });

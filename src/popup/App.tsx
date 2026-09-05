@@ -10,9 +10,10 @@ import { RequestLogHome } from './features/requestLog/RequestLogHome';
 import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
 import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoHome';
 import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
+import { CrimesAutoHome } from './features/crimesAuto/CrimesAutoHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'settings';
+type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -44,6 +45,7 @@ export function App() {
             onOpenCareerAuto={() => setView('careerAuto')}
             onOpenStreetIntelAuto={() => setView('streetIntelAuto')}
             onOpenPetCouriers={() => setView('petCouriers')}
+            onOpenCrimesAuto={() => setView('crimesAuto')}
             onOpenSettings={() => setView('settings')}
           />
         )}
@@ -53,6 +55,7 @@ export function App() {
         {view === 'careerAuto' && <CareerAutoHome />}
         {view === 'streetIntelAuto' && <StreetIntelAutoHome />}
         {view === 'petCouriers' && <PetCouriersHome />}
+        {view === 'crimesAuto' && <CrimesAutoHome />}
         {view === 'settings' && <Settings />}
       </main>
 

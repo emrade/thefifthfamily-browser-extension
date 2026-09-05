@@ -119,16 +119,20 @@ export async function postAction(path: string, params: Record<string, string | n
     }
 
     // Confirmed real for hospitalized ("You can't do that while hospitalized!",
-    // a real Street Intel `scout`/`attempt` rejection caught 2026-08-29) — jailed
-    // and travelling are assumed to follow the same "You can't do that while X!"
-    // phrasing but have no confirmed capture yet, same unconfirmed-but-plausible
-    // footing as the CSRF-phrase guesses above. Checked against both `error` and
-    // `msg` for the same reason as the auth checks: different endpoints use
+    // a real Street Intel `scout`/`attempt` rejection caught 2026-08-29) —
+    // travelling is assumed to follow the same "You can't do that while X!"
+    // phrasing but has no confirmed capture yet, same unconfirmed-but-plausible
+    // footing as the CSRF-phrase guesses above. Jailed is *not* a guess: the
+    // crimes auto-runner's own real captures (2026-09-05) confirmed
+    // `crimes.php` actually says "You can't do that while in jail!" — not
+    // "...while jailed" — so both phrasings are matched here rather than
+    // trusting the assumed one alone. Checked against both `error` and `msg`
+    // for the same reason as the auth checks: different endpoints use
     // different field names for the same kind of rejection.
-    if (json.ok === false && typeof json.error === 'string' && /can't do (?:that|this) while (?:jailed|hospitalized|travell?ing)/i.test(json.error)) {
+    if (json.ok === false && typeof json.error === 'string' && /can't do (?:that|this) while (?:jailed|in jail|hospitalized|travell?ing)/i.test(json.error)) {
       throw new SystemicActionError(`"${json.error}" from ${path} — account is jailed/hospitalized/travelling, not an unrecognized response`, 'status-blocked');
     }
-    if (json.ok === false && typeof json.msg === 'string' && /can't do (?:that|this) while (?:jailed|hospitalized|travell?ing)/i.test(json.msg)) {
+    if (json.ok === false && typeof json.msg === 'string' && /can't do (?:that|this) while (?:jailed|in jail|hospitalized|travell?ing)/i.test(json.msg)) {
       throw new SystemicActionError(`"${json.msg}" from ${path} — account is jailed/hospitalized/travelling, not an unrecognized response`, 'status-blocked');
     }
 
@@ -149,6 +153,11 @@ export interface LiveStatus {
   maxEnergy: number;
   stamina: number;
   maxStamina: number;
+  /** Added for the crimes auto-runner's own pre-flight nerve check — same
+   *  "read the real balance before spending it" gate `careerAuto/runner.ts`
+   *  already does for `energy`. */
+  nerve: number;
+  maxNerve: number;
   cash: number;
   travelling: boolean;
   jailed: boolean;
@@ -159,6 +168,14 @@ export interface LiveStatus {
   travelSeconds: number;
   jailSeconds: number;
   hospitalSeconds: number;
+  /** Seconds until the *next* single Nerve point regenerates, and the
+   *  regen interval per point thereafter — straight from `stats.php`'s
+   *  own `timers.nerve`/`regen_rates.nerve`. Lets a caller compute exactly
+   *  when it'll have N Nerve instead of blind-polling for it, the same way
+   *  `travelSeconds`/`jailSeconds`/`hospitalSeconds` already let one align to
+   *  an exact status-clear instead of guessing. */
+  nerveTimerSeconds: number;
+  nerveRegenSeconds: number;
 }
 
 /** Fresh, uncached read of the handful of `stats.php` fields a pre-flight check
@@ -203,6 +220,8 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
     maxEnergy: Number(json.stats.max_energy) || 0,
     stamina: Number(json.stats.stamina) || 0,
     maxStamina: Number(json.stats.max_stamina) || 0,
+    nerve: Number(json.stats.nerve) || 0,
+    maxNerve: Number(json.stats.max_nerve) || 0,
     cash: Number(json.stats.cash) || 0,
     travelling: Boolean(json.status.travelling),
     jailed: Boolean(json.status.jailed),
@@ -210,6 +229,8 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
     travelSeconds: Number(json.status.travel_seconds) || 0,
     jailSeconds: Number(json.status.jail_seconds) || 0,
     hospitalSeconds: Number(json.status.hospital_seconds) || 0,
+    nerveTimerSeconds: Number(json.timers?.nerve) || 0,
+    nerveRegenSeconds: Number(json.regen_rates?.nerve) || 0,
   };
 }
 

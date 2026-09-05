@@ -23,6 +23,8 @@ export const STORAGE_KEYS = {
   COURIER_AUTO_CONFIG: 'ff_courier_auto_config',
   COURIER_WATCH_STATE: 'ff_courier_watch_state',
   PENDING_COURIER_RETURNS: 'ff_pending_courier_returns',
+  CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
+  CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
 } as const;
 
 export const ALARM_NAMES = {
@@ -35,6 +37,7 @@ export const ALARM_NAMES = {
   STOCK_MARKET_POLL: 'ff-stock-market-poll',
   SMUGGLING_DEST_POLL: 'ff-smuggling-dest-poll',
   SMUGGLING_COURIER_RETURN: 'ff-smuggling-courier-return',
+  CRIMES_AUTO: 'ff-crimes-auto',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -275,3 +278,25 @@ export const COURIER_RETURN_BUFFER_MS = 2_000;
 // auto-dispatch on from the panel shouldn't wait out however much of the
 // current hourly cycle is left before it does anything.
 export const COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+
+// --- Crimes auto-runner -------------------------------------------------------
+//
+// Unlike a career shift, `crimes.php` gives no cooldown countdown to align
+// to — the only thing gating the next attempt is Nerve regenerating on its
+// own, which this feature has no exact timer for (same reasoning
+// CAREER_AUTO_FALLBACK_INTERVAL_MS documents for its own energy/travel/jail
+// gate). This is that same plain re-poll interval, reused for "not enough
+// Nerve yet" and for the "nothing this feature can do" travel/hospital gate.
+export const CRIMES_AUTO_FALLBACK_INTERVAL_MS = 60_000;
+
+// After an attempt that resolved one way or another (a success, a bust
+// resolved by an immediate bail, or heat cleared by an immediate bribe), the
+// account is immediately eligible again — this is just a short breather
+// before the next commit rather than a real cooldown, so the loop doesn't
+// fire two commits back-to-back in the same tick.
+export const CRIMES_AUTO_RETRY_DELAY_MS = 2_500;
+
+// Same reasoning as CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS — enabling the
+// automation from the popup shouldn't wait out the full fallback interval
+// above before its first check.
+export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;

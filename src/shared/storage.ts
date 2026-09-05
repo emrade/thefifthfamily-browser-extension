@@ -4,6 +4,8 @@ import type {
   CourierAutoConfig,
   CourierRunSummary,
   CourierWatchState,
+  CrimesAutoConfig,
+  CrimesAutoStatus,
   FightClubFilterPrefs,
   FightClubHeroStats,
   LastSmugglingContext,
@@ -45,6 +47,11 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
 const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
   autoDispatchEnabled: false,
   autoOffloadEnabled: false,
+};
+
+// Off by default, same convention as every other auto feature.
+const DEFAULT_CRIMES_AUTO_CONFIG: CrimesAutoConfig = {
+  enabled: false,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
@@ -177,6 +184,16 @@ export const storage = {
   // Empty array default — no pets in flight yet.
   getPendingCourierReturns: () => get<PendingCourierReturn[]>(STORAGE_KEYS.PENDING_COURIER_RETURNS, []),
   setPendingCourierReturns: (v: PendingCourierReturn[]) => set(STORAGE_KEYS.PENDING_COURIER_RETURNS, v),
+
+  // Same merge-with-defaults/simple-nullable split as the Career Auto pair above.
+  getCrimesAutoConfig: async (): Promise<CrimesAutoConfig> => {
+    const stored = await get<Partial<CrimesAutoConfig>>(STORAGE_KEYS.CRIMES_AUTO_CONFIG, {});
+    return { ...DEFAULT_CRIMES_AUTO_CONFIG, ...stored };
+  },
+  setCrimesAutoConfig: (v: CrimesAutoConfig) => set(STORAGE_KEYS.CRIMES_AUTO_CONFIG, v),
+
+  getCrimesAutoStatus: () => get<CrimesAutoStatus | null>(STORAGE_KEYS.CRIMES_AUTO_STATUS, null),
+  setCrimesAutoStatus: (v: CrimesAutoStatus) => set(STORAGE_KEYS.CRIMES_AUTO_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

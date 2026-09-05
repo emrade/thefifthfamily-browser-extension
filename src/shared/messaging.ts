@@ -117,6 +117,15 @@ export type ExtensionMessage =
   // panel on every call rather than caching it) for the job picker, since this
   // is a rare, user-initiated action where staleness costs more than the fetch.
   | { type: 'career-catalog-requested' }
+  // Sent from the popup's Crimes Auto tab's "Check Now" button — same
+  // "run for real right now, return the resulting fresh status" exception as
+  // 'stock-tracker-poll-requested'. Exists for the gap a purely time-based
+  // schedule can't cover on its own: the player manually using a Nerve-restoring
+  // consumable while the runner is sitting on a computed `nerveReadyAt` wait
+  // makes Nerve sufficient early, but nothing re-evaluates state until that
+  // alarm fires — this lets the player force the recheck immediately instead
+  // of it going unnoticed until the original wait elapses anyway.
+  | { type: 'crimes-check-requested' }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.

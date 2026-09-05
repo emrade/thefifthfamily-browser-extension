@@ -471,6 +471,77 @@ export interface PendingCourierReturn {
 }
 
 /**
+ * One crime card read from the live Crime Alley panel — see
+ * `crimesAuto/crimesPanelParser.ts`. There is no persisted "which crimes to
+ * grind" list: every cycle re-fetches the panel and targets whichever card
+ * isn't `maxed` yet, in the order the page itself renders them (only the
+ * player's *current*, unlocked district's crimes appear on the page at all —
+ * the next district's cards simply aren't there until this one's boss is
+ * beaten), so the automation always tracks the account's live district
+ * without needing to be reconfigured when it advances.
+ */
+export interface CrimeCatalogEntry {
+  crimeId: number;
+  name: string;
+  family: string;
+  nerveCost: number;
+  maxed: boolean;
+}
+
+/** User-configured — read/written directly by the popup, same as
+ *  `CourierAutoConfig`. No crime/district selection to store: the runner
+ *  always targets whatever the live panel shows (see `CrimeCatalogEntry`),
+ *  so there is nothing here to pick beyond the on/off switch itself. */
+export interface CrimesAutoConfig {
+  enabled: boolean;
+}
+
+/** What one automated crime attempt actually did — shown in the popup as
+ *  "last attempt", same role `CareerShiftResult` plays for Career Auto. */
+export interface CrimeAttemptResult {
+  timestamp: number;
+  crimeId: number;
+  crimeName: string;
+  outcome: 'success' | 'busted-clean' | 'busted-bailed';
+  cashGained: number;
+  xpGained: number;
+}
+
+/**
+ * Background-owned runtime state for the crimes auto-runner. Counters are
+ * lifetime-since-last-reset (there's no natural "today" boundary the way a
+ * career shift's daily cap has — Nerve just regenerates continuously), and
+ * reset whenever the player flips automation back on after it finished a
+ * district or they explicitly disable-then-re-enable it.
+ */
+export interface CrimesAutoStatus {
+  lastAttempt: CrimeAttemptResult | null;
+  attempts: number;
+  successes: number;
+  busts: number;
+  cashEarned: number;
+  xpEarned: number;
+  /** Times bail was paid to clear a real jail sentence from a bust, and the
+   *  total spent doing it — computed from the account's own cash balance
+   *  immediately before/after each bail call, not a formula, since the
+   *  game's own bail cost isn't exposed anywhere the automation reads. */
+  bailsPaid: number;
+  bailCashSpent: number;
+  /** Same idea as the bail pair above, for heat-cap bribes. */
+  bribesPaid: number;
+  bribeCashSpent: number;
+  /** Epoch ms the current district's crimes were all confirmed `maxed` —
+   *  `null` until that happens. Automation disables itself the moment this
+   *  is set (see `runner.ts`), so the player knows to go challenge the boss. */
+  districtMasteredAt: number | null;
+  pausedReason: 'error' | null;
+  /** Same reasoning as `CareerAutoStatus.pausedMessage` — the notification
+   *  that fired this is transient, so this is the only durable record of why. */
+  pausedMessage: string | null;
+  pausedAt: number | null;
+}
+
+/**
  * One job listed on the Careers panel, as read from the live page — see
  * `careersPanelParser.ts`. `otEnergyCost`/`otAvailable` reflect a real quirk
  * confirmed from the panel markup: a job's Overtime button (and its own energy

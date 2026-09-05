@@ -56,6 +56,16 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Courier Auto-Watch Stopped',
     description: 'Notify when the pet courier auto-watch stops itself after an unrecognized response.',
   },
+  {
+    id: 'crimesAutoDistrictMastered',
+    label: 'Crimes Auto District Mastered',
+    description: 'Notify when every crime in your current district reaches Mastered, so you know to go challenge the boss.',
+  },
+  {
+    id: 'crimesAutoStopped',
+    label: 'Crimes Auto Stopped',
+    description: 'Notify when the crimes auto-runner stops itself after an unrecognized response.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

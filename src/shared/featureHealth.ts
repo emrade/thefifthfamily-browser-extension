@@ -20,6 +20,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   streetIntel: 'Street Intel',
   fightClub: 'Fight Club',
   careerAuto: 'Career Auto',
+  crimesAuto: 'Crimes Auto',
 };
 
 export interface FeatureHealth {

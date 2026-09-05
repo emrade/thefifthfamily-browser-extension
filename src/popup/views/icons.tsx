@@ -105,3 +105,15 @@ export function SettingsIcon() {
     </svg>
   );
 }
+
+/** Ski mask — Crime Alley. */
+export function MaskIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M4 11c0-4.4 3.6-8 8-8s8 3.6 8 8v3a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6v-3z" />
+      <line x1="4" y1="11" x2="20" y2="11" />
+      <circle cx="9" cy="13.5" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="13.5" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
