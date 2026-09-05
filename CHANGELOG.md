@@ -9,6 +9,17 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.16.1] - 2026-09-06
+
+### Added
+- Crimes Auto: the popup tab now shows a live "Next Check" countdown (clock
+  time plus a ticking countdown), the same way Career Auto and Street Intel
+  Auto already show their own next scheduled run. Previously there was no
+  visibility into when the runner would try again — whether it was waiting
+  on Nerve to regenerate, a jail/hospital release, or the plain fallback
+  poll — this reads the real scheduled alarm directly, since there's no
+  single tracked "next eligible" value the way Career Auto's cooldown has.
+
 ## [0.16.0] - 2026-09-06
 
 ### Added
