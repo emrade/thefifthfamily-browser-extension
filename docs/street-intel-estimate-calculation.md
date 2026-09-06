@@ -219,3 +219,84 @@ The game assigns `base_pct` in recurring **20-level cycles** partitioned into 4 
 | **Levels 19–20** (e.g. 19–20, 39–40, 59–60, 79–80) | Extreme Risk | **17% – 23%** | ~19% |
 
 Because `base_pct` is constant across all approaches on a given card, a single revealed approach in partial-reveal scouting immediately provides the exact `base_pct` for all hidden approaches on that card.
+
+---
+
+## 7. Complication Analysis & Optimal Choice Strategy
+
+An investigation of all **55 resolved complication events** in the archive (`fifth-family-archive-2026-09-06T14-27-10-157Z.ndjson.gz`) was conducted to evaluate the current complication heuristic and determine the optimal selection strategy.
+
+### A. Empirical Win Rate & Cash Loss by Choice
+
+| Complication Choice | Linked Stat (Account Value) | Wins / Attempts | Win Rate | Total Cash Lost on Failures |
+|---|:---:|:---:|:---:|:---:|
+| **`fight`** | **Strength (82)** | **7 / 8** | **87.5%** | $150,188 (1 fail) |
+| **`run`** | Agility (58) | 17 / 23 | **73.9%** | $81,778 (6 fails) |
+| **`talk`** | Dexterity (58) | 15 / 24 | **62.5%** | **$1,595,572 (9 fails)** |
+
+### B. Why "Direct Reuse" Was Bleeding Cash
+
+In `src/background/features/streetIntel/actionRunner.ts` (line 341), the runner currently uses a direct reuse heuristic:
+```typescript
+if (choice.approach !== 'steel_yourself') return choice.approach;
+```
+If an attempt succeeded with `talk` (dexterity), the runner unconditionally picked `talk` for the complication.
+
+The historical data proves this rule caused severe losses:
+- **`talk -> talk` win rate**: Only **8 / 13 (61.5%)**.
+- **Catastrophic Cash Losses**: The 5 `talk -> talk` failures wiped out **$1,266,047** in cash-on-hand (single losses of -$534k, -$350k, -$316k).
+- **Failure Cause**: When `talk` was picked during physical or tactical complications (lockdowns, footsteps, alarms), it failed 100% of the time.
+
+### C. Story Prompt Analysis (Empirical Breakdown across 20 Scenarios)
+
+The `attempt` response returns `complication.type` (the scenario narrative text) and `complication.difficulty: 40` **before** the player/bot sends the `complication` action.
+
+Correlating the prompt narrative with historical outcomes reveals clear category affinities:
+
+#### 1. Physical / Tactical Threats (`fight` 100% Win Rate, `talk` 0%)
+- **`"You hear footsteps behind the door."`**:
+  - `talk`: **0 / 2 (0% wins)** — lost $60,962 and $115,742
+  - `fight`: **2 / 2 (100% wins)**
+- **`"The target building went into lockdown."`**:
+  - `talk`: **0 / 1 (0% wins)** — lost $77,827
+  - `fight`: **1 / 1 (100% wins)**
+  - `run`: 1 / 2 (50% wins)
+- **`"Someone triggered a silent distress signal."`**:
+  - `talk`: **0 / 1 (0% wins)** — lost $134,957
+  - `fight`: **1 / 1 (100% wins)**
+  - `run`: 1 / 1 (100% wins)
+- **`"A witness is threatening to call the cops."`**:
+  - `talk`: **0 / 1 (0% wins)**
+  - `fight`: **1 / 1 (100% wins)**
+- **`"The evidence is heavier than expected."`**:
+  - `run`: **0 / 1 (0% wins)** (burden slows movement)
+  - `fight`: **1 / 1 (100% wins)** (raw strength carries heavy evidence)
+
+#### 2. Escape / Physical Evasion (`run` 100% Win Rate)
+- **`"A rival informant recognizes you."`**: `run` is **4 / 4 (100% wins)**
+- **`"A rival crew followed you and wants a cut."`**: `run` is **2 / 2 (100% wins)**
+- **`"The package is booby-trapped. You need to act fast."`**: `run` is **2 / 2 (100% wins)**
+- **`"The room is filling with smoke."`**: `run` is **1 / 1 (100% wins)**
+- **`"Your getaway driver never showed up."`**: `run` is **1 / 1 (100% wins)**
+
+#### 3. Social / Deception Scenarios (`talk` & `run` Effective)
+- **`"A security guard asks to check your bag."`**: `talk` is **2 / 2 (100%)**, `fight` is **1 / 1 (100%)**, `run` is **1 / 2 (50%)**
+- **`"Your fake credentials are questioned."`**: `talk` is **3 / 4 (75%)**, `run` is **2 / 2 (100%)**
+- **`"The item is locked in a reinforced case."`**: `talk` is **2 / 2 (100%)** (safecracking / dexterity)
+- **`"The client starts panicking."`**: `talk` is **1 / 1 (100%)**, `run` is **1 / 1 (100%)**
+- **`"The informant demands more money."`**: `talk` is **1 / 1 (100%)**, `run` is **0 / 1 (0%)**
+
+#### 4. Extreme Peril / Ambush
+- **`"The drop site is surrounded."`**: **0 / 3 wins** (both `talk` and `run` failed 100% of the time, losing $534k and $350k).
+
+### D. Recommended Strategy
+
+1. **Prompt-Aware Keyword Matching (Optimal)**:
+   Since the bot receives `complication.type` in the attempt response, it should check the prompt keywords before choosing:
+   - **Pick `fight`** if prompt mentions: *footsteps, lockdown, distress, witness, heavier*.
+   - **Pick `run`** if prompt mentions: *smoke, booby-trapped, driver, followed, recognizes*.
+   - **Pick `talk`** if prompt mentions: *guard, credentials, locked, panicking, demands*.
+2. **Stat-Priority Fallback (`fight` over `run` / `talk`)**:
+   On this account, **Strength = 82** (vs Agility 58 and Dexterity 58, a +41% advantage). When a prompt is unrecognized or when falling back from `steel_yourself`:
+   - `fight` yielded an **87.5% win rate** overall and **83.3% on fallback**.
+   - Defaulting to `fight` maximizes odds by leveraging the account's strongest primary attribute.
