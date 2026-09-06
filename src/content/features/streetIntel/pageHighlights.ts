@@ -215,7 +215,12 @@ function refreshApproaches(detail: Element) {
   let realBest: Element | null = null;
   let realBestPct = -1;
   for (const approach of approaches) {
-    approach.classList.remove('ff-si-best-approach');
+    // NOT stripped here — see the comment above this loop. `annotateApproaches`
+    // owns the full remove-then-add cycle for this class now; a leftover
+    // synchronous strip here was the exact race this whole restructure was
+    // meant to avoid (confirmed live, 2026-09-07: page-timer-driven
+    // MutationObserver firings kept re-stripping this class faster than the
+    // async add-back could land, so "FF Best Odds" never stayed visible).
     const match = (approach.querySelector('.scout-pct')?.textContent ?? '').match(/(\d+)%/);
     if (!match) continue; // unscouted ("Go Blind") dialog, or a hidden partial-reveal row — no real odds to rank
 
