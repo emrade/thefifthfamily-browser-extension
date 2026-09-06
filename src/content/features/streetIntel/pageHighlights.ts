@@ -175,7 +175,14 @@ function refreshApproaches(detail: Element) {
 
   for (const approach of approaches) {
     approach.classList.remove('ff-si-best-approach');
-    approach.classList.remove('ff-si-best-guess');
+    // `ff-si-best-guess` is deliberately NOT stripped here — see
+    // `annotateApproaches`, which owns that class's full remove-then-add
+    // cycle itself so the two can't get split across two different
+    // MutationObserver firings (real bug, confirmed live: this function's
+    // removal is synchronous but `annotateApproaches`'s own addition sits
+    // behind an `await`, so a page-timer-driven mutation could re-run this
+    // synchronous strip before the previous call's async add ever landed,
+    // leaving the badge permanently missing).
     const match = (approach.querySelector('.scout-pct')?.textContent ?? '').match(/(\d+)%/);
     if (!match) continue; // unscouted ("Go Blind") dialog, or a hidden partial-reveal row — no real odds to rank
 
@@ -352,10 +359,14 @@ function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; ri
  * formula's own guess sits right next to the real value for a direct,
  * always-available accuracy check rather than only ever being checkable
  * once a hidden approach happens to get revealed some other time. Never
- * touches the "FF Best Odds" pick itself — that stays real-numbers-only. A
- * fully-unscored (Go Blind) dialog additionally gets its own highest
- * *hidden-row* estimate marked "FF BEST GUESS", a visually distinct badge so
- * it's never confused with a real "FF Best Odds" pick.
+ * touches the "FF Best Odds" pick itself — that stays real-numbers-only.
+ * Whichever hidden row has the single highest estimate additionally gets a
+ * visually distinct "FF BEST GUESS" badge, in *every* dialog that has at
+ * least one hidden approach to estimate — not just a fully-unscored Go Blind
+ * one. A real revealed number isn't necessarily a good one (an autofail's
+ * real 0%, say), so "FF Best Odds" alone can't always answer "what should I
+ * actually pick" — "FF Best Guess" is the signal for that, independent of
+ * whether a real number happens to exist elsewhere on the same card.
  *
  * Two confidence levels, labeled differently:
  * - **exact**: this exact card was scouted this session (`lastScoutSeed`'s
@@ -388,9 +399,14 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
   const stats = await storage.getLatestStats();
   if (!stats) return;
 
+  // Owns the full remove-then-add cycle for this class itself (see
+  // `refreshApproaches`'s own comment on why) — every row gets stripped
+  // right before this same pass recomputes and re-adds it to whichever one
+  // actually wins, so the two can never straddle two different renders.
+  for (const approach of approaches) approach.classList.remove('ff-si-best-guess');
+
   let bestGuessApproach: Element | null = null;
   let bestGuessPct = -1;
-  let anyRealPct = false;
 
   for (let i = 0; i < approaches.length; i++) {
     const approach = approaches[i];
@@ -403,7 +419,6 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
     // which previously left every Go Blind row with no estimate at all.
     const scoutEl = approach.querySelector('.scout-pct');
     const hasReal = scoutEl !== null && /\d+%/.test(scoutEl.textContent ?? '');
-    if (hasReal) anyRealPct = true;
 
     const hidden = owning.approaches.find((a) => rowTexts[i].includes(a.label));
     if (!hidden) continue;
@@ -438,10 +453,14 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
     }
   }
 
-  // Only a fully-unscored dialog gets a "best guess" pick — a partial-reveal
-  // dialog already has a real "FF Best Odds" winner from `refreshApproaches`
-  // above, and estimates there are just filling in the gaps around it.
-  if (!anyRealPct) bestGuessApproach?.classList.add('ff-si-best-guess');
+  // Shown regardless of whether a real "FF Best Odds" winner also exists on
+  // this dialog (previously suppressed whenever any real number was
+  // present) — a real revealed number isn't necessarily a *good* one (e.g.
+  // an autofail's real 0%), and "FF Best Odds" only ever answers "which real
+  // number is highest," not "what should I actually pick." This is the
+  // signal for that second question, every time there's a hidden approach to
+  // estimate at all.
+  bestGuessApproach?.classList.add('ff-si-best-guess');
 }
 
 const INSTALL_FLAG = '__ffStreetIntelHighlightsInstalled';
