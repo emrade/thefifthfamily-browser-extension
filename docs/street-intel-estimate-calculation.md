@@ -213,12 +213,14 @@ The game assigns `base_pct` in recurring **20-level cycles** partitioned into 4 
 
 | Level Bracket (mod 20) | Risk Tier | Typical `base_pct` Range | Mean `base_pct` |
 |---|---|:---:|:---:|
-| **Levels 1–7** (e.g. 1–7, 21–27, 41–47, 61–67, 81–87) | Low Risk / Band 1 | **49% – 61%** | ~54% |
+| **Levels 1–7** (e.g. 1–7, 21–27, 41–47, 61–67, 81–87) | Low Risk / Band 1 | **46% – 61%** | ~54% |
 | **Levels 8–13** (e.g. 8–13, 28–33, 48–53, 68–73) | Medium Risk | **38% – 46%** | ~42% |
 | **Levels 14–18** (e.g. 14–18, 34–38, 54–58, 74–78) | High Risk | **26% – 33%** | ~29% |
 | **Levels 19–20** (e.g. 19–20, 39–40, 59–60, 79–80) | Extreme Risk | **17% – 23%** | ~19% |
 
 Because `base_pct` is constant across all approaches on a given card, a single revealed approach in partial-reveal scouting immediately provides the exact `base_pct` for all hidden approaches on that card.
+
+**Caveat on the "level" framing**: no per-card numeric level field was ever found in the archived `panel.php` HTML to check the "20-level cycle" claim against — only the categorical `data-risk` tag (`low`/`medium`/`high`/`extreme`) and an unrelated location `Band` (1–9) that doesn't correlate with risk at all. The account's own level also barely moved (82–87) across the whole archive — entirely inside one hypothesized bracket — so this dataset couldn't have observed the claimed mod-20 periodicity even in principle. The risk-tier ranges/means above are independently confirmed against 819 real cards; the specific "Levels 1–7 / 8–13 / ..." numbering is not, and should be treated as unverified. This is also why the shipped code (`pageHighlights.ts`) keys its `base_pct` fallback off risk tier directly, not off any level math.
 
 ---
 
@@ -244,7 +246,7 @@ If an attempt succeeded with `talk` (dexterity), the runner unconditionally pick
 
 The historical data proves this rule caused severe losses:
 - **`talk -> talk` win rate**: Only **8 / 13 (61.5%)**.
-- **Catastrophic Cash Losses**: The 5 `talk -> talk` failures wiped out **$1,266,047** in cash-on-hand (single losses of -$534k, -$350k, -$316k).
+- **Catastrophic Cash Losses**: The 5 `talk -> talk` failures wiped out **$1,267,046** in cash-on-hand (single losses of -$534,613, -$350,811, -$316,867, -$60,962, -$3,793).
 - **Failure Cause**: When `talk` was picked during physical or tactical complications (lockdowns, footsteps, alarms), it failed 100% of the time.
 
 ### C. Story Prompt Analysis (Empirical Breakdown across 20 Scenarios)
@@ -287,7 +289,7 @@ Correlating the prompt narrative with historical outcomes reveals clear category
 - **`"The informant demands more money."`**: `talk` is **1 / 1 (100%)**, `run` is **0 / 1 (0%)**
 
 #### 4. Extreme Peril / Ambush
-- **`"The drop site is surrounded."`**: **0 / 3 wins** (both `talk` and `run` failed 100% of the time, losing $534k and $350k).
+- **`"The drop site is surrounded."`**: **0 / 3 wins** — two `talk` attempts failed, losing $534,613 and $350,811; one `run` attempt also failed but lost no cash.
 
 ### D. Recommended Strategy
 
@@ -316,4 +318,4 @@ Does **not** hold up as stated:
 
 - **Table A/B's "+ Parsed `env_stat`" column claiming 100.00%/MAE 0.000.** Replicating the described heuristic (flat +3.5/-3.0 for favored/hindered) gives 98.34% exact / MAE 0.017 / worst-case 1 — good, not perfect. Checked why: `env_stat`'s magnitude isn't recoverable from `modifier_intel` text at all — the identical string `"Favorable conditions (+5%). Lower complication risk. Agility approaches favored."` maps to real `env_stat` values of both `3` (17 occurrences) and `4` (13 occurrences) across different cards. The text only ever says "favored"/"hindered" categorically, never the actual number (unlike `env_global`'s own "(+N%)", which is a different, separate figure). No text-parsing approach can reach 100% here; the 100% figure in this column was most likely computed using each target's real (ground-truth) `env_stat` value during the backtest rather than one actually derived from text — trivial to get 100% that way in a backtest, but not achievable for a genuinely hidden approach in real play. **Shipped implementation defaults `env_stat` to 0 rather than attempting text-parsing**, accepting the small associated error (worst case ~3pt) rather than a heuristic that can't actually reach the accuracy it was framed as reaching.
 
-Section 7 (Complication Analysis)'s specific strategy recommendations (prompt-keyword matching, defaulting the `steel_yourself` fallback to `fight`) are **not** acted on — see the conversation this doc came out of for why: most per-scenario samples are `n=1`-`2`, well under this project's own `docs/street-intel-complication-tracking.md` noise threshold (~15-20+), and the `fight`-fallback figure here (5/6, 83.3%) is a small slice of a larger tracked history (`complicationStats`, ~146 events by a later point) where `fight` sits at 60% and `run` is actually ahead at 69% — the larger sample is the one to trust. `complicationTypeStats` (new, see `shared/types.ts`) now tracks wins/attempts per scenario type so this hypothesis can accumulate real evidence before anything acts on it.
+Section 7 (Complication Analysis)'s specific strategy recommendations (prompt-keyword matching, defaulting the `steel_yourself` fallback to `fight`) are **not** acted on — see the conversation this doc came out of for why: most per-scenario samples are `n=1`-`2`, well under this project's own `docs/street-intel-complication-tracking.md` noise threshold (~15-20+), and the `fight`-fallback figure here (5/6, 83.3%) is a small slice of a larger tracked history (`complicationStats`, 146 total direct+fallback events by a later point) where `fight`'s own *fallback* win rate — the only bucket `pickComplicationChoice` actually consults — sits at 60% (9/15) and `run`'s fallback rate is actually ahead at 69% (18/26); confirmed 2026-09-06 by reading the live `complicationStats` straight out of the extension's popup UI. The larger sample is the one to trust. `complicationTypeStats` (new, see `shared/types.ts`) now tracks wins/attempts per scenario type so this hypothesis can accumulate real evidence before anything acts on it.
