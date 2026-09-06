@@ -657,6 +657,11 @@ export interface StreetIntelAttemptResult {
   reward: number;
   jailSeconds: number;
   hadComplication: boolean;
+  /** The scenario's own narrative text (`complication.type` from the
+   *  `attempt` response, e.g. "You hear footsteps behind the door.") — the
+   *  key `complicationTypeStats` below tallies by. Null alongside
+   *  `complicationChoice: null` when there was no complication at all. */
+  complicationType: string | null;
   complicationChoice: string | null;
   /** True when `complicationChoice` came from the `steel_yourself`-has-no-
    *  equivalent fallback (picked by real historical fallback win rate — see
@@ -726,6 +731,22 @@ export interface ComplicationTrackingBucket {
 
 export type ComplicationChoiceKey = 'fight' | 'run' | 'talk';
 
+/**
+ * Win/loss tally per choice, further split by the complication's own scenario
+ * text (`complication.type`, e.g. "You hear footsteps behind the door.") —
+ * a richer signal than `ComplicationTrackingBucket`'s direct/fallback split,
+ * since different scenarios plausibly favor different choices regardless of
+ * which approach won the attempt (see docs/street-intel-estimate-calculation.md's
+ * "Complication Analysis" section for the hypothesis this exists to test).
+ * Keyed by the literal scenario string rather than any enum, since the full
+ * set of possible scenarios isn't confirmed closed. Same "accumulates for as
+ * long as the automation runs" reasoning as `complicationStats` — most
+ * individual scenarios will sit at single-digit sample sizes for a long
+ * time, so this is deliberately not surfaced as an actionable signal
+ * anywhere yet, only collected.
+ */
+export type ComplicationTypeStats = Record<string, Record<ComplicationChoiceKey, ComplicationChoiceStats>>;
+
 export interface StreetIntelAutoStatus {
   lastAttempt: StreetIntelAttemptResult | null;
   nextEligibleAt: number | null;
@@ -758,6 +779,8 @@ export interface StreetIntelAutoStatus {
    *  the only way to eventually know which choice actually wins more, rather
    *  than guessing. See docs/street-intel-complication-tracking.md. */
   complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>;
+  /** See `ComplicationTypeStats`'s own doc comment. */
+  complicationTypeStats: ComplicationTypeStats;
 }
 
 /**

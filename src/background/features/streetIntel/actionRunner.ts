@@ -12,7 +12,14 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
-import type { ComplicationChoiceKey, ComplicationTrackingBucket, ScoutedCandidateLog, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import type {
+  ComplicationChoiceKey,
+  ComplicationTrackingBucket,
+  ComplicationTypeStats,
+  ScoutedCandidateLog,
+  StreetIntelAutoConfig,
+  StreetIntelAutoStatus,
+} from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
 
@@ -83,6 +90,7 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
     lastCycleScouted: current?.lastCycleScouted ?? [],
     lastCycleAt: current?.lastCycleAt ?? null,
     complicationStats: current?.complicationStats ?? EMPTY_COMPLICATION_STATS,
+    complicationTypeStats: current?.complicationTypeStats ?? {},
     ...patch,
   };
   await storage.setStreetIntelAutoStatus(next);
@@ -109,6 +117,21 @@ function bumpComplicationStats(
   return {
     ...base,
     [choice]: { ...bucket, [kind]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } },
+  };
+}
+
+/** Same folding as `bumpComplicationStats`, keyed by the complication's own
+ *  scenario text instead of direct/fallback — see `ComplicationTypeStats`'s
+ *  doc comment in shared/types.ts for why this exists alongside the other
+ *  tracker rather than replacing it. */
+function bumpComplicationTypeStats(current: ComplicationTypeStats | undefined, type: string, choice: string, success: boolean): ComplicationTypeStats {
+  const base = current ?? {};
+  if (!isComplicationChoiceKey(choice)) return base;
+  const bucket = base[type] ?? { fight: { attempts: 0, successes: 0 }, run: { attempts: 0, successes: 0 }, talk: { attempts: 0, successes: 0 } };
+  const prior = bucket[choice];
+  return {
+    ...base,
+    [type]: { ...bucket, [choice]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } },
   };
 }
 
@@ -464,6 +487,11 @@ async function runIfEligibleOnce(): Promise<void> {
 
     let complicationChoice: string | null = null;
     let complicationSuccess: boolean | null = null;
+    // The scenario's own narrative text — see `ComplicationTypeStats`'s doc
+    // comment in shared/types.ts for why this is captured. Not used for the
+    // choice decision itself yet (sample sizes per scenario are still tiny),
+    // only recorded so that decision becomes possible once they aren't.
+    const complicationType: string | null = attemptResp.has_complication ? String(attemptResp.complication?.type ?? '') || null : null;
     if (attemptResp.has_complication) {
       complicationChoice = pickComplicationChoice(choice, previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
       const compResp = await postAction('/actions/street_intel.php', {
@@ -516,10 +544,14 @@ async function runIfEligibleOnce(): Promise<void> {
     // Only folds in a real, resolved outcome — a complication that came back
     // as anything other than `ok:true` leaves `complicationSuccess` null and
     // isn't counted (see docs/street-intel-complication-tracking.md).
-    const complicationStats =
-      complicationChoice !== null && complicationSuccess !== null
-        ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice, wasFallback, complicationSuccess)
-        : (previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
+    const haveResolvedComplication = complicationChoice !== null && complicationSuccess !== null;
+    const complicationStats = haveResolvedComplication
+      ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice!, wasFallback, complicationSuccess!)
+      : (previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
+    const complicationTypeStats =
+      haveResolvedComplication && complicationType !== null
+        ? bumpComplicationTypeStats(previousStatus?.complicationTypeStats, complicationType, complicationChoice!, complicationSuccess!)
+        : (previousStatus?.complicationTypeStats ?? {});
 
     await updateStatus({
       lastAttempt: {
@@ -533,6 +565,7 @@ async function runIfEligibleOnce(): Promise<void> {
         reward: rewardCash,
         jailSeconds: Number(attemptResp.jail_time) || 0,
         hadComplication: Boolean(attemptResp.has_complication),
+        complicationType,
         complicationChoice,
         complicationWasFallback: attemptResp.has_complication ? wasFallback : null,
         complicationSuccess,
@@ -547,6 +580,7 @@ async function runIfEligibleOnce(): Promise<void> {
       lastCycleScouted: log,
       lastCycleAt: Date.now(),
       complicationStats,
+      complicationTypeStats,
     });
 
     scheduleNextCheck(nextEligibleAt);

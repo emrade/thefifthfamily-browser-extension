@@ -1,7 +1,6 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { parseDollarRange } from '@/shared/parseDollarRange';
 import { storage } from '@/shared/storage';
-import type { PlayerStatsSnapshot } from '@/shared/types';
 
 /**
  * Marks up the live Street Intel page directly — no separate list anywhere the
@@ -58,6 +57,23 @@ const STYLE = `
   position: absolute; top: 8px; right: 10px;
   background: linear-gradient(135deg, #d4af6a, #c9a84c);
   color: #1a1000;
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  z-index: 2;
+}
+.si-approach.ff-si-best-guess {
+  position: relative;
+  border-color: rgba(96,165,250,.5) !important;
+  background: rgba(96,165,250,.06) !important;
+}
+.si-approach.ff-si-best-guess::after {
+  content: 'FF BEST GUESS';
+  position: absolute; top: 8px; right: 10px;
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  color: #0a1628;
   font-size: 0.5rem;
   font-weight: 900;
   letter-spacing: .5px;
@@ -143,8 +159,9 @@ function refreshApproaches(detail: Element) {
 
   for (const approach of approaches) {
     approach.classList.remove('ff-si-best-approach');
+    approach.classList.remove('ff-si-best-guess');
     const match = (approach.querySelector('.scout-pct')?.textContent ?? '').match(/(\d+)%/);
-    if (!match) continue; // unscouted ("Go Blind") dialog — no odds to rank
+    if (!match) continue; // unscouted ("Go Blind") dialog, or a hidden partial-reveal row — no real odds to rank
 
     const pct = Number(match[1]);
     if (pct > bestPct) {
@@ -156,16 +173,17 @@ function refreshApproaches(detail: Element) {
   best?.classList.add('ff-si-best-approach');
 
   // Deliberately never competes for the block above — "FF Best Odds" stays
-  // real-numbers-only, unchanged. This is a separate, clearly-labeled
-  // informational estimate for whatever the 2026-09-06 partial-reveal
-  // change left hidden — see docs/street-intel-partial-reveal.md.
-  void annotateHiddenApproaches(approaches);
+  // real-numbers-only, unchanged. This computes/labels estimates for
+  // whatever has no real number at all (a partial-reveal hidden row, or an
+  // entire Go Blind dialog) — see docs/street-intel-estimate-calculation.md.
+  void annotateApproaches(approaches);
 }
 
 interface ScoutEstimateEntry {
   key: string;
   label: string;
   stat: string;
+  base_pct: number | null;
   estimate_pct: number | null;
   modifiers: Record<string, number> | null;
   revealed: boolean;
@@ -173,19 +191,19 @@ interface ScoutEstimateEntry {
 
 interface CardApproachDef {
   key: string;
+  label: string;
   stat: string;
   bonus: number;
   autofail: boolean;
 }
 
-interface ScoutBundle {
-  estimates: ScoutEstimateEntry[];
-  cardApproaches: CardApproachDef[];
-}
-
-// Keeps only the single most recent scout — same "only one dialog is ever
-// open at a time" assumption `refreshApproaches` above already relies on.
-let lastScoutBundle: ScoutBundle | null = null;
+// The most recent *real* revealed approach seen this session, from any
+// card's scout response — see `recordScoutResponse`. Not reset between
+// cards: its `base_pct`/shared modifiers stay a valid stand-in for a
+// *different*, never-scouted card too (see the "approx" path in
+// `annotateApproaches`), since most of them are account-progression values
+// that don't change between one card and the next.
+let lastScoutSeed: ScoutEstimateEntry | null = null;
 
 /** Minimal decode for the handful of HTML entities the game double-encodes
  *  into a `data-*` attribute's JSON — same as the background parser's own
@@ -196,21 +214,36 @@ function decodeAttrEntities(text: string): string {
   return text.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
 }
 
+function parseCardApproaches(attrValue: string | null): CardApproachDef[] | null {
+  if (!attrValue) return null;
+  try {
+    const parsed = JSON.parse(decodeAttrEntities(attrValue));
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map((a) => ({
+      key: String(a.key ?? ''),
+      label: String(a.label ?? ''),
+      stat: String(a.stat ?? ''),
+      bonus: Number(a.bonus) || 0,
+      autofail: Boolean(a.autofail),
+    }));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Captures a `scout` response's raw data (network-intercepted — see
- * content/features/streetIntel/index.ts) alongside the originating card's
- * own pre-scout `data-approaches` (bonus/autofail per approach, present for
- * *every* approach on the card regardless of whether scouting ever reveals
- * it — the same attribute the background's `streetIntelPanelRegexParser.ts`
- * already parses server-side). Together these are everything
- * `estimateHiddenApproach` below needs; nothing here is persisted, since
- * it's only ever relevant to whichever dialog is currently open.
+ * content/features/streetIntel/index.ts). Only the one real revealed
+ * approach is kept (`estimateExactly` below needs its `base_pct` and
+ * `modifiers`) — everything else this feature needs (which approach is
+ * hidden, its pre-scout `bonus`/`autofail`, the card's risk tier) is read
+ * fresh from the live DOM at render time via `findOwningCard` instead of
+ * cached here, since that lookup works identically whether the current
+ * dialog came from Scout or Go Blind.
  */
 export function recordScoutResponse(requestBody: string, responseText: string): void {
   const params = new URLSearchParams(requestBody);
   if (params.get('action') !== 'scout') return;
-  const opportunityId = params.get('opportunity_id');
-  if (!opportunityId) return;
 
   let json: any;
   try {
@@ -220,102 +253,172 @@ export function recordScoutResponse(requestBody: string, responseText: string): 
   }
   if (!json?.ok || !Array.isArray(json.estimates)) return;
 
-  // Both the Scout and Go Blind buttons on a card carry an identical
-  // `data-approaches` attribute (confirmed real capture) — matching on the
-  // Scout button's own `onclick="siScout(<id>,...)"` handler is enough.
-  const card = document.querySelector(`[onclick*="siScout(${opportunityId},"]`);
-  const approachesAttr = card?.getAttribute('data-approaches');
-  if (!approachesAttr) return;
+  const seed = json.estimates.find((e: any) => e.revealed && typeof e.estimate_pct === 'number' && e.modifiers && typeof e.base_pct === 'number');
+  if (seed) lastScoutSeed = seed;
+}
 
-  let cardApproaches: CardApproachDef[];
-  try {
-    const parsed = JSON.parse(decodeAttrEntities(approachesAttr));
-    if (!Array.isArray(parsed)) return;
-    cardApproaches = parsed.map((a) => ({
-      key: String(a.key ?? ''),
-      stat: String(a.stat ?? ''),
-      bonus: Number(a.bonus) || 0,
-      autofail: Boolean(a.autofail),
-    }));
-  } catch {
-    return;
+// Risk-tier band means for `base_pct`, empirically verified against 819 real
+// scouted cards (see docs/street-intel-estimate-calculation.md's "How
+// base_pct is set" section) — used only as a fallback when a card has never
+// been scouted this session at all, so there's no real `base_pct` to work
+// from. A real band, not a guess: low 46-61 (mean 53.6), medium 38-46 (41.7),
+// high 26-33 (29.3), extreme 17-23 (19.4) — meaningfully less precise than a
+// real scouted base_pct, which is why this path is labeled differently in
+// the UI (see `annotateApproaches`).
+const BASE_PCT_BY_RISK_TIER: Record<'low' | 'medium' | 'high' | 'extreme', number> = {
+  low: 53.6,
+  medium: 41.7,
+  high: 29.3,
+  extreme: 19.4,
+};
+
+/** Same class-based detection as `riskTier()` above, but always returns a
+ *  tier (defaults to `'low'`) rather than `null` for a plain card — that
+ *  function only cares about tiers worth a glow (medium and up), this one
+ *  needs the real tier of *every* card to look up its `base_pct` band. */
+function estimateRiskTier(card: Element): keyof typeof BASE_PCT_BY_RISK_TIER {
+  const cls = card.className;
+  if (cls.includes('risk-extreme')) return 'extreme';
+  if (cls.includes('risk-high')) return 'high';
+  if (cls.includes('risk-medium')) return 'medium';
+  return 'low';
+}
+
+/**
+ * Finds which `.si-card` the currently-open dialog belongs to — needed for
+ * both a partial-reveal dialog (to read the hidden approaches' own pre-scout
+ * `bonus`/`autofail`) and a Go Blind dialog (same data, plus the card's risk
+ * tier for the `base_pct` fallback). There's no id exposed anywhere in the
+ * dialog's own DOM, so this matches on content instead: a card is "the"
+ * owning card only if *every one* of its own approaches' labels shows up
+ * somewhere in the dialog's rows — cheap enough (a handful of cards, 3-4
+ * approaches each) and self-validating, since a false match would need every
+ * label to coincidentally collide.
+ */
+function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; riskTier: keyof typeof BASE_PCT_BY_RISK_TIER } | null {
+  for (const card of Array.from(document.querySelectorAll('.si-card[data-approaches]'))) {
+    const approaches = parseCardApproaches(card.getAttribute('data-approaches'));
+    if (!approaches || approaches.length === 0) continue;
+    if (approaches.every((a) => rowTexts.some((t) => t.includes(a.label)))) {
+      return { approaches, riskTier: estimateRiskTier(card) };
+    }
   }
+  return null;
+}
 
-  lastScoutBundle = { estimates: json.estimates, cardApproaches };
+function sumSharedModifiers(modifiers: Record<string, number>): number {
+  let sum = 0;
+  for (const [key, value] of Object.entries(modifiers)) {
+    // `env_stat` is excluded, not defaulted from the seed — it's specific to
+    // whichever stat the *seed* approach used, not necessarily the hidden
+    // one being estimated. Left out entirely (equivalent to assuming 0)
+    // rather than guessed from text: confirmed the same modifier-intel
+    // wording maps to different real env_stat values on different cards, so
+    // there's no reliable way to recover its magnitude from the text alone
+    // — see docs/street-intel-estimate-calculation.md.
+    if (key === 'stat' || key === 'approach' || key === 'env_stat') continue;
+    sum += value;
+  }
+  return sum;
 }
 
 /**
- * Same-card substitution estimate for a hidden approach — see
- * docs/street-intel-partial-reveal.md for the full derivation and its
- * backtested accuracy against ~3,300 historical real samples (median ~1.4pt
- * error, mean ~2.65pt, worst case ~22pt — tightest in the normal 30-70%
- * range, loosest near the high end). Every modifier term except `stat`/
- * `approach` is confirmed identical across every approach on the same card
- * at the same scouting moment, so they cancel out starting from any one
- * revealed approach on that same card — this never needs to know what
- * those shared terms actually are. `null` when there isn't enough real data
- * to compute anything (an autofail-flagged approach still returns a
- * confident `0` — that part isn't an estimate, it's a hard game rule).
+ * The game's exact server formula — reverse-engineered and verified to
+ * 100.0000% against 3,984 real historical scout estimates (see
+ * docs/street-intel-estimate-calculation.md). Replaces this feature's
+ * original same-card *additive* substitution (median ~1.4pt error, worst
+ * case ~22pt) — this one's only remaining error comes from defaulting
+ * `env_stat` to 0 (see `sumSharedModifiers`), worst case ~3pt, and (in the
+ * "approx" case) from `basePct` itself being a risk-tier band mean rather
+ * than the card's real value.
  */
-function estimateHiddenApproach(
-  seed: ScoutEstimateEntry,
-  hidden: CardApproachDef,
-  stats: Pick<PlayerStatsSnapshot, 'strength' | 'defence' | 'agility' | 'dexterity'>,
-): number | null {
+function computeEstimate(basePct: number, sharedMods: number, hidden: CardApproachDef, rawStat: number): number {
   if (hidden.autofail) return 0;
-  if (!seed.modifiers || seed.estimate_pct === null) return null;
-
-  const seedStatMod = seed.modifiers.stat;
-  const seedApproachMod = seed.modifiers.approach;
-  if (typeof seedStatMod !== 'number' || typeof seedApproachMod !== 'number') return null;
-
-  const rawStat = (stats as unknown as Record<string, number>)[hidden.stat];
-  if (typeof rawStat !== 'number') return null;
-
-  const predicted = seed.estimate_pct - seedStatMod - seedApproachMod + rawStat / 5 + hidden.bonus;
-  return Math.max(0, Math.min(100, Math.round(predicted)));
+  const raw = basePct * (1 + (sharedMods + rawStat / 5) / 100) + hidden.bonus;
+  return Math.max(0, Math.min(95, Math.round(raw)));
 }
 
 /**
- * Fills in a muted "~NN% estimated" next to any approach the 2026-09-06
- * partial-reveal change left hidden ("Unknown") — informational only,
- * never touching the "FF Best Odds" badge logic above. No-ops entirely for
- * a Go Blind dialog (nothing was ever scouted to seed an estimate from,
- * so `lastScoutBundle` is either `null` or stale from a different
- * opportunity — the label-text correlation below naturally fails closed in
- * the stale case) or once a row is already annotated.
+ * Fills in a muted "~NN% estimated" next to any approach with no real
+ * number — a partial-reveal hidden row, or every row of a Go Blind dialog —
+ * informational only, never touching the "FF Best Odds" badge above. A
+ * fully-unscored (Go Blind) dialog additionally gets its own highest
+ * estimate marked "FF BEST GUESS", a visually distinct badge so it's never
+ * confused with a real "FF Best Odds" pick.
+ *
+ * Two confidence levels, labeled differently:
+ * - **exact**: this exact card was scouted this session (`lastScoutSeed`'s
+ *   own label appears among this dialog's rows) — its real `base_pct` and
+ *   modifiers are used directly, same near-perfect accuracy as the formula
+ *   itself.
+ * - **approx**: this card has never been scouted this session — reuses
+ *   `lastScoutSeed`'s modifiers (account-progression values, valid across
+ *   different cards) but estimates `base_pct` from this card's own risk
+ *   tier band instead of a real number. Meaningfully less precise; labeled
+ *   accordingly.
+ *
+ * No-ops entirely if nothing has been scouted at all yet this session
+ * (nothing to seed shared modifiers from) or if `findOwningCard` can't
+ * identify which card this dialog belongs to.
  */
-async function annotateHiddenApproaches(approaches: Element[]): Promise<void> {
-  const bundle = lastScoutBundle;
-  if (!bundle) return;
-  const seed = bundle.estimates.find((e) => e.revealed && e.estimate_pct !== null);
-  if (!seed) return;
+async function annotateApproaches(approaches: Element[]): Promise<void> {
+  const seed = lastScoutSeed;
+  if (!seed?.modifiers || seed.base_pct === null) return;
+
+  const rowTexts = approaches.map((el) => el.textContent ?? '');
+  const owning = findOwningCard(rowTexts);
+  if (!owning) return;
+
+  const seedIsThisCard = rowTexts.some((t) => t.includes(seed.label));
+  const basePct = seedIsThisCard ? seed.base_pct : BASE_PCT_BY_RISK_TIER[owning.riskTier];
+  const confidence: 'exact' | 'approx' = seedIsThisCard ? 'exact' : 'approx';
+  const sharedMods = sumSharedModifiers(seed.modifiers);
 
   const stats = await storage.getLatestStats();
   if (!stats) return;
 
-  for (const approach of approaches) {
-    if (approach.querySelector('.ff-si-estimate')) continue; // already annotated
+  let bestGuessApproach: Element | null = null;
+  let bestGuessPct = -1;
+  let anyRealPct = false;
+
+  for (let i = 0; i < approaches.length; i++) {
+    const approach = approaches[i];
     const scoutEl = approach.querySelector('.scout-pct');
     if (!scoutEl) continue;
-    if (/\d+%/.test(scoutEl.textContent ?? '')) continue; // already a real revealed number
+    const hasReal = /\d+%/.test(scoutEl.textContent ?? '');
+    if (hasReal) {
+      anyRealPct = true;
+      continue;
+    }
 
-    const rowText = approach.textContent ?? '';
-    const hidden = bundle.cardApproaches.find((a) => {
-      const est = bundle.estimates.find((e) => e.key === a.key);
-      return est ? rowText.includes(est.label) : false;
-    });
-    if (!hidden) continue; // this dialog doesn't match the cached bundle at all — different/unscouted opportunity
+    const hidden = owning.approaches.find((a) => rowTexts[i].includes(a.label));
+    if (!hidden) continue;
+    const rawStat = (stats as unknown as Record<string, number>)[hidden.stat];
+    if (typeof rawStat !== 'number') continue;
 
-    const predicted = estimateHiddenApproach(seed, hidden, stats);
-    if (predicted === null) continue;
+    const predicted = computeEstimate(basePct, sharedMods, hidden, rawStat);
 
-    const span = document.createElement('span');
-    span.className = 'ff-si-estimate';
-    span.title = 'Extension estimate, not confirmed by the game — see docs/street-intel-partial-reveal.md for accuracy.';
-    span.textContent = `~${predicted}% estimated`;
-    scoutEl.insertAdjacentElement('afterend', span);
+    if (!approach.querySelector('.ff-si-estimate')) {
+      const span = document.createElement('span');
+      span.className = 'ff-si-estimate';
+      span.title =
+        confidence === 'exact'
+          ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
+          : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
+      span.textContent = confidence === 'exact' ? `~${predicted}% estimated` : `~${predicted}% est. (unscouted)`;
+      scoutEl.insertAdjacentElement('afterend', span);
+    }
+
+    if (predicted > bestGuessPct) {
+      bestGuessPct = predicted;
+      bestGuessApproach = approach;
+    }
   }
+
+  // Only a fully-unscored dialog gets a "best guess" pick — a partial-reveal
+  // dialog already has a real "FF Best Odds" winner from `refreshApproaches`
+  // above, and estimates there are just filling in the gaps around it.
+  if (!anyRealPct) bestGuessApproach?.classList.add('ff-si-best-guess');
 }
 
 const INSTALL_FLAG = '__ffStreetIntelHighlightsInstalled';

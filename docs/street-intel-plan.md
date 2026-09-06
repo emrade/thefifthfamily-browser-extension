@@ -76,13 +76,23 @@ Not built (out of scope for this pass, no explicit ask):
   shared `panelEnvelope.ts` helper.
 - **Actions:** `POST /actions/street_intel.php`, distinguished by the request body's
   `action=` field (same convention as `smuggling.php`):
-  - `scout` — `{opportunity_id}`. Costs 1–2 Stamina (contact-perk dependent). Response:
-    `{"ok":true,"scouted":true,"estimates":[{"key","label","stat","estimate_pct",
-    "rating","rating_color","stat_tip"}...],"modifier_intel":null|string,"scout_cost":1}`
-    — this is what feeds the scout-dialog's per-approach odds, which the in-page
-    highlighter reads straight off the rendered `.scout-pct` text rather than this
-    response directly (the dialog itself is built and inserted by the game's own inline
-    script, not by us, so reading the settled DOM is simpler than re-deriving it).
+  - `scout` — `{opportunity_id}`. Costs 1–2 Stamina (contact-perk dependent). As of a
+    2026-09-06 game change, reveals only one approach at random (rarely two, boosted by
+    Recon Accuracy perks) rather than every approach at once — see
+    `docs/street-intel-partial-reveal.md` for that change and
+    `docs/street-intel-estimate-calculation.md` for the game's exact, reverse-engineered
+    formula for `estimate_pct` (verified to 100.0000% against 3,984 real samples).
+    Response: `{"ok":true,"scouted":true,"estimates":[{"key","label","stat","base_pct",
+    "estimate_pct","modifiers","rating","rating_color","stat_tip","revealed"}...],
+    "modifier_intel":null|string,"scout_cost":1,"recon_pct":12,"revealed_count":1}` — every
+    approach is always present in `estimates`, but only the revealed one(s) carry real
+    `base_pct`/`estimate_pct`/`modifiers`; the rest are `null` with `revealed:false`. This
+    is what feeds the scout-dialog's per-approach odds, which the in-page highlighter
+    reads straight off the rendered `.scout-pct` text for its "FF Best Odds" badge (the
+    dialog itself is built and inserted by the game's own inline script, not by us, so
+    reading the settled DOM is simpler than re-deriving it) — but *does* read this raw
+    response directly for its own computed "~NN% estimated" annotations on hidden
+    approaches, since those aren't rendered by the game at all.
   - `attempt` — `{opportunity_id, approach, scouted}`. Response includes
     `outcome_band`/`band_label`/`band_color`/`result_text`, `reward_cash`, `heat_added`,
     `xp_gained`, `intel_xp_gained`, possible `loot_drop`, possible `jail_time`/

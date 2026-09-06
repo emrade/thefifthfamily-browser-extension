@@ -1,7 +1,12 @@
 # Street Intel — Partial-Reveal Scouting (2026-09-06 game change)
 
-Status: **investigated and documented; code fixes not yet applied — see "What
-needs fixing" at the bottom.**
+Status: **investigated, documented, and fixed — see "What needs fixing" at
+the bottom for what shipped.** The substitution formula this doc originally
+proposed (see "The substitution formula" below) has been **superseded** by
+the game's actual exact formula, reverse-engineered and verified to
+100.0000% accuracy — see `docs/street-intel-estimate-calculation.md`. That
+doc is now the authoritative source for how `estimate_pct` is computed; this
+one keeps its own section below only as a record of the interim approach.
 
 ## The game change
 
@@ -71,7 +76,14 @@ not approximations:
   `autofail` flag — already parsed, no computation needed. (913/3,498 sampled
   estimates were exactly this case.)
 
-## The substitution formula, and its real backtested accuracy
+## The substitution formula, and its real backtested accuracy (superseded)
+
+**Superseded by the exact formula in `docs/street-intel-estimate-calculation.md`
+— kept here only as a record of the interim approach used before that was
+found.** The additive assumption below turned out to be wrong (the real
+formula is multiplicative — `base_pct × (1 + other_mods/100) + approach`,
+not a flat sum), which is exactly why this substitution trick topped out at
+~1.4pt median / ~22pt worst-case error instead of being exact.
 
 Since only `stat` and `approach` vary per-approach on one card, a hidden
 approach's odds can be estimated from **any one revealed approach on the same
@@ -191,34 +203,54 @@ out to be.
    shape as historical context for why the auto-runner was originally built
    that way — not corrected line-by-line, since this doc (linked from the top
    of that section) is the actual current reference now.
-4. **Built** (2026-09-06): `pageHighlights.ts` now shows a muted "~NN%
-   estimated" next to any hidden ("Unknown") approach in the scout dialog,
-   computed via the substitution formula above. Deliberately never competes
-   for the "FF Best Odds" badge, which stays real-numbers-only and otherwise
+4. **Built** (2026-09-06, upgraded same day to the exact formula): `pageHighlights.ts`
+   shows a muted "~NN% estimated" next to any hidden ("Unknown") approach in
+   the scout dialog — now computed via the exact multiplicative formula from
+   `docs/street-intel-estimate-calculation.md` (`env_stat` defaulted to 0;
+   worst-case ~3pt, down from the original substitution's ~22pt), not the
+   superseded additive substitution above. Deliberately never competes for
+   the "FF Best Odds" badge, which stays real-numbers-only and otherwise
    completely unchanged — confirmed as the right call directly with the
    account owner (sometimes 2 real approaches are revealed, and Best Odds
    should keep working exactly as it always has).
 
-   Mechanics: `content/features/streetIntel/index.ts` now also feeds every
+   **Also now covers the Go Blind dialog** — previously this had no estimate
+   or badge at all. `findOwningCard()` matches the currently-open dialog back
+   to its `.si-card` by content (every one of a card's own approach labels
+   must appear somewhere in the dialog's rows — no opportunity ID is exposed
+   anywhere in the dialog's own DOM, so there's nothing more direct to match
+   on), which works identically for a partial-reveal dialog and a Go Blind
+   one. Two confidence levels: if this exact card was already scouted this
+   session, its real `base_pct` is used (same accuracy as the scouted case);
+   otherwise `base_pct` falls back to this card's risk-tier band mean (see
+   `docs/street-intel-estimate-calculation.md`'s base_pct section) —
+   labeled "est. (unscouted)" rather than plain "estimated" so the lower
+   confidence is visible. A fully-unscored Go Blind dialog gets its own
+   highest estimate marked with a new, visually distinct "FF BEST GUESS"
+   badge (blue, not gold) rather than reusing "FF Best Odds" — there's no
+   real number anywhere in that dialog to protect, but a computed guess
+   still shouldn't be presented as if it were one.
+
+   Mechanics: `content/features/streetIntel/index.ts` feeds every
    `action=scout` response into `pageHighlights.ts`'s `recordScoutResponse()`,
-   which looks up the originating card's own `data-approaches` (confirmed
-   real: both the Scout and Go Blind buttons carry an identical
-   `data-approaches` attribute, matched via the Scout button's
-   `onclick="siScout(<id>,...)"`) and caches the combined bundle — only the
-   most recent one, same "only one dialog is ever open" assumption
-   `refreshApproaches` already relied on. When the approach dialog renders,
-   each hidden row is correlated back to its JSON entry by matching the
-   row's own rendered text against the entry's `label` (no opportunity ID is
-   exposed anywhere in the dialog's own DOM, so this is the correlation
-   mechanism — it also naturally fails closed for a Go Blind dialog, since
-   there's nothing scouted to match against).
+   which keeps only the one real revealed estimate (`base_pct` + modifiers) —
+   everything else (which approach is hidden, its pre-scout `bonus`/`autofail`,
+   the card's risk tier) is read fresh from the live DOM via `findOwningCard`
+   at render time instead, since that lookup works the same regardless of
+   whether the current dialog came from Scout or Go Blind.
 
    **Not yet visually confirmed against a live page** — built against the
    selectors `refreshApproaches`'s existing, already-working code uses
    (`.si-approach`, `.scout-pct`), but the label-matching/insertion logic
    itself hasn't been checked live in-game yet. Worth a quick look next time
-   a partially-scouted card comes up.
+   a partially-scouted or Go Blind card comes up.
 5. **Not yet built**: logging Go Blind outcomes distinctly (so the one real
-   sample above starts accumulating into a real dataset) — needed before
-   the substitution formula in this doc becomes safe to act on rather than
-   just observe.
+   sample above starts accumulating into a real dataset) — needed before the
+   exact formula in `docs/street-intel-estimate-calculation.md` becomes safe
+   to act on for a hidden approach (i.e. actually attempting it via Go
+   Blind) rather than just displaying it. Proposed test design: have the
+   runner occasionally submit the *same already-revealed* approach through
+   `scouted=0` instead of `scouted=1` — since nothing is being guessed
+   (the exact approach and its exact odds are already known), this isolates
+   whether Go Blind itself carries any real penalty beyond "you don't know
+   which approach to pick," cleanly separate from formula error.

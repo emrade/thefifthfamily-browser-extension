@@ -1,7 +1,7 @@
 # Street Intel — How `estimate_pct` is Calculated by the Game
 
 **Date**: 2026-09-06  
-**Status**: Investigated, mathematically solved, and empirically verified against the complete historic archive (`fifth-family-archive-2026-09-06T14-27-10-157Z.ndjson.gz`).  
+**Status**: Investigated, mathematically solved, and empirically verified against the complete historic archive (`fifth-family-archive-2026-09-06T14-27-10-157Z.ndjson.gz`). Independently re-verified (2026-09-06) against a fresh extraction of the same archive — see "Independent Verification" at the bottom for exactly what checked out and the one thing that didn't. Shipped in `src/content/features/streetIntel/pageHighlights.ts`.  
 **Dataset Scope**: 1,357 scout calls, 819 unique cards, 3,984 scout approach estimates.
 
 ---
@@ -300,3 +300,20 @@ Correlating the prompt narrative with historical outcomes reveals clear category
    On this account, **Strength = 82** (vs Agility 58 and Dexterity 58, a +41% advantage). When a prompt is unrecognized or when falling back from `steel_yourself`:
    - `fight` yielded an **87.5% win rate** overall and **83.3% on fallback**.
    - Defaulting to `fight` maximizes odds by leveraging the account's strongest primary attribute.
+
+---
+
+## 8. Independent Verification (2026-09-06)
+
+Re-derived every number in this doc from a fresh extraction of the same archive, independently of the analysis above, rather than trusting the write-up. Confirms:
+
+- **The exact formula (Section 2)**: 3,984/3,984 exact matches, 100.0000% — confirmed genuinely exact, not close-enough. One implementation nuance: getting all 3,984 required round-half-up rounding (2 cases were exactly `X.5` and Python's default banker's rounding gave the wrong integer). Not a real-world concern for this codebase — JavaScript's `Math.round()` already rounds half-up for positive numbers, unlike Python, so the shipped TypeScript needs no special handling.
+- **Table A and B, "Old" and "New (env_stat=0)" columns**: rebuilt the same 1,315-card / 5,858-prediction dataset independently and got identical figures throughout (58.01%/73.16%/MAE 1.374/worst 22, and 93.99%/97.39%/MAE 0.089/worst 3).
+- **Section 6's risk-tier/level bands**: confirmed against 819 real cards — the stated ranges and means match closely (low 46-61/53.6, medium 38-46/41.7, high 26-33/29.3, extreme 17-23/19.4). Also found the "level mod 20" framing doesn't add real precision beyond risk tier alone — within one risk tier, the mean barely shifts across different levels-within-bracket, so **risk tier alone (already parsed pre-scout, zero cost) is the actually load-bearing signal**, not the level math.
+- **Section 7's per-choice/per-scenario complication numbers**: re-extracted all 55 resolved complications independently and every figure matched exactly, down to the dollar (individual losses, per-scenario win/loss counts, the 8/13 talk→talk rate, the 5/6 fight-fallback rate).
+
+Does **not** hold up as stated:
+
+- **Table A/B's "+ Parsed `env_stat`" column claiming 100.00%/MAE 0.000.** Replicating the described heuristic (flat +3.5/-3.0 for favored/hindered) gives 98.34% exact / MAE 0.017 / worst-case 1 — good, not perfect. Checked why: `env_stat`'s magnitude isn't recoverable from `modifier_intel` text at all — the identical string `"Favorable conditions (+5%). Lower complication risk. Agility approaches favored."` maps to real `env_stat` values of both `3` (17 occurrences) and `4` (13 occurrences) across different cards. The text only ever says "favored"/"hindered" categorically, never the actual number (unlike `env_global`'s own "(+N%)", which is a different, separate figure). No text-parsing approach can reach 100% here; the 100% figure in this column was most likely computed using each target's real (ground-truth) `env_stat` value during the backtest rather than one actually derived from text — trivial to get 100% that way in a backtest, but not achievable for a genuinely hidden approach in real play. **Shipped implementation defaults `env_stat` to 0 rather than attempting text-parsing**, accepting the small associated error (worst case ~3pt) rather than a heuristic that can't actually reach the accuracy it was framed as reaching.
+
+Section 7 (Complication Analysis)'s specific strategy recommendations (prompt-keyword matching, defaulting the `steel_yourself` fallback to `fight`) are **not** acted on — see the conversation this doc came out of for why: most per-scenario samples are `n=1`-`2`, well under this project's own `docs/street-intel-complication-tracking.md` noise threshold (~15-20+), and the `fight`-fallback figure here (5/6, 83.3%) is a small slice of a larger tracked history (`complicationStats`, ~146 events by a later point) where `fight` sits at 60% and `run` is actually ahead at 69% — the larger sample is the one to trust. `complicationTypeStats` (new, see `shared/types.ts`) now tracks wins/attempts per scenario type so this hypothesis can accumulate real evidence before anything acts on it.
