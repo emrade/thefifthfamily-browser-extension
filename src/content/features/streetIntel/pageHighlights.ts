@@ -82,13 +82,28 @@ const STYLE = `
   border-radius: 4px;
   z-index: 2;
 }
-.ff-si-estimate {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 0.62rem;
-  font-style: italic;
-  color: #9a8f6b;
-  opacity: 0.85;
+.si-approach { position: relative; }
+.ff-si-estimate-badge {
+  position: absolute;
+  top: 8px; right: 10px;
+  background: rgba(167,139,250,.16);
+  color: #c4b5fd;
+  border: 1px solid rgba(167,139,250,.4);
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  z-index: 2;
+  white-space: nowrap;
+}
+/* A row that already carries a real corner badge (the one genuinely-revealed
+   approach, or a Go-Blind dialog's best guess) needs its own estimate badge
+   pushed down instead of overlapping that one — see annotateApproaches,
+   which now labels every row, real included, so the two can be compared. */
+.si-approach.ff-si-best-approach .ff-si-estimate-badge,
+.si-approach.ff-si-best-guess .ff-si-estimate-badge {
+  top: 32px;
 }
 `;
 
@@ -295,25 +310,38 @@ function estimateRiskTier(card: Element): keyof typeof BASE_PCT_BY_RISK_TIER {
  * somewhere in the dialog's rows — cheap enough (a handful of cards, 3-4
  * approaches each) and self-validating, since a false match would need every
  * label to coincidentally collide.
+ *
+ * `data-approaches` lives on the card's own Scout/Go Blind `<button>`
+ * elements, not on `.si-card` itself (confirmed against a real capture,
+ * 2026-09-06) — both buttons on a card carry an identical value, so matching
+ * either one and walking up to its `.si-card` ancestor is equivalent to
+ * matching the card directly. Scoped to `.si-cards` (the opportunity list
+ * container) rather than the whole document to avoid any coincidental match
+ * elsewhere on the page.
  */
 function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; riskTier: keyof typeof BASE_PCT_BY_RISK_TIER } | null {
-  for (const card of Array.from(document.querySelectorAll('.si-card[data-approaches]'))) {
-    const approaches = parseCardApproaches(card.getAttribute('data-approaches'));
+  for (const btn of Array.from(document.querySelectorAll('.si-cards [data-approaches]'))) {
+    const approaches = parseCardApproaches(btn.getAttribute('data-approaches'));
     if (!approaches || approaches.length === 0) continue;
     if (approaches.every((a) => rowTexts.some((t) => t.includes(a.label)))) {
-      return { approaches, riskTier: estimateRiskTier(card) };
+      const card = btn.closest('.si-card');
+      return { approaches, riskTier: card ? estimateRiskTier(card) : 'low' };
     }
   }
   return null;
 }
 
 /**
- * Fills in a muted "~NN% estimated" next to any approach with no real
- * number — a partial-reveal hidden row, or every row of a Go Blind dialog —
- * informational only, never touching the "FF Best Odds" badge above. A
+ * Adds a small "~NN% est." corner badge to every approach row this formula
+ * can score — a partial-reveal hidden row, every row of a Go Blind dialog,
+ * *and* (unlike before) the one row that already has a real number, so the
+ * formula's own guess sits right next to the real value for a direct,
+ * always-available accuracy check rather than only ever being checkable
+ * once a hidden approach happens to get revealed some other time. Never
+ * touches the "FF Best Odds" pick itself — that stays real-numbers-only. A
  * fully-unscored (Go Blind) dialog additionally gets its own highest
- * estimate marked "FF BEST GUESS", a visually distinct badge so it's never
- * confused with a real "FF Best Odds" pick.
+ * *hidden-row* estimate marked "FF BEST GUESS", a visually distinct badge so
+ * it's never confused with a real "FF Best Odds" pick.
  *
  * Two confidence levels, labeled differently:
  * - **exact**: this exact card was scouted this session (`lastScoutSeed`'s
@@ -352,13 +380,16 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
 
   for (let i = 0; i < approaches.length; i++) {
     const approach = approaches[i];
+    // A Go Blind dialog never renders `.scout-info`/`.scout-pct` at all for
+    // any row — the game's own client JS only builds that markup `if
+    // (scouted && scoutData)`, and Go Blind calls its dialog builder with
+    // `scouted: false, scoutData: null` (confirmed against a real capture,
+    // 2026-09-06). So its absence here just means "no real number," same as
+    // a partial-reveal hidden row — not a reason to skip the row entirely,
+    // which previously left every Go Blind row with no estimate at all.
     const scoutEl = approach.querySelector('.scout-pct');
-    if (!scoutEl) continue;
-    const hasReal = /\d+%/.test(scoutEl.textContent ?? '');
-    if (hasReal) {
-      anyRealPct = true;
-      continue;
-    }
+    const hasReal = scoutEl !== null && /\d+%/.test(scoutEl.textContent ?? '');
+    if (hasReal) anyRealPct = true;
 
     const hidden = owning.approaches.find((a) => rowTexts[i].includes(a.label));
     if (!hidden) continue;
@@ -367,18 +398,21 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
 
     const predicted = computeEstimate(basePct, sharedMods, hidden, rawStat);
 
-    if (!approach.querySelector('.ff-si-estimate')) {
-      const span = document.createElement('span');
-      span.className = 'ff-si-estimate';
-      span.title =
-        confidence === 'exact'
+    if (!approach.querySelector('.ff-si-estimate-badge')) {
+      const badge = document.createElement('div');
+      badge.className = 'ff-si-estimate-badge';
+      badge.title = hasReal
+        ? "Extension's own formula estimate for this same, already-revealed approach — compare it against the real number to see how accurate the formula is. See docs/street-intel-estimate-calculation.md."
+        : confidence === 'exact'
           ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
           : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
-      span.textContent = confidence === 'exact' ? `~${predicted}% estimated` : `~${predicted}% est. (unscouted)`;
-      scoutEl.insertAdjacentElement('afterend', span);
+      badge.textContent = confidence === 'exact' ? `~${predicted}% est.` : `~${predicted}% est.*`;
+      approach.appendChild(badge);
     }
 
-    if (predicted > bestGuessPct) {
+    // A real row is never eligible as the Go-Blind "best guess" — it's not
+    // a guess, it already has a real number.
+    if (!hasReal && predicted > bestGuessPct) {
       bestGuessPct = predicted;
       bestGuessApproach = approach;
     }

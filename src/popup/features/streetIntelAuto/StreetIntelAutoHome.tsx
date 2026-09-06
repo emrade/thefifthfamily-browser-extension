@@ -226,17 +226,27 @@ export function StreetIntelAutoHome() {
             coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
             {config.oddsMode === 'computed' && ' "≈" marks a computed (not scout-revealed) estimate; "→" marks the pick.'}
           </div>
-          {status.lastCycleScouted.map((c, i) => (
-            <div class="ff-auto-row" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
-              {c.chosen ? '✓' : '✗'} {c.title} ({riskLabel(c.riskTier)}
-              {c.legendary ? ', Legendary' : ''}) · {c.staminaCost}S · value {Math.round(c.valueRatio).toLocaleString()}/S ·{' '}
-              {c.approaches.length === 0
-                ? 'scout rejected'
-                : c.approaches
-                    .map((a) => `${a.key === c.approach ? '→' : ''}${a.key} ${a.estimatePct}%${a.source === 'computed' ? '≈' : ''}`)
-                    .join(' · ')}
-            </div>
-          ))}
+          {status.lastCycleScouted.map((c, i) => {
+            // `approaches` is new (2026-09-06) — a `lastCycleScouted` entry
+            // written by an older build before this field existed is still
+            // sitting in storage as-is until the next cycle overwrites it
+            // (unlike `StreetIntelAutoConfig`, `StreetIntelAutoStatus` isn't
+            // merged with defaults on read), so this can't assume it exists.
+            const approaches = c.approaches ?? [];
+            return (
+              <div class="ff-auto-row" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
+                {c.chosen ? '✓' : '✗'} {c.title} ({riskLabel(c.riskTier)}
+                {c.legendary ? ', Legendary' : ''}) · {c.staminaCost}S · value {Math.round(c.valueRatio).toLocaleString()}/S ·{' '}
+                {approaches.length > 0
+                  ? approaches
+                      .map((a) => `${a.key === c.approach ? '→' : ''}${a.key} ${a.estimatePct}%${a.source === 'computed' ? '≈' : ''}`)
+                      .join(' · ')
+                  : c.estimatePct === null
+                    ? 'scout rejected'
+                    : `${c.approach} ${c.estimatePct}%`}
+              </div>
+            );
+          })}
         </>
       )}
 
