@@ -144,9 +144,6 @@ interface ScoutedChoice {
   opportunity: StreetIntelOpportunity;
   approach: string;
   estimatePct: number;
-  /** The next-best scouted approach, for the one case with no direct
-   *  complication equivalent — see the module doc below. */
-  secondBestApproach: string | null;
 }
 
 /**
@@ -246,9 +243,23 @@ async function findScoutedCandidate(
       throw new SystemicActionError('scout succeeded but returned no estimates — the game may have changed this action\'s format', 'shape');
     }
 
-    const sorted = [...resp.estimates].sort((a: any, b: any) => (b.estimate_pct ?? 0) - (a.estimate_pct ?? 0));
+    // Filtered to genuinely revealed approaches before ever sorting — as of
+    // the 2026-09-06 partial-reveal game change, `estimates` lists every
+    // approach on the card whether or not scouting revealed it, with hidden
+    // ones carrying `estimate_pct: null` and `revealed: false`. Sorting the
+    // unfiltered array happened to still pick the right `top` (a real
+    // percentage always beats a null coerced to 0), but a *second* pick —
+    // this function used to also take `sorted[1]` as a "second-best scouted
+    // approach" — would almost always land on a hidden entry instead: not a
+    // real second opinion, just an approach with zero actual information
+    // behind it. `e.revealed !== false` (not `=== true`) keeps this correct
+    // against the old, pre-change shape too, where the field didn't exist at
+    // all and every entry was a real reveal. See
+    // docs/street-intel-partial-reveal.md for the full investigation.
+    const revealed = resp.estimates.filter((e: any) => typeof e.estimate_pct === 'number' && e.revealed !== false);
+    const sorted = [...revealed].sort((a: any, b: any) => b.estimate_pct - a.estimate_pct);
     const top = sorted[0];
-    const bestPct: number | null = top && typeof top.estimate_pct === 'number' ? top.estimate_pct : null;
+    const bestPct: number | null = top ? top.estimate_pct : null;
     const bestKey: string | null = top ? String(top.key) : null;
     // Affordability is *not* checked here against the running scouting spend —
     // see the staminaLeftAfterScouting comment below for why that has to wait
@@ -264,7 +275,6 @@ async function findScoutedCandidate(
         opportunity: candidate,
         approach: bestKey!,
         estimatePct: bestPct!,
-        secondBestApproach: sorted[1] ? String(sorted[1].key) : null,
       },
       logIndex: log.length - 1,
     });
@@ -308,15 +318,41 @@ async function findScoutedCandidate(
  * The one exception is `steel_yourself` (defence), which has no complication
  * equivalent at all — confirmed against this account's own real play: it was
  * this account's single most-used approach (33 of 105 real attempts), so this
- * isn't a rare edge case. Falls back to whichever of the *other* scouted
- * approaches on this same card came in second-best — since a card only ever
- * offers 3 of the 4 possible approaches, if `steel_yourself` was the winner,
- * the two others on the card are necessarily drawn from fight/run/talk, so the
- * second-best is always already a valid complication choice.
+ * isn't a rare edge case.
+ *
+ * Used to fall back to whichever of the other scouted approaches on the same
+ * card came in second-best (`secondBestApproach`) — retired as of the
+ * 2026-09-06 partial-reveal game change, which made a real second-best
+ * scouted approach mostly unavailable (see docs/street-intel-partial-reveal.md):
+ * under the new behavior `secondBestApproach` was almost always an approach
+ * that was never actually revealed, not a genuine second opinion.
+ *
+ * Replaced with the account's own real history instead: `complicationStats`
+ * (see docs/street-intel-complication-tracking.md) already tracks a
+ * `fallback` win rate per choice — exactly the "steel_yourself won, need a
+ * substitute" scenario this function handles — separately from `direct`
+ * picks. As of 2026-09-06 all three choices clear the doc's own "~15-20+"
+ * noise threshold (fight 9/15, run 18/26, talk 19/36), so picking whichever
+ * has the best real `fallback` win rate so far is a genuine, data-backed
+ * choice rather than a guess. Falls back to the old hardcoded `'talk'`
+ * default only while a choice has zero recorded fallback attempts yet.
  */
-function pickComplicationChoice(choice: ScoutedChoice): string {
+function pickComplicationChoice(choice: ScoutedChoice, complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>): string {
   if (choice.approach !== 'steel_yourself') return choice.approach;
-  return choice.secondBestApproach ?? 'talk';
+
+  const keys: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
+  let best: ComplicationChoiceKey = 'talk';
+  let bestRate = -1;
+  for (const key of keys) {
+    const bucket = complicationStats[key].fallback;
+    if (bucket.attempts === 0) continue;
+    const rate = bucket.successes / bucket.attempts;
+    if (rate > bestRate) {
+      bestRate = rate;
+      best = key;
+    }
+  }
+  return best;
 }
 
 // `chrome.alarms` is confirmed to occasionally fire an alarm twice for a
@@ -421,10 +457,15 @@ async function runIfEligibleOnce(): Promise<void> {
       return;
     }
 
+    // Fetched here, before the complication decision below needs it (for the
+    // `fallback` win-rate lookup in `pickComplicationChoice`), and reused
+    // further down rather than fetched a second time.
+    const previousStatus = await storage.getStreetIntelAutoStatus();
+
     let complicationChoice: string | null = null;
     let complicationSuccess: boolean | null = null;
     if (attemptResp.has_complication) {
-      complicationChoice = pickComplicationChoice(choice);
+      complicationChoice = pickComplicationChoice(choice, previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
       const compResp = await postAction('/actions/street_intel.php', {
         action: 'complication',
         opportunity_id: choice.opportunity.id,
@@ -459,17 +500,17 @@ async function runIfEligibleOnce(): Promise<void> {
 
     const rewardCash = Number(attemptResp.reward_cash) || 0;
     const today = localDateKey();
-    const previousStatus = await storage.getStreetIntelAutoStatus();
     const rolledOver = previousStatus?.attemptsTodayDate !== today;
     const attemptsToday = rolledOver ? 1 : previousStatus!.attemptsToday + 1;
     const cashToday = (rolledOver ? 0 : previousStatus!.cashToday ?? 0) + rewardCash;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
     // Whether this complication choice came from the steel_yourself fallback
-    // (second-best scouted approach) rather than directly reusing the
-    // attempt's own winning approach — see pickComplicationChoice's own
-    // branch condition, mirrored here, and ComplicationTrackingBucket's doc
-    // comment for why the two are tracked separately.
+    // (real fallback win-rate lookup, see pickComplicationChoice) rather than
+    // directly reusing the attempt's own winning approach — see
+    // pickComplicationChoice's own branch condition, mirrored here, and
+    // ComplicationTrackingBucket's doc comment for why the two are tracked
+    // separately.
     const wasFallback = choice.approach === 'steel_yourself';
 
     // Only folds in a real, resolved outcome — a complication that came back

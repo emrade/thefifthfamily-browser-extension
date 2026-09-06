@@ -659,10 +659,11 @@ export interface StreetIntelAttemptResult {
   hadComplication: boolean;
   complicationChoice: string | null;
   /** True when `complicationChoice` came from the `steel_yourself`-has-no-
-   *  equivalent fallback (the second-best scouted approach) rather than
-   *  directly reusing the approach that actually won the attempt. Null
-   *  alongside `complicationChoice: null` when there was no complication at
-   *  all. See docs/street-intel-complication-tracking.md. */
+   *  equivalent fallback (picked by real historical fallback win rate — see
+   *  `pickComplicationChoice` in actionRunner.ts) rather than directly
+   *  reusing the approach that actually won the attempt. Null alongside
+   *  `complicationChoice: null` when there was no complication at all. See
+   *  docs/street-intel-complication-tracking.md. */
   complicationWasFallback: boolean | null;
   complicationSuccess: boolean | null;
 }

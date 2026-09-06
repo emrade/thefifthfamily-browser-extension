@@ -217,9 +217,10 @@ export function StreetIntelAutoHome() {
             <div class="ff-field__hint">
               Win rate per choice across every complication resolved so far — there's no odds data for any of these
               from the game itself, so this is the only way to eventually know which one actually wins more.
-              "Direct" means the choice matched the attempt's own winning approach; "fallback" means it came from the
-              steel_yourself second-best substitute — a weaker bet by construction, worth reading separately. Treat
-              either as noise until it has a real sample (~15–20+) — see docs/street-intel-complication-tracking.md.
+              "Direct" means the choice matched the attempt's own winning approach; "fallback" means steel_yourself won
+              instead (it has no complication equivalent of its own) and this choice was substituted in — a weaker bet
+              by construction, worth reading separately. Treat either as noise until it has a real sample (~15–20+) —
+              see docs/street-intel-complication-tracking.md.
             </div>
             {COMPLICATION_KEYS.map((key) => {
               const s = status.complicationStats[key];

@@ -1,7 +1,13 @@
 # Street Intel — Complication Choice Tracking
 
-Status: **instrumentation implemented, no decision to make yet — this doc exists to
-explain what's being collected and when it's actually safe to act on it.**
+Status: **instrumentation implemented — and as of 2026-09-06, the `fallback`
+bucket below has cleared this doc's own "~15-20+" sample threshold for all
+three choices (see "How to use this data later," point 1). See
+`docs/street-intel-partial-reveal.md` for why this is now urgent, not just
+available: the 2026-09-06 scouting change broke the `secondBestApproach`
+heuristic `pickComplicationChoice()`'s `steel_yourself` fallback depends on,
+and this tracker's real `fallback` win-rate data is the recommended
+replacement.**
 
 ## Why this exists
 

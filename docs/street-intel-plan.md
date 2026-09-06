@@ -176,7 +176,13 @@ Not built (out of scope for this pass, no explicit ask):
 
 ## Auto-Attempt
 
-Status: **implemented.**
+Status: **implemented, but a 2026-09-06 game change invalidated a core
+assumption below — see `docs/street-intel-partial-reveal.md` for the full
+investigation. Short version: scouting no longer reveals every approach's
+odds in one call (one random approach only, rarely two), which breaks
+`findScoutedCandidate()`'s `sorted[1]`/`secondBestApproach` and the "Confirmed
+API details" `scout` shape description immediately below. Fixes not yet
+applied.**
 
 The highlights and notifier above still leave every action manual — the player scouts,
 picks an approach, attempts, and answers any complication by hand. This adds a

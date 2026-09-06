@@ -1,5 +1,7 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { parseDollarRange } from '@/shared/parseDollarRange';
+import { storage } from '@/shared/storage';
+import type { PlayerStatsSnapshot } from '@/shared/types';
 
 /**
  * Marks up the live Street Intel page directly — no separate list anywhere the
@@ -62,6 +64,14 @@ const STYLE = `
   padding: 2px 7px;
   border-radius: 4px;
   z-index: 2;
+}
+.ff-si-estimate {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 0.62rem;
+  font-style: italic;
+  color: #9a8f6b;
+  opacity: 0.85;
 }
 `;
 
@@ -144,6 +154,168 @@ function refreshApproaches(detail: Element) {
   }
 
   best?.classList.add('ff-si-best-approach');
+
+  // Deliberately never competes for the block above — "FF Best Odds" stays
+  // real-numbers-only, unchanged. This is a separate, clearly-labeled
+  // informational estimate for whatever the 2026-09-06 partial-reveal
+  // change left hidden — see docs/street-intel-partial-reveal.md.
+  void annotateHiddenApproaches(approaches);
+}
+
+interface ScoutEstimateEntry {
+  key: string;
+  label: string;
+  stat: string;
+  estimate_pct: number | null;
+  modifiers: Record<string, number> | null;
+  revealed: boolean;
+}
+
+interface CardApproachDef {
+  key: string;
+  stat: string;
+  bonus: number;
+  autofail: boolean;
+}
+
+interface ScoutBundle {
+  estimates: ScoutEstimateEntry[];
+  cardApproaches: CardApproachDef[];
+}
+
+// Keeps only the single most recent scout — same "only one dialog is ever
+// open at a time" assumption `refreshApproaches` above already relies on.
+let lastScoutBundle: ScoutBundle | null = null;
+
+/** Minimal decode for the handful of HTML entities the game double-encodes
+ *  into a `data-*` attribute's JSON — same as the background parser's own
+ *  `decodeAttrEntities` (streetIntelPanelRegexParser.ts), duplicated here
+ *  rather than imported since content and background code don't share a
+ *  module boundary in this codebase. */
+function decodeAttrEntities(text: string): string {
+  return text.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&');
+}
+
+/**
+ * Captures a `scout` response's raw data (network-intercepted — see
+ * content/features/streetIntel/index.ts) alongside the originating card's
+ * own pre-scout `data-approaches` (bonus/autofail per approach, present for
+ * *every* approach on the card regardless of whether scouting ever reveals
+ * it — the same attribute the background's `streetIntelPanelRegexParser.ts`
+ * already parses server-side). Together these are everything
+ * `estimateHiddenApproach` below needs; nothing here is persisted, since
+ * it's only ever relevant to whichever dialog is currently open.
+ */
+export function recordScoutResponse(requestBody: string, responseText: string): void {
+  const params = new URLSearchParams(requestBody);
+  if (params.get('action') !== 'scout') return;
+  const opportunityId = params.get('opportunity_id');
+  if (!opportunityId) return;
+
+  let json: any;
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    return;
+  }
+  if (!json?.ok || !Array.isArray(json.estimates)) return;
+
+  // Both the Scout and Go Blind buttons on a card carry an identical
+  // `data-approaches` attribute (confirmed real capture) — matching on the
+  // Scout button's own `onclick="siScout(<id>,...)"` handler is enough.
+  const card = document.querySelector(`[onclick*="siScout(${opportunityId},"]`);
+  const approachesAttr = card?.getAttribute('data-approaches');
+  if (!approachesAttr) return;
+
+  let cardApproaches: CardApproachDef[];
+  try {
+    const parsed = JSON.parse(decodeAttrEntities(approachesAttr));
+    if (!Array.isArray(parsed)) return;
+    cardApproaches = parsed.map((a) => ({
+      key: String(a.key ?? ''),
+      stat: String(a.stat ?? ''),
+      bonus: Number(a.bonus) || 0,
+      autofail: Boolean(a.autofail),
+    }));
+  } catch {
+    return;
+  }
+
+  lastScoutBundle = { estimates: json.estimates, cardApproaches };
+}
+
+/**
+ * Same-card substitution estimate for a hidden approach — see
+ * docs/street-intel-partial-reveal.md for the full derivation and its
+ * backtested accuracy against ~3,300 historical real samples (median ~1.4pt
+ * error, mean ~2.65pt, worst case ~22pt — tightest in the normal 30-70%
+ * range, loosest near the high end). Every modifier term except `stat`/
+ * `approach` is confirmed identical across every approach on the same card
+ * at the same scouting moment, so they cancel out starting from any one
+ * revealed approach on that same card — this never needs to know what
+ * those shared terms actually are. `null` when there isn't enough real data
+ * to compute anything (an autofail-flagged approach still returns a
+ * confident `0` — that part isn't an estimate, it's a hard game rule).
+ */
+function estimateHiddenApproach(
+  seed: ScoutEstimateEntry,
+  hidden: CardApproachDef,
+  stats: Pick<PlayerStatsSnapshot, 'strength' | 'defence' | 'agility' | 'dexterity'>,
+): number | null {
+  if (hidden.autofail) return 0;
+  if (!seed.modifiers || seed.estimate_pct === null) return null;
+
+  const seedStatMod = seed.modifiers.stat;
+  const seedApproachMod = seed.modifiers.approach;
+  if (typeof seedStatMod !== 'number' || typeof seedApproachMod !== 'number') return null;
+
+  const rawStat = (stats as unknown as Record<string, number>)[hidden.stat];
+  if (typeof rawStat !== 'number') return null;
+
+  const predicted = seed.estimate_pct - seedStatMod - seedApproachMod + rawStat / 5 + hidden.bonus;
+  return Math.max(0, Math.min(100, Math.round(predicted)));
+}
+
+/**
+ * Fills in a muted "~NN% estimated" next to any approach the 2026-09-06
+ * partial-reveal change left hidden ("Unknown") — informational only,
+ * never touching the "FF Best Odds" badge logic above. No-ops entirely for
+ * a Go Blind dialog (nothing was ever scouted to seed an estimate from,
+ * so `lastScoutBundle` is either `null` or stale from a different
+ * opportunity — the label-text correlation below naturally fails closed in
+ * the stale case) or once a row is already annotated.
+ */
+async function annotateHiddenApproaches(approaches: Element[]): Promise<void> {
+  const bundle = lastScoutBundle;
+  if (!bundle) return;
+  const seed = bundle.estimates.find((e) => e.revealed && e.estimate_pct !== null);
+  if (!seed) return;
+
+  const stats = await storage.getLatestStats();
+  if (!stats) return;
+
+  for (const approach of approaches) {
+    if (approach.querySelector('.ff-si-estimate')) continue; // already annotated
+    const scoutEl = approach.querySelector('.scout-pct');
+    if (!scoutEl) continue;
+    if (/\d+%/.test(scoutEl.textContent ?? '')) continue; // already a real revealed number
+
+    const rowText = approach.textContent ?? '';
+    const hidden = bundle.cardApproaches.find((a) => {
+      const est = bundle.estimates.find((e) => e.key === a.key);
+      return est ? rowText.includes(est.label) : false;
+    });
+    if (!hidden) continue; // this dialog doesn't match the cached bundle at all — different/unscouted opportunity
+
+    const predicted = estimateHiddenApproach(seed, hidden, stats);
+    if (predicted === null) continue;
+
+    const span = document.createElement('span');
+    span.className = 'ff-si-estimate';
+    span.title = 'Extension estimate, not confirmed by the game — see docs/street-intel-partial-reveal.md for accuracy.';
+    span.textContent = `~${predicted}% estimated`;
+    scoutEl.insertAdjacentElement('afterend', span);
+  }
 }
 
 const INSTALL_FLAG = '__ffStreetIntelHighlightsInstalled';
