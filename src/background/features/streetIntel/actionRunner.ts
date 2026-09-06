@@ -12,10 +12,13 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
+import { computeEstimate, sumSharedModifiers } from '@/shared/streetIntelEstimate';
 import type {
   ComplicationChoiceKey,
   ComplicationTrackingBucket,
   ComplicationTypeStats,
+  PlayerStatsSnapshot,
+  ScoutedApproachEstimate,
   ScoutedCandidateLog,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
@@ -167,6 +170,7 @@ interface ScoutedChoice {
   opportunity: StreetIntelOpportunity;
   approach: string;
   estimatePct: number;
+  pctSource: 'real' | 'computed';
 }
 
 /**
@@ -232,11 +236,26 @@ interface ScoutedChoice {
  * `log`, so a cycle that scouts three opportunities and only one clears the
  * threshold (or none do) leaves a visible trail of what was considered and
  * why, not just the eventual winner.
+ *
+ * `oddsMode` (`StreetIntelAutoConfig`): under `'revealed'` (default), ranking
+ * only ever considers the approach(es) the scout actually gave real numbers
+ * for — unchanged from the original behavior. Under `'computed'`, every
+ * *other* approach on the same card also gets scored via the exact formula
+ * (`@/shared/streetIntelEstimate`), using that same scout's real `base_pct`
+ * and shared modifiers plus the player's own raw stat (`rawStats`) — so a
+ * hidden approach can win the ranking and get attempted directly, which is
+ * confirmed safe: `attempt` accepts any approach regardless of which one was
+ * revealed (see docs/street-intel-partial-reveal.md's "Correction" note).
+ * `rawStats` is only needed for `'computed'` — null just means that mode
+ * quietly behaves like `'revealed'` for the cycle (no stats snapshot yet to
+ * compute from), rather than guessing with a stat of 0.
  */
 async function findScoutedCandidate(
   candidates: StreetIntelOpportunity[],
   minSuccessPct: number,
   availableStamina: number,
+  oddsMode: StreetIntelAutoConfig['oddsMode'],
+  rawStats: PlayerStatsSnapshot | null,
 ): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[] }> {
   const log: ScoutedCandidateLog[] = [];
   let staminaSpentScouting = 0;
@@ -254,7 +273,18 @@ async function findScoutedCandidate(
     // table this cycle. `postAction` already throws for anything that looks
     // like an auth/session problem or a genuinely malformed response.
     if (resp?.ok !== true) {
-      log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: null, estimatePct: null, chosen: false });
+      log.push({
+        title: candidate.title,
+        riskTier: candidate.riskTier,
+        legendary: candidate.legendary,
+        staminaCost: candidate.staminaCost,
+        valueRatio,
+        approach: null,
+        estimatePct: null,
+        pctSource: null,
+        approaches: [],
+        chosen: false,
+      });
       continue;
     }
 
@@ -280,16 +310,54 @@ async function findScoutedCandidate(
     // all and every entry was a real reveal. See
     // docs/street-intel-partial-reveal.md for the full investigation.
     const revealed = resp.estimates.filter((e: any) => typeof e.estimate_pct === 'number' && e.revealed !== false);
-    const sorted = [...revealed].sort((a: any, b: any) => b.estimate_pct - a.estimate_pct);
+
+    // Ranking pool: the scout's own real numbers, always — plus, under
+    // `oddsMode: 'computed'`, every other approach on the card scored via the
+    // exact formula from this same scout's real `base_pct`/shared modifiers
+    // (all identical across every approach on one card — see
+    // docs/street-intel-estimate-calculation.md). Both real and computed
+    // entries are kept in `approaches` (not just the winner) so the log shows
+    // what 'revealed' mode would have picked too, side by side.
+    const approachEstimates: ScoutedApproachEstimate[] = revealed.map((e: any) => ({
+      key: String(e.key),
+      estimatePct: e.estimate_pct,
+      source: 'real' as const,
+    }));
+
+    if (oddsMode === 'computed' && rawStats) {
+      const seed = revealed[0]; // shares its base_pct/other modifiers with every approach on this card
+      if (seed) {
+        const sharedMods = sumSharedModifiers(seed.modifiers);
+        for (const hidden of candidate.approaches) {
+          if (revealed.some((e: any) => String(e.key) === hidden.key)) continue; // already have a real number
+          const rawStat = (rawStats as unknown as Record<string, number>)[hidden.stat] ?? 0;
+          approachEstimates.push({ key: hidden.key, estimatePct: computeEstimate(seed.base_pct, sharedMods, hidden, rawStat), source: 'computed' });
+        }
+      }
+    }
+
+    const sorted = [...approachEstimates].sort((a, b) => b.estimatePct - a.estimatePct);
     const top = sorted[0];
-    const bestPct: number | null = top ? top.estimate_pct : null;
-    const bestKey: string | null = top ? String(top.key) : null;
+    const bestPct: number | null = top ? top.estimatePct : null;
+    const bestKey: string | null = top ? top.key : null;
+    const bestSource: 'real' | 'computed' | null = top ? top.source : null;
     // Affordability is *not* checked here against the running scouting spend —
     // see the staminaLeftAfterScouting comment below for why that has to wait
     // until every candidate this cycle has been scouted.
     const passesBar = bestPct !== null && bestPct >= minSuccessPct;
 
-    log.push({ title: candidate.title, riskTier: candidate.riskTier, legendary: candidate.legendary, staminaCost: candidate.staminaCost, valueRatio, approach: bestKey, estimatePct: bestPct, chosen: false });
+    log.push({
+      title: candidate.title,
+      riskTier: candidate.riskTier,
+      legendary: candidate.legendary,
+      staminaCost: candidate.staminaCost,
+      valueRatio,
+      approach: bestKey,
+      estimatePct: bestPct,
+      pctSource: bestSource,
+      approaches: approachEstimates,
+      chosen: false,
+    });
 
     if (!passesBar) continue;
 
@@ -298,6 +366,7 @@ async function findScoutedCandidate(
         opportunity: candidate,
         approach: bestKey!,
         estimatePct: bestPct!,
+        pctSource: bestSource!,
       },
       logIndex: log.length - 1,
     });
@@ -450,8 +519,14 @@ async function runIfEligibleOnce(): Promise<void> {
     .filter((o) => o.staminaCost > 0 && o.approaches.length > 0 && status.stamina >= o.scoutCost + o.staminaCost)
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
 
+  // Only needed for `oddsMode: 'computed'` — raw stats change only on
+  // level-ups/gear, so this cached read (rather than a fresh stats.php call)
+  // is effectively always current. Null just means that mode behaves like
+  // 'revealed' for this cycle (see `findScoutedCandidate`'s doc comment).
+  const rawStats = config.oddsMode === 'computed' ? await storage.getLatestStats() : null;
+
   try {
-    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct, status.stamina);
+    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct, status.stamina, config.oddsMode, rawStats);
     if (!choice) {
       // Nothing affordable cleared the bar this cycle — the scouted log is
       // still worth keeping (it's the whole answer to "what did it consider
@@ -561,6 +636,7 @@ async function runIfEligibleOnce(): Promise<void> {
         legendary: choice.opportunity.legendary,
         approach: choice.approach,
         scoutedPct: choice.estimatePct,
+        pctSource: choice.pctSource,
         outcomeBand: String(attemptResp.outcome_band ?? ''),
         reward: rewardCash,
         jailSeconds: Number(attemptResp.jail_time) || 0,

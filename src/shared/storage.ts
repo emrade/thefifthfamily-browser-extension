@@ -39,6 +39,11 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
 const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   enabled: false,
   minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
+  // 'revealed' is the safe default — matches every install's existing
+  // behavior before 'computed' existed. An existing stored config merges
+  // this in automatically (see `getStreetIntelAutoConfig`) so nobody's
+  // config silently opts into 'computed' on upgrade.
+  oddsMode: 'revealed',
 };
 
 // Both default off — an install shouldn't do anything automated to the

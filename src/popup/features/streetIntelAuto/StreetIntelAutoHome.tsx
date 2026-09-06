@@ -90,6 +90,11 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, minSuccessPct: Math.min(100, Math.max(0, Math.round(value))) });
   }
 
+  function setOddsMode(mode: StreetIntelAutoConfig['oddsMode']) {
+    if (!config) return;
+    saveConfig({ ...config, oddsMode: mode });
+  }
+
   if (!loaded || !config) return null;
 
   return (
@@ -140,6 +145,25 @@ export function StreetIntelAutoHome() {
         />
       </div>
 
+      <div class="ff-field">
+        <div class="ff-field__label">Odds source</div>
+        <div class="ff-field__hint">
+          "Revealed only" ranks and attempts strictly the approach(es) the scout gave real numbers for — a card whose
+          only revealed approach misses the floor above just gets skipped, even if a hidden approach might have been
+          great. "Computed" also scores every other (hidden) approach on the same card using the exact formula from
+          that same scout's real base odds — worst case ~3 points off, and it can win the ranking and get attempted
+          directly.
+        </div>
+        <select
+          class="ff-select ff-field__control"
+          value={config.oddsMode}
+          onChange={(e) => setOddsMode((e.target as HTMLSelectElement).value as StreetIntelAutoConfig['oddsMode'])}
+        >
+          <option value="revealed">Revealed only (safe, default)</option>
+          <option value="computed">Computed (includes hidden approaches)</option>
+        </select>
+      </div>
+
       <div class="ff-section-label">Status</div>
 
       {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts run yet.</div>}
@@ -175,7 +199,8 @@ export function StreetIntelAutoHome() {
           <div class="ff-fc-captured">
             {status.lastAttempt.opportunityTitle} ({riskLabel(status.lastAttempt.riskTier)}
             {status.lastAttempt.legendary ? ', Legendary' : ''}) — {status.lastAttempt.approach} at{' '}
-            {status.lastAttempt.scoutedPct}% scouted · {new Date(status.lastAttempt.timestamp).toLocaleString()}
+            {status.lastAttempt.scoutedPct}%{status.lastAttempt.pctSource === 'computed' ? ' (computed)' : ' scouted'} ·{' '}
+            {new Date(status.lastAttempt.timestamp).toLocaleString()}
           </div>
           {status.lastAttempt.jailSeconds > 0 && (
             <div class="ff-auto-row">Landed {Math.round(status.lastAttempt.jailSeconds / 60)}m of jail time.</div>
@@ -199,12 +224,17 @@ export function StreetIntelAutoHome() {
           <div class="ff-field__hint">
             Every opportunity the last cycle actually scouted, in the order tried — including ones passed over for
             coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
+            {config.oddsMode === 'computed' && ' "≈" marks a computed (not scout-revealed) estimate; "→" marks the pick.'}
           </div>
           {status.lastCycleScouted.map((c, i) => (
             <div class="ff-auto-row" style={{ color: c.chosen ? 'var(--ff-green)' : undefined }} key={i}>
               {c.chosen ? '✓' : '✗'} {c.title} ({riskLabel(c.riskTier)}
               {c.legendary ? ', Legendary' : ''}) · {c.staminaCost}S · value {Math.round(c.valueRatio).toLocaleString()}/S ·{' '}
-              {c.estimatePct === null ? 'scout rejected' : `${c.approach} ${c.estimatePct}%`}
+              {c.approaches.length === 0
+                ? 'scout rejected'
+                : c.approaches
+                    .map((a) => `${a.key === c.approach ? '→' : ''}${a.key} ${a.estimatePct}%${a.source === 'computed' ? '≈' : ''}`)
+                    .join(' · ')}
             </div>
           ))}
         </>

@@ -1,6 +1,7 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { parseDollarRange } from '@/shared/parseDollarRange';
 import { storage } from '@/shared/storage';
+import { computeEstimate, sumSharedModifiers } from '@/shared/streetIntelEstimate';
 
 /**
  * Marks up the live Street Intel page directly — no separate list anywhere the
@@ -304,38 +305,6 @@ function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; ri
     }
   }
   return null;
-}
-
-function sumSharedModifiers(modifiers: Record<string, number>): number {
-  let sum = 0;
-  for (const [key, value] of Object.entries(modifiers)) {
-    // `env_stat` is excluded, not defaulted from the seed — it's specific to
-    // whichever stat the *seed* approach used, not necessarily the hidden
-    // one being estimated. Left out entirely (equivalent to assuming 0)
-    // rather than guessed from text: confirmed the same modifier-intel
-    // wording maps to different real env_stat values on different cards, so
-    // there's no reliable way to recover its magnitude from the text alone
-    // — see docs/street-intel-estimate-calculation.md.
-    if (key === 'stat' || key === 'approach' || key === 'env_stat') continue;
-    sum += value;
-  }
-  return sum;
-}
-
-/**
- * The game's exact server formula — reverse-engineered and verified to
- * 100.0000% against 3,984 real historical scout estimates (see
- * docs/street-intel-estimate-calculation.md). Replaces this feature's
- * original same-card *additive* substitution (median ~1.4pt error, worst
- * case ~22pt) — this one's only remaining error comes from defaulting
- * `env_stat` to 0 (see `sumSharedModifiers`), worst case ~3pt, and (in the
- * "approx" case) from `basePct` itself being a risk-tier band mean rather
- * than the card's real value.
- */
-function computeEstimate(basePct: number, sharedMods: number, hidden: CardApproachDef, rawStat: number): number {
-  if (hidden.autofail) return 0;
-  const raw = basePct * (1 + (sharedMods + rawStat / 5) / 100) + hidden.bonus;
-  return Math.max(0, Math.min(95, Math.round(raw)));
 }
 
 /**

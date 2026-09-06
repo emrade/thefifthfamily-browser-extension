@@ -642,6 +642,18 @@ export interface CareerAutoStatus {
 export interface StreetIntelAutoConfig {
   enabled: boolean;
   minSuccessPct: number;
+  /** 'revealed' (default): only ever ranks/attempts an approach the scout
+   *  actually gave real odds for — zero formula risk, but a card where the
+   *  one revealed approach misses the floor gets skipped even if a hidden
+   *  approach would have been great. 'computed': after scouting, also scores
+   *  every hidden approach on the same card via the exact formula (see
+   *  `@/shared/streetIntelEstimate`) using that same scout's real `base_pct`
+   *  and shared modifiers — worst-case ~3pt error (env_stat defaulted to 0),
+   *  90.8% exact on real historical data — and lets a hidden approach win the
+   *  ranking. Confirmed live (2026-09-06) that `attempt` accepts any approach
+   *  regardless of which one was revealed — see
+   *  docs/street-intel-partial-reveal.md's "Correction" note. */
+  oddsMode: 'revealed' | 'computed';
 }
 
 /** What one automated attempt (+ its complication, if one came up) actually
@@ -653,6 +665,11 @@ export interface StreetIntelAttemptResult {
   legendary: boolean;
   approach: string;
   scoutedPct: number;
+  /** Whether `scoutedPct` came from the scout's own real `estimate_pct`
+   *  ('real') or from the 'computed' odds mode scoring a hidden approach via
+   *  the exact formula (see `StreetIntelAutoConfig.oddsMode`). Always 'real'
+   *  when `oddsMode` is 'revealed'. */
+  pctSource: 'real' | 'computed';
   outcomeBand: string;
   reward: number;
   jailSeconds: number;
@@ -681,6 +698,18 @@ export interface StreetIntelAttemptResult {
  * (e.g. the best-value opportunity coming in under the success threshold and
  * getting passed over for something cheaper) left no trace at all.
  */
+/** One approach's odds as considered during ranking — either the scout's own
+ *  real number, or (only under `oddsMode: 'computed'`) a hidden approach
+ *  scored via the exact formula. Logging both side by side, for every
+ *  approach on the card rather than just the winner, is what lets you tell
+ *  after the fact whether 'computed' mode actually changed the pick versus
+ *  what 'revealed' mode would have done with the same card. */
+export interface ScoutedApproachEstimate {
+  key: string;
+  estimatePct: number;
+  source: 'real' | 'computed';
+}
+
 export interface ScoutedCandidateLog {
   title: string;
   riskTier: 'low' | 'medium' | 'high' | 'extreme';
@@ -694,6 +723,13 @@ export interface ScoutedCandidateLog {
    *  race) rather than with real estimates. */
   approach: string | null;
   estimatePct: number | null;
+  /** Null alongside `approach: null`. See `StreetIntelAttemptResult.pctSource`. */
+  pctSource: 'real' | 'computed' | null;
+  /** Every approach this candidate was actually ranked among — just the
+   *  scout's revealed approach(es) under `oddsMode: 'revealed'`, or every
+   *  approach on the card (real + computed) under 'computed'. Empty if the
+   *  scout call itself failed. */
+  approaches: ScoutedApproachEstimate[];
   /** True for the one candidate (at most) that cleared `minSuccessPct` and
    *  was actually attempted. */
   chosen: boolean;
