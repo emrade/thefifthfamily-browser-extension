@@ -82,6 +82,38 @@ const STYLE = `
   border-radius: 4px;
   z-index: 2;
 }
+/* The real winner is ALSO the single best approach on the whole card by the
+   formula's own reckoning (no hidden approach estimates higher) — a
+   distinct, glowing state rather than either plain badge alone. See
+   annotateApproaches's doc comment for why this is its own state instead of
+   showing both (impossible anyway — both are ::after pseudo-elements, and
+   an element can only have one) or silently just "FF Best Odds". */
+.si-approach.ff-si-confirmed {
+  position: relative;
+  border-color: rgba(251,191,36,.85) !important;
+  background: rgba(251,191,36,.09) !important;
+  animation: ffSiConfirmGlow 1.8s ease-in-out infinite;
+}
+.si-approach.ff-si-confirmed::after {
+  content: 'FF CONFIRMED';
+  position: absolute; top: 8px; right: 10px;
+  background: linear-gradient(135deg, #fde68a, #fbbf24, #d4af37);
+  color: #1a1000;
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  z-index: 2;
+  box-shadow: 0 0 10px rgba(251,191,36,.55);
+}
+@keyframes ffSiConfirmGlow {
+  0%, 100% { box-shadow: 0 0 6px rgba(251,191,36,.25); }
+  50% { box-shadow: 0 0 20px rgba(251,191,36,.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .si-approach.ff-si-confirmed { animation: none; }
+}
 .si-approach { position: relative; }
 .ff-si-estimate-badge {
   position: absolute;
@@ -102,7 +134,8 @@ const STYLE = `
    pushed down instead of overlapping that one — see annotateApproaches,
    which now labels every row, real included, so the two can be compared. */
 .si-approach.ff-si-best-approach .ff-si-estimate-badge,
-.si-approach.ff-si-best-guess .ff-si-estimate-badge {
+.si-approach.ff-si-best-guess .ff-si-estimate-badge,
+.si-approach.ff-si-confirmed .ff-si-estimate-badge {
   top: 32px;
 }
 `;
@@ -170,36 +203,30 @@ function refreshCards(container: Element) {
 
 function refreshApproaches(detail: Element) {
   const approaches = Array.from(detail.querySelectorAll('.si-approach'));
-  let best: Element | null = null;
-  let bestPct = -1;
 
+  // Only the real-number winner is found here — `annotateApproaches` owns
+  // *every* badge class (`ff-si-best-approach`/`ff-si-best-guess`/
+  // `ff-si-confirmed`) itself, deciding all three together in one place,
+  // since which one applies depends on comparing this real value against
+  // every hidden approach's own computed estimate. Splitting that decision
+  // across two functions caused a real, confirmed bug before (see
+  // `annotateApproaches`'s own doc comment on the ff-si-best-guess race) —
+  // not repeating that pattern for a three-way decision.
+  let realBest: Element | null = null;
+  let realBestPct = -1;
   for (const approach of approaches) {
     approach.classList.remove('ff-si-best-approach');
-    // `ff-si-best-guess` is deliberately NOT stripped here — see
-    // `annotateApproaches`, which owns that class's full remove-then-add
-    // cycle itself so the two can't get split across two different
-    // MutationObserver firings (real bug, confirmed live: this function's
-    // removal is synchronous but `annotateApproaches`'s own addition sits
-    // behind an `await`, so a page-timer-driven mutation could re-run this
-    // synchronous strip before the previous call's async add ever landed,
-    // leaving the badge permanently missing).
     const match = (approach.querySelector('.scout-pct')?.textContent ?? '').match(/(\d+)%/);
     if (!match) continue; // unscouted ("Go Blind") dialog, or a hidden partial-reveal row — no real odds to rank
 
     const pct = Number(match[1]);
-    if (pct > bestPct) {
-      bestPct = pct;
-      best = approach;
+    if (pct > realBestPct) {
+      realBestPct = pct;
+      realBest = approach;
     }
   }
 
-  best?.classList.add('ff-si-best-approach');
-
-  // Deliberately never competes for the block above — "FF Best Odds" stays
-  // real-numbers-only, unchanged. This computes/labels estimates for
-  // whatever has no real number at all (a partial-reveal hidden row, or an
-  // entire Go Blind dialog) — see docs/street-intel-estimate-calculation.md.
-  void annotateApproaches(approaches);
+  void annotateApproaches(approaches, realBest, realBestPct);
 }
 
 interface ScoutEstimateEntry {
@@ -358,17 +385,27 @@ function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; ri
  * *and* (unlike before) the one row that already has a real number, so the
  * formula's own guess sits right next to the real value for a direct,
  * always-available accuracy check rather than only ever being checkable
- * once a hidden approach happens to get revealed some other time. Never
- * touches the "FF Best Odds" pick itself — that stays real-numbers-only.
- * Whichever hidden row has the single highest estimate additionally gets a
- * visually distinct "FF BEST GUESS" badge, in *every* dialog that has at
- * least one hidden approach to estimate — not just a fully-unscored Go Blind
- * one. A real revealed number isn't necessarily a good one (an autofail's
- * real 0%, say), so "FF Best Odds" alone can't always answer "what should I
- * actually pick" — "FF Best Guess" is the signal for that, independent of
- * whether a real number happens to exist elsewhere on the same card.
+ * once a hidden approach happens to get revealed some other time.
  *
- * Two confidence levels, labeled differently:
+ * Also decides, together with `refreshApproaches`'s real-number search,
+ * which of three mutually exclusive outcomes applies to this dialog:
+ * - **FF Best Odds** (gold): the real winner, when some hidden approach's
+ *   estimate is still higher — i.e. the real number isn't necessarily the
+ *   best on the card, just the best *confirmed* one.
+ * - **FF Best Guess** (blue): the hidden approach with the single highest
+ *   estimate, when it beats the real winner (or there is no real winner at
+ *   all, a fully-unscored Go Blind dialog).
+ * - **FF Confirmed** (gold, glowing): the real winner *is* also the single
+ *   best approach on the whole card by the formula's own reckoning — no
+ *   hidden approach estimates higher. Deliberately its own distinct state
+ *   rather than showing both plain badges on one row (impossible anyway —
+ *   both were originally `::after` pseudo-elements, and an element can only
+ *   have one) or silently keeping just "FF Best Odds": tagging some
+ *   hidden approach as a "guess" worth trying when it's already known to
+ *   estimate lower than a real number you already have would be actively
+ *   misleading, not just redundant.
+ *
+ * Two confidence levels for the estimate itself, labeled differently:
  * - **exact**: this exact card was scouted this session (`lastScoutSeed`'s
  *   own label appears among this dialog's rows) — its real `base_pct` and
  *   modifiers are used directly, same near-perfect accuracy as the formula
@@ -383,7 +420,7 @@ function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; ri
  * (nothing to seed shared modifiers from) or if `findOwningCard` can't
  * identify which card this dialog belongs to.
  */
-async function annotateApproaches(approaches: Element[]): Promise<void> {
+async function annotateApproaches(approaches: Element[], realBest: Element | null, realBestPct: number): Promise<void> {
   const seed = lastScoutSeed;
   if (!seed?.modifiers || seed.base_pct === null) return;
 
@@ -399,14 +436,21 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
   const stats = await storage.getLatestStats();
   if (!stats) return;
 
-  // Owns the full remove-then-add cycle for this class itself (see
-  // `refreshApproaches`'s own comment on why) — every row gets stripped
-  // right before this same pass recomputes and re-adds it to whichever one
-  // actually wins, so the two can never straddle two different renders.
-  for (const approach of approaches) approach.classList.remove('ff-si-best-guess');
+  // Owns the full remove-then-add cycle for all three outcome classes
+  // itself (see `refreshApproaches`'s own comment on why) — deciding which
+  // one applies to which row needs every real and computed value together,
+  // atomically within one render pass, the same reasoning that already
+  // applied to `ff-si-best-guess` alone before this added the third state.
+  for (const approach of approaches) approach.classList.remove('ff-si-best-approach', 'ff-si-best-guess', 'ff-si-confirmed');
 
-  let bestGuessApproach: Element | null = null;
-  let bestGuessPct = -1;
+  // The overall winner across the whole card, using each row's best
+  // available number — real where one exists, the formula's estimate where
+  // it doesn't — the same ranking rule the auto-runner's own "computed"
+  // odds mode uses (see actionRunner.ts). Seeded with the real winner (if
+  // any) so a hidden approach only displaces it by genuinely estimating
+  // higher, never just by existing.
+  let overallBest: Element | null = realBest;
+  let overallBestPct = realBestPct;
 
   for (let i = 0; i < approaches.length; i++) {
     const approach = approaches[i];
@@ -445,22 +489,25 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
         : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
     badge.textContent = confidence === 'exact' ? `~${predicted}% est.` : `~${predicted}% est.*`;
 
-    // A real row is never eligible as the Go-Blind "best guess" — it's not
-    // a guess, it already has a real number.
-    if (!hasReal && predicted > bestGuessPct) {
-      bestGuessPct = predicted;
-      bestGuessApproach = approach;
+    // A real row's own ranking value is its real number (`realBestPct`,
+    // already seeded above), never this re-derived formula estimate — so a
+    // hidden row only ever displaces the current best by beating the real
+    // value outright, not by beating a formula's own approximation of it.
+    if (!hasReal && predicted > overallBestPct) {
+      overallBestPct = predicted;
+      overallBest = approach;
     }
   }
 
-  // Shown regardless of whether a real "FF Best Odds" winner also exists on
-  // this dialog (previously suppressed whenever any real number was
-  // present) — a real revealed number isn't necessarily a *good* one (e.g.
-  // an autofail's real 0%), and "FF Best Odds" only ever answers "which real
-  // number is highest," not "what should I actually pick." This is the
-  // signal for that second question, every time there's a hidden approach to
-  // estimate at all.
-  bestGuessApproach?.classList.add('ff-si-best-guess');
+  if (realBest && overallBest === realBest) {
+    realBest.classList.add('ff-si-confirmed');
+  } else {
+    realBest?.classList.add('ff-si-best-approach');
+    // Only ever a *different* row than `realBest` at this point (or
+    // `realBest` is null — a fully-unscored Go Blind dialog) — see the
+    // branch above.
+    if (overallBest && overallBest !== realBest) overallBest.classList.add('ff-si-best-guess');
+  }
 }
 
 const INSTALL_FLAG = '__ffStreetIntelHighlightsInstalled';
