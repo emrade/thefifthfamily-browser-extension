@@ -270,7 +270,21 @@ export function recordScoutResponse(requestBody: string, responseText: string): 
   if (!json?.ok || !Array.isArray(json.estimates)) return;
 
   const seed = json.estimates.find((e: any) => e.revealed && typeof e.estimate_pct === 'number' && e.modifiers && typeof e.base_pct === 'number');
-  if (seed) lastScoutSeed = seed;
+  if (!seed) return;
+  lastScoutSeed = seed;
+
+  // The scout response reaches here through an async network-interception
+  // relay, but the game's own client JS opens the "Choose Your Approach"
+  // dialog synchronously right after its own request resolves — a real race
+  // confirmed live (2026-09-06): the dialog's first annotation pass (from
+  // the MutationObserver below) can run *before* `lastScoutSeed` updates,
+  // computing the freshly-scouted card's own revealed approach against
+  // stale seed data (wrong 'approx' confidence instead of 'exact', and a
+  // meaningfully different number). Updating `lastScoutSeed` isn't itself a
+  // DOM mutation, so nothing would otherwise re-trigger a correction — do it
+  // directly, right when the real data actually becomes available.
+  const approach = document.querySelector(APPROACH_SELECTOR);
+  if (approach) refreshApproaches(approach.closest('.si-detail') ?? document.body);
 }
 
 // Risk-tier band means for `base_pct`, empirically verified against 819 real
@@ -398,17 +412,23 @@ async function annotateApproaches(approaches: Element[]): Promise<void> {
 
     const predicted = computeEstimate(basePct, sharedMods, hidden, rawStat);
 
-    if (!approach.querySelector('.ff-si-estimate-badge')) {
-      const badge = document.createElement('div');
+    // Updated in place rather than "create once and leave it" — `confidence`
+    // (and therefore the number itself) can legitimately change between
+    // renders of the *same* dialog, specifically the race `recordScoutResponse`
+    // now works around: its first pass can run against a stale seed before
+    // the real one arrives, and only a fresh render afterward corrects it.
+    let badge = approach.querySelector('.ff-si-estimate-badge') as HTMLElement | null;
+    if (!badge) {
+      badge = document.createElement('div');
       badge.className = 'ff-si-estimate-badge';
-      badge.title = hasReal
-        ? "Extension's own formula estimate for this same, already-revealed approach — compare it against the real number to see how accurate the formula is. See docs/street-intel-estimate-calculation.md."
-        : confidence === 'exact'
-          ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
-          : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
-      badge.textContent = confidence === 'exact' ? `~${predicted}% est.` : `~${predicted}% est.*`;
       approach.appendChild(badge);
     }
+    badge.title = hasReal
+      ? "Extension's own formula estimate for this same, already-revealed approach — compare it against the real number to see how accurate the formula is. See docs/street-intel-estimate-calculation.md."
+      : confidence === 'exact'
+        ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
+        : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
+    badge.textContent = confidence === 'exact' ? `~${predicted}% est.` : `~${predicted}% est.*`;
 
     // A real row is never eligible as the Go-Blind "best guess" — it's not
     // a guess, it already has a real number.
