@@ -9,6 +9,24 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.18.0] - 2026-09-07
+
+### Added
+- Pet Couriers: added a "Background Watch" master switch for the auto-watch
+  system's background detection (the hourly destination-rotation probe and
+  the pet-return tracking alarm), separate from Auto-Dispatch and
+  Auto-Offload. Previously this detection ran unconditionally with no way to
+  turn it off; it's now off by default like every other auto feature, and
+  turning it off forces Auto-Dispatch/Auto-Offload off too, since neither has
+  any trigger to act without it. Both the in-page panel and the popup show
+  the new toggle and gray out the two action toggles while watch is off.
+
+### Fixed
+- Pet Couriers: the popup home screen's status line for the courier system
+  no longer reports "Off" while background watch is actually running with
+  both action toggles off — it now shows "Watching" for that state, reserving
+  "Off" for when the master watch switch itself is off.
+
 ## [0.17.0] - 2026-09-07
 
 ### Added
