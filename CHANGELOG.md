@@ -9,6 +9,43 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.17.0] - 2026-09-07
+
+### Added
+- Street Intel: opportunity cards now show estimated odds for approaches you
+  haven't scouted, computed from the scout's revealed seed and shared
+  modifiers via a formula verified against real game data. This includes Go
+  Blind dialogs, which never reveal any real numbers at all — those get
+  their own "FF Best Guess" badge and fall back to risk-tier band averages
+  when there's no scouted number anywhere on the card to derive from.
+- Street Intel: added a three-way badge system that separates "highest real
+  number on the card" from "what you should actually pick". A hidden
+  approach estimating higher than the real winner is tagged "FF Best Guess"
+  instead of leaving the real winner's "FF Best Odds" badge unchallenged; a
+  real winner confirmed as the single best approach on the card by the
+  formula's own reckoning gets an upgraded "FF Confirmed" badge.
+- Street Intel Auto: added an `oddsMode` setting. 'revealed' (default,
+  matches prior behavior) ranks only approaches the scout gave real numbers
+  for; 'computed' also scores every hidden approach on the card via the same
+  formula and lets a hidden approach win the ranking and be attempted
+  directly. Existing installs keep the 'revealed' default on upgrade.
+- Street Intel Auto: reworked the complication-choice fallback to use real
+  historical win rates per choice instead of comparing against a same-card
+  "second approach", adapting to a 2026-09-06 game change where scouting now
+  reveals only one (rarely two) approach's odds per call instead of all of
+  them at once.
+
+### Fixed
+- Street Intel: fixed a stale-seed race where a card's annotated odds could
+  keep showing an earlier scout's numbers after a fresh scout replaced them.
+- Street Intel: fixed the "Best Odds"/"Best Guess" badges disappearing under
+  normal use — a synchronous class removal in the page-refresh path raced a
+  slower async re-add and usually won, so the badge either never reappeared
+  or vanished again on the next page-timer-driven refresh.
+- Street Intel: fixed odds annotation being skipped entirely on Go Blind
+  dialogs, which don't render the CSS hook the annotator was matching
+  against.
+
 ## [0.16.1] - 2026-09-06
 
 ### Added
