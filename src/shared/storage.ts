@@ -46,15 +46,16 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   oddsMode: 'revealed',
 };
 
-// `autoDispatchEnabled`/`autoOffloadEnabled` default off — an install
-// shouldn't do anything automated to the account before the player has
-// explicitly opted in from the Pet Couriers panel, matching every other auto
-// feature's own off-by-default convention. `watchEnabled` defaults `true`
-// instead — detection+notification ran unconditionally for every existing
-// install before this flag existed, so this preserves that behavior for
-// anyone who hasn't touched it yet (see `CourierAutoConfig`'s own doc).
+// All three default off, no exception for `watchEnabled` — every kill switch
+// in this extension exists so the player controls exactly when a background
+// feature is and isn't running; defaulting any of them on would mean it can
+// start acting before the player ever chose that, which defeats the point of
+// having the switch at all. That outranks preserving detection's old
+// always-on behavior for installs upgrading into this flag for the first
+// time — an existing install simply starts with watch off until the player
+// turns it on, same as every other auto feature already asks of them.
 const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
-  watchEnabled: true,
+  watchEnabled: false,
   autoDispatchEnabled: false,
   autoOffloadEnabled: false,
 };

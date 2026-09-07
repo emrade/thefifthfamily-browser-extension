@@ -446,12 +446,14 @@ export interface CourierStatus {
  *  run from (both only ever fire from inside the watch's own alarm
  *  handlers — see `courierWatch.ts`), so they're meaningless without it;
  *  turning `watchEnabled` off forces both back to `false` rather than
- *  leaving them showing "on" while nothing can ever act on them. Defaults
- *  to `true` — unlike the two action toggles below (off by default, an
- *  install shouldn't do anything automated before the player opts in),
- *  detection+notification has always run unconditionally for every existing
- *  install, so this preserves that behavior until a player explicitly turns
- *  it off. */
+ *  leaving them showing "on" while nothing can ever act on them. Defaults to
+ *  `false`, same off-by-default convention as every other kill switch in this
+ *  extension (including the two action toggles below) — the player controls
+ *  when a background feature starts running, not the install itself, even
+ *  for a feature (detection) that previously had no switch at all and ran
+ *  unconditionally. An existing install upgrading into this flag simply
+ *  starts with watch off until turned on, the same thing every other auto
+ *  feature already asks of a first-time user. */
 export interface CourierAutoConfig {
   watchEnabled: boolean;
   autoDispatchEnabled: boolean;

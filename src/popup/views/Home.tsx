@@ -72,11 +72,22 @@ export function Home(props: HomeProps) {
 
   const streetIntelAutoStatus = streetIntelAutoConfig?.enabled ? 'Running' : 'Off';
 
-  const courierAutoStatus = courierBadge
-    ? `${courierBadge} pet${courierBadge === '1' ? '' : 's'} ready to send`
-    : courierAutoConfig?.autoDispatchEnabled || courierAutoConfig?.autoOffloadEnabled
-      ? 'Auto-watch on'
-      : 'Off';
+  // `watchEnabled` off means nothing at all is happening in the background —
+  // that takes priority over the badge and action toggles below, both of
+  // which can only be stale leftovers from before it was turned off (the
+  // badge isn't cleared on toggle-off, and courierWatch.ts forces both action
+  // toggles off in the same write anyway). With watch on, either action
+  // toggle being on still reads as "Auto-watch on" (unchanged); watch on with
+  // both actions off is a real, deliberate state now — "just detect and
+  // notify, don't act" — so it gets its own label instead of collapsing into
+  // the same "Off" a fully-disabled watch shows.
+  const courierAutoStatus = !courierAutoConfig?.watchEnabled
+    ? 'Off'
+    : courierBadge
+      ? `${courierBadge} pet${courierBadge === '1' ? '' : 's'} ready to send`
+      : courierAutoConfig.autoDispatchEnabled || courierAutoConfig.autoOffloadEnabled
+        ? 'Auto-watch on'
+        : 'Watching';
 
   const crimesAutoStatus = crimesAutoConfig?.enabled ? 'Running' : 'Off';
 
