@@ -9,6 +9,28 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.19.0] - 2026-09-07
+
+### Removed
+- Removed the "Trade Assistant" feature entirely — the pre-v2 hand-carry
+  trading assistant (buy/sell tracking, the Overview/Market/Calculator/
+  Analytics/Risk DB tabs, customs-raid risk tracking, and the background
+  market-price poller). It had been dead since the game's 2026-08-11 v2
+  upgrade replaced hand-carry trading with the pet-courier system: border
+  seizure no longer happens on pet shipments, and the price-tracking poller
+  was silently hitting a dead endpoint on every cycle. Removed along with it:
+  the "Customs Raid" and "Sell Opportunity" notification toggles, and their
+  underlying storage/database tables.
+
+### Changed
+- Renamed the `tradeAssistant` code module (background, content, and its
+  smuggling-panel/regex adapters) to `smuggling`, now that it's solely the
+  Pet Courier system's home rather than a mix of the old and new trading
+  models.
+- The "You have arrived" travel notification is unchanged and still fires for
+  any in-game travel — only the old trade-cost accounting bundled into it,
+  which had no reader left, was removed.
+
 ## [0.18.0] - 2026-09-07
 
 ### Added
