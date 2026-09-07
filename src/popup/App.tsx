@@ -4,7 +4,6 @@ import './app.css';
 import { Home } from './views/Home';
 import { Settings } from './views/Settings';
 import { ChevronLeftIcon } from './views/icons';
-import { TradeAssistantHome } from './features/tradeAssistant/TradeAssistantHome';
 import { FightClubHome } from './features/fightClub/FightClubHome';
 import { RequestLogHome } from './features/requestLog/RequestLogHome';
 import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
@@ -13,7 +12,7 @@ import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
 import { CrimesAutoHome } from './features/crimesAuto/CrimesAutoHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'tradeAssistant' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'settings';
+type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -39,7 +38,6 @@ export function App() {
       <main class="ff-main">
         {view === 'home' && (
           <Home
-            onOpenTradeAssistant={() => setView('tradeAssistant')}
             onOpenFightClub={() => setView('fightClub')}
             onOpenRequestLog={() => setView('requestLog')}
             onOpenCareerAuto={() => setView('careerAuto')}
@@ -49,7 +47,6 @@ export function App() {
             onOpenSettings={() => setView('settings')}
           />
         )}
-        {view === 'tradeAssistant' && <TradeAssistantHome />}
         {view === 'fightClub' && <FightClubHome />}
         {view === 'requestLog' && <RequestLogHome />}
         {view === 'careerAuto' && <CareerAutoHome />}

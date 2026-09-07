@@ -6,25 +6,9 @@ import { db } from './db';
  * a stacked network-hook bug), not a re-importable backup format.
  */
 export async function exportAllData(): Promise<string> {
-  const [
-    trades,
-    priceSnapshots,
-    customsEvents,
-    districts,
-    districtVisits,
-    travelLegs,
-    riskObservations,
-    stockPrices,
-    stockRumors,
-    storageSnapshot,
-  ] = await Promise.all([
-    db.trades.toArray(),
-    db.priceSnapshots.toArray(),
-    db.customsEvents.toArray(),
+  const [districts, districtVisits, stockPrices, stockRumors, storageSnapshot] = await Promise.all([
     db.districts.toArray(),
     db.districtVisits.toArray(),
-    db.travelLegs.toArray(),
-    db.riskObservations.toArray(),
     db.stockPrices.toArray(),
     db.stockRumors.toArray(),
     chrome.storage.local.get(null),
@@ -33,7 +17,7 @@ export async function exportAllData(): Promise<string> {
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      tables: { trades, priceSnapshots, customsEvents, districts, districtVisits, travelLegs, riskObservations, stockPrices, stockRumors },
+      tables: { districts, districtVisits, stockPrices, stockRumors },
       storage: storageSnapshot,
     },
     null,

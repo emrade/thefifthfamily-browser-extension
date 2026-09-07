@@ -5,9 +5,9 @@ import { parseStatsPayload } from './adapters/statsAdapter';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
 /**
- * Parses `GET /api/stats.php` — lives outside tradeAssistant since the player's
+ * Parses `GET /api/stats.php` — lives outside smuggling since the player's
  * current stats/location (surfaced in the always-visible LiveStats view) are used
- * app-wide, not just by the trade loop.
+ * app-wide, not just by the smuggling/travel loop.
  */
 export function handleCapturedRequest(req: CapturedRequest) {
   if (req.method !== 'GET') return;

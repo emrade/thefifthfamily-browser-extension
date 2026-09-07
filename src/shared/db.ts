@@ -1,26 +1,15 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type {
-  CustomsEvent,
-  District,
-  DistrictVisit,
-  PetRosterEntry,
-  PriceSnapshot,
-  RiskObservation,
-  StockPricePoint,
-  StockRumorRecord,
-  Trade,
-  TravelLeg,
-} from './types';
+import type { District, DistrictVisit, PetRosterEntry, StockPricePoint, StockRumorRecord } from './types';
 import type { EndpointProfile, RequestLogEntry } from './requestLog/types';
 
+// The database name itself (`FifthFamilyTradeAssistant`) is left as-is despite the
+// rest of the trade-assistant naming being retired elsewhere — Dexie treats a
+// changed name as an entirely different database, which would silently orphan
+// every existing install's `districts`/`petRoster`/`stockPrices`/etc. data rather
+// than rename it. Not worth that for a name nothing user-facing ever shows.
 const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
-  trades: EntityTable<Trade, 'id'>;
-  priceSnapshots: EntityTable<PriceSnapshot, 'id'>;
-  customsEvents: EntityTable<CustomsEvent, 'id'>;
   districts: EntityTable<District, 'id'>;
   districtVisits: EntityTable<DistrictVisit, 'id'>;
-  travelLegs: EntityTable<TravelLeg, 'id'>;
-  riskObservations: EntityTable<RiskObservation, 'id'>;
   requestLog: EntityTable<RequestLogEntry, 'id'>;
   endpointProfiles: EntityTable<EndpointProfile, 'id'>;
   petRoster: EntityTable<PetRosterEntry, 'userPetId'>;
@@ -88,6 +77,21 @@ db.version(6).stores({
   stockRumors: 'rumorCode, symbol, truthFlag',
 });
 
+// Drops the old hand-carry trading tables — `trades`, `priceSnapshots`,
+// `customsEvents`, `travelLegs`, `riskObservations` — now that the pet-courier
+// system (v2) has fully replaced that model and nothing reads or writes them
+// anymore (see the Trade Assistant removal). Same "set the store to null to drop
+// it outright" approach as `endpointShapes` at version(4) — none of this data
+// has been current since the game's 2026-08-11 v2 upgrade, so there's nothing
+// worth migrating.
+db.version(7).stores({
+  trades: null,
+  priceSnapshots: null,
+  customsEvents: null,
+  travelLegs: null,
+  riskObservations: null,
+});
+
 /** Wipes the derived, player-facing tables — everything behind the numbers shown in
  * the popup. `districts` is included; `ensureSeedData()` re-seeds it automatically
  * the next time the background worker wakes, since it just checks `count() === 0`.
@@ -100,25 +104,13 @@ db.version(6).stores({
  * not silently destroy months of capture that exists to diagnose the game — so
  * `clearRequestLog()` is the only thing that empties it. */
 export async function clearAllData(): Promise<void> {
-  await db.transaction(
-    'rw',
-    [db.trades, db.priceSnapshots, db.customsEvents, db.districts, db.districtVisits, db.travelLegs, db.riskObservations],
-    async () => {
-      await Promise.all([
-        db.trades.clear(),
-        db.priceSnapshots.clear(),
-        db.customsEvents.clear(),
-        db.districts.clear(),
-        db.districtVisits.clear(),
-        db.travelLegs.clear(),
-        db.riskObservations.clear(),
-      ]);
-    },
-  );
+  await db.transaction('rw', [db.districts, db.districtVisits], async () => {
+    await Promise.all([db.districts.clear(), db.districtVisits.clear()]);
+  });
 }
 
 /** Clears the HTTP archive and its shape index, and nothing else. The archive's
- *  own reset — trades, prices, and every other derived table are left intact. */
+ *  own reset — every other derived table is left intact. */
 export async function clearRequestLog(): Promise<void> {
   await db.transaction('rw', [db.requestLog, db.endpointProfiles], async () => {
     await Promise.all([db.requestLog.clear(), db.endpointProfiles.clear()]);

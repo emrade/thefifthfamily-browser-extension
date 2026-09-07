@@ -5,7 +5,7 @@ import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
 import { SystemicActionError, depositCashOnHand, postAction, sleep } from '../../gameAction';
-import { parseSmugglingV2PanelRegex } from './smugglingV2RegexParser';
+import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
 import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**

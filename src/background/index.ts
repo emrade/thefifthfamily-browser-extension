@@ -1,11 +1,11 @@
-import { ensureSeedData, handleMessage as handleTradeAssistant, handleTravelAlarm, handleMarketPollAlarm } from './features/tradeAssistant';
-import { runCourierBatch, runOffloadBatch } from './features/tradeAssistant/petCourier';
+import { ensureSeedData, handleMessage as handleSmuggling, handleTravelAlarm } from './features/smuggling';
+import { runCourierBatch, runOffloadBatch } from './features/smuggling/petCourier';
 import {
   getWatchSummary as getCourierWatchSummary,
   handleCourierReturnAlarm,
   handleDestPollAlarm,
   init as initCourierWatch,
-} from './features/tradeAssistant/courierWatch';
+} from './features/smuggling/courierWatch';
 import { handleMessage as handlePlayerStats } from './features/playerStats';
 import { handleMessage as handleFightClub } from './features/fightClub';
 import {
@@ -35,7 +35,7 @@ import type { CourierStatus } from '@/shared/types';
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
 // content/index.ts for the matching dispatch on the capture side.
-const messageHandlers = [handlePlayerStats, handleTradeAssistant, handleFightClub, handleStreetIntel];
+const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel];
 
 async function handleMessage(msg: ExtensionMessage) {
   for (const handle of messageHandlers) await handle(msg);
@@ -67,9 +67,9 @@ initCrimesAuto();
 initStockMarket();
 
 // Arms the pet courier auto-watch's hourly destination-rotation check — see
-// features/tradeAssistant/courierWatch.ts. No config gate either: detection
-// and notification always run; `CourierAutoConfig.autoDispatchEnabled` only
-// gates whether an open destination gets pets sent automatically.
+// features/smuggling/courierWatch.ts. Gated on `CourierAutoConfig.watchEnabled`
+// (off by default); `autoDispatchEnabled`/`autoOffloadEnabled` separately gate
+// whether an open destination gets pets sent/offloaded once watch is on.
 initCourierWatch().catch((err) => console.error(LOG_PREFIX, 'initCourierWatch failed', err));
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
@@ -188,7 +188,6 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   handleTravelAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleTravelAlarm failed', err));
-  handleMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleMarketPollAlarm failed', err));
   handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
   handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
   handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));

@@ -3,7 +3,7 @@ import type { CareerCatalogEntry } from '@/shared/types';
 
 /**
  * DOM-free regex parser for `GET /api/panel.php?type=careers`, same style and
- * same reason as `tradeAssistant/smugglingV2RegexParser.ts` — this runs in the
+ * same reason as `smuggling/smugglingPanelRegexParser.ts` — this runs in the
  * MV3 background service worker, which doesn't reliably have `DOMParser`.
  *
  * Every job is rendered as one `<div class="cv2-card" id="career-card-<id>" ...>`

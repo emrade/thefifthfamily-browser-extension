@@ -22,7 +22,7 @@ import type { CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/sh
  * Smuggling is actually the panel currently on screen — the game is a single-page
  * app that swaps panel content in place via innerHTML, so `.sv2-monitor-board`
  * (present in every state the sv2 dashboard renders — idle, drafting, in transit;
- * see smugglingV2PanelAdapter.ts) is watched via MutationObserver as the signal
+ * see smugglingPanelAdapter.ts) is watched via MutationObserver as the signal
  * for "is this the page a courier panel makes sense on right now."
  */
 

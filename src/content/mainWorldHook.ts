@@ -6,8 +6,9 @@
  *
  * This file does no parsing at all — it only forwards raw request/response bytes to
  * the isolated-world content script via window.postMessage. All parsing lives behind
- * adapters in content/features/tradeAssistant/adapters, run on the other side of that
- * bridge, so the game changing its markup only ever requires updating one adapter.
+ * adapters in each feature's own content/features/<name>/adapters, run on the other
+ * side of that bridge, so the game changing its markup only ever requires updating
+ * one adapter.
  */
 
 import { LOG_PREFIX } from '@/shared/log';

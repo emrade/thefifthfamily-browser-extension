@@ -1,65 +1,3 @@
-export interface Trade {
-  id?: number;
-  item: string;
-  quantity: number;
-  buyDistrict: string;
-  sellDistrict: string | null;
-  buyPrice: number;
-  sellPrice: number | null;
-  buyTime: number;
-  /** The most recent buy leg folded into this trade (a trade can be filled over
-   * several purchases). Used only to recognise a stacked network hook re-posting the
-   * same physical buy — see openTrade() in tradeMatcher.ts. Optional because trades
-   * recorded before multi-leg buys were supported have no leg history, and because a
-   * trade inferred by cargoReconciler.ts never saw a buy request at all. */
-  lastBuyTime?: number;
-  lastBuyQuantity?: number;
-  sellTime: number | null;
-  travelCost: number;
-  grossProfit: number | null;
-  profit: number | null;
-  roi: number | null;
-  caught: boolean | null;
-  bribe: number;
-  /** How many separate bribe-resolution CustomsEvents were summed into `bribe` — a
-   * lump-sum dollar figure alone can look wrong/surprising when it's actually the
-   * total of more than one payment; showing the count makes that visible instead of
-   * requiring a devtools dig to explain a number that looks too high. */
-  bribeCount: number;
-  status: 'open' | 'closed';
-  /** True when this trade's buy or sell side (or both) was never actually captured —
-   * inferred instead from a held-cargo mismatch (see cargoReconciler.ts), most often
-   * because the other half happened via the game's mobile app, which the extension
-   * has no way to observe. Distinguishes an inferred number from a directly captured
-   * one so the UI can flag it rather than presenting a guess as a precise figure. */
-  reconciled: boolean;
-}
-
-export interface PriceSnapshot {
-  id?: number;
-  timestamp: number;
-  district: string;
-  item: string;
-  price: number;
-  type: 'buy' | 'sell';
-  trendPct: number | null;
-}
-
-export interface CustomsEvent {
-  id?: number;
-  timestamp: number;
-  item: string | null;
-  quantity: number | null;
-  cargoValue: number | null;
-  bribe: number;
-  displayedRisk: number | null;
-  district: string | null;
-  resolution: 'bribe' | 'run' | 'surrender';
-  caught: boolean;
-  cargoLost: boolean;
-  jailSeconds: number | null;
-}
-
 export interface District {
   id: number;
   name: string;
@@ -151,90 +89,6 @@ export interface DistrictVisit {
   district: string;
   timestamp: number;
 }
-
-/** One `action=travel` leg — the trade matcher sums taxi fares of every leg between
- * a trade's buyTime and sellTime into Trade.travelCost. */
-export interface TravelLeg {
-  id?: number;
-  timestamp: number;
-  destinationCityId: number;
-  method: 'walk' | 'taxi';
-  cost: number;
-}
-
-/**
- * Cached from the most recent smuggling-panel view. Customs raid screens never carry
- * cargo type/qty/value or a risk number themselves — see "Customs cargo attribution"
- * in docs/trade-assistant-plan.md — so this is what a detected raid gets attributed
- * against.
- */
-export interface LastSmugglingContext {
-  district: string;
-  borderSeizureRisk: number;
-  heldItem: string | null;
-  heldQuantity: number;
-  cargoCapacity: number;
-  /** Absolute epoch ms when the market next shifts, derived from the panel's
-   * `data-seconds` countdown at capture time — stored absolute so a countdown
-   * computed later (e.g. when the popup opens) stays accurate rather than going
-   * stale the moment it's read. Null if the panel didn't carry a timer. */
-  marketShiftAt: number | null;
-  timestamp: number;
-}
-
-/** A raid detected but not yet resolved — completed into a CustomsEvent once the
- * player picks bribe/run/surrender. */
-export interface PendingCustoms {
-  district: string;
-  bribe: number;
-  displayedRisk: number;
-  item: string | null;
-  quantity: number | null;
-  cargoValue: number | null;
-  timestamp: number;
-}
-
-/**
- * One (cargo fullness %, displayed risk %) reading — recorded on every smuggling
- * panel view, regardless of whether anything is held. Lets the Customs Calculator
- * interpolate a real, account-specific fullness→risk curve instead of relying on
- * the single most recent reading or an unverified third-party formula.
- */
-export interface RiskObservation {
-  id?: number;
-  timestamp: number;
-  fullnessPct: number;
-  riskPct: number;
-}
-
-/**
- * Shared between the content-side DOM-based parser (smugglingPanelAdapter.ts) and the
- * background-side regex-based parser (marketPoller.ts's parser) — MV3 service workers
- * don't reliably have DOMParser, so the background poller needs its own DOM-free
- * implementation, but both should produce the exact same shape.
- */
-export interface SmugglingListing {
-  kind: 'listing';
-  district: string;
-  hiddenCargo: { current: number; max: number };
-  borderSeizureRisk: number;
-  marketShiftSeconds: number | null;
-  entries: {
-    item: string;
-    isLocal: boolean;
-    price: number;
-    trendPct: number | null;
-    stash: number;
-  }[];
-}
-
-export interface SmugglingRaid {
-  kind: 'raid';
-  district: string;
-  bribe: number;
-}
-
-export type SmugglingPanelResult = SmugglingListing | SmugglingRaid | null;
 
 /**
  * The player's own Fight Club standing — the hero scoreboard at the top of the
@@ -329,7 +183,7 @@ export interface AssignedCourier {
   manifestCount: number;
 }
 
-/** Everything `smugglingV2PanelAdapter.ts` can pull from one `smug_tab=proto`
+/** Everything `smugglingPanelAdapter.ts` can pull from one `smug_tab=proto`
  *  response. `roster` and `destinations` are frequently empty — see each field's
  *  own doc comment for when they're populated. */
 export interface SmugglingV2Snapshot {

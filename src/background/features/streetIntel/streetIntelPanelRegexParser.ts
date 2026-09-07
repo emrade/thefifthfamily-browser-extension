@@ -52,7 +52,7 @@ function decodeAttrEntities(text: string): string {
 /**
  * DOM-free parser for `GET /api/panel.php?type=street_intel`, for use by both
  * the background notifier and the auto-attempt runner — MV3 service workers
- * don't reliably have DOMParser, same reasoning as smugglingHtmlRegexParser.ts.
+ * don't reliably have DOMParser, same reasoning as smugglingPanelRegexParser.ts.
  */
 export function parseStreetIntelOpportunities(responseText: string): StreetIntelOpportunity[] | null {
   const envelope = unwrapPanelEnvelope(responseText);

@@ -5,11 +5,11 @@ import type { PlayerStatsSnapshot, RawStatsPayload } from '@/shared/types';
 
 /**
  * Maintains the player's current stats/location — read by the always-visible
- * LiveStats popup view, so this lives outside tradeAssistant even though the
+ * LiveStats popup view, so this lives outside smuggling even though the
  * district catalog it resolves names from is populated by that feature's travel
- * capture. tradeAssistant still reacts to the same 'player-stats' message on its own
+ * capture. smuggling still reacts to the same 'player-stats' message on its own
  * (see its handleMessage) purely to check whether it confirms an awaited travel
- * arrival — that side effect is trade-loop business, this one isn't.
+ * arrival — that side effect is travel-notification business, this one isn't.
  */
 export async function handleMessage(msg: ExtensionMessage) {
   if (msg.type !== 'player-stats') return;

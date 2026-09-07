@@ -32,19 +32,6 @@ export interface CapturedRequest {
  */
 export type ExtensionMessage =
   | { type: 'district-catalog'; districts: District[] }
-  | {
-      type: 'price-snapshot';
-      district: string;
-      timestamp: number;
-      borderSeizureRisk: number;
-      hiddenCargo: { current: number; max: number };
-      marketShiftSeconds: number | null;
-      entries: { item: string; price: number; type: 'buy' | 'sell'; trendPct: number | null; stash: number }[];
-    }
-  | { type: 'trade-buy'; item: string; quantity: number; timestamp: number }
-  | { type: 'trade-sell'; item: string; quantity: number; sellTotal: number; grossProfit: number; timestamp: number }
-  | { type: 'customs-raid-detected'; district: string; bribe: number; timestamp: number }
-  | { type: 'customs-resolved'; resolution: 'bribe' | 'run' | 'surrender'; caught: boolean; cargoLost: boolean; jailSeconds: number | null; bribeAmount: number | null; timestamp: number }
   | { type: 'player-stats'; snapshot: RawStatsPayload }
   // Carries the destination by name, not id — `/actions/travel_proto.php` (the
   // endpoint this is parsed from) reports it that way, and resolving to an id needs

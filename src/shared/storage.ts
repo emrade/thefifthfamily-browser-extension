@@ -8,9 +8,7 @@ import type {
   CrimesAutoStatus,
   FightClubFilterPrefs,
   FightClubHeroStats,
-  LastSmugglingContext,
   PendingCourierReturn,
-  PendingCustoms,
   PendingTravel,
   PlayerStatsSnapshot,
   RealEstateAdvisorPreferences,
@@ -92,13 +90,6 @@ export const storage = {
   getPendingTravel: () => get<PendingTravel | null>(STORAGE_KEYS.PENDING_TRAVEL, null),
   setPendingTravel: (v: PendingTravel) => set(STORAGE_KEYS.PENDING_TRAVEL, v),
   clearPendingTravel: () => remove(STORAGE_KEYS.PENDING_TRAVEL),
-
-  getSmugglingContext: () => get<LastSmugglingContext | null>(STORAGE_KEYS.LAST_SMUGGLING_CONTEXT, null),
-  setSmugglingContext: (v: LastSmugglingContext) => set(STORAGE_KEYS.LAST_SMUGGLING_CONTEXT, v),
-
-  getPendingCustoms: () => get<PendingCustoms | null>(STORAGE_KEYS.PENDING_CUSTOMS, null),
-  setPendingCustoms: (v: PendingCustoms) => set(STORAGE_KEYS.PENDING_CUSTOMS, v),
-  clearPendingCustoms: () => remove(STORAGE_KEYS.PENDING_CUSTOMS),
 
   getFightClubStats: () => get<(FightClubHeroStats & { timestamp: number }) | null>(STORAGE_KEYS.FIGHT_CLUB_STATS, null),
   setFightClubStats: (v: FightClubHeroStats & { timestamp: number }) => set(STORAGE_KEYS.FIGHT_CLUB_STATS, v),

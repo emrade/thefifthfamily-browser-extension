@@ -12,16 +12,6 @@ export const NOTIFICATION_DEFINITIONS = [
     description: 'Notify when you land after traveling.',
   },
   {
-    id: 'customsRaid',
-    label: 'Customs Raid',
-    description: "Notify when a background check finds an unresolved customs raid.",
-  },
-  {
-    id: 'sellOpportunity',
-    label: 'Sell Opportunity',
-    description: "Notify when cargo you're holding becomes profitable to sell.",
-  },
-  {
     id: 'streetIntelOpportunity',
     label: 'Street Intel Opportunity',
     description: 'Notify when your cooldown clears and a medium-risk-or-better job is available.',

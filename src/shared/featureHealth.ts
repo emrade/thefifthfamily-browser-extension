@@ -10,12 +10,11 @@ import { LOG_PREFIX } from './log';
  * the adapter ran, the response did not fit, and the feature is not recording.
  *
  * Written for a specific event. The game ships a large upgrade on 2026-08-11, and
- * the failure mode without this is silent: adapters stop matching, Trade Assistant
- * quietly stops recording trades, the popup keeps showing yesterday's numbers, and
- * the only evidence is a console message nobody is watching.
+ * the failure mode without this is silent: adapters stop matching, the popup keeps
+ * showing stale data, and the only evidence is a console message nobody is watching.
  */
 export const FEATURE_LABELS: Record<string, string> = {
-  tradeAssistant: 'Trade Assistant',
+  smuggling: 'Smuggling',
   playerStats: 'Player Stats',
   streetIntel: 'Street Intel',
   fightClub: 'Fight Club',

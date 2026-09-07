@@ -5,8 +5,6 @@ export const GAME_ORIGIN = 'https://www.thefifthfamily.com';
 export const STORAGE_KEYS = {
   LATEST_STATS: 'ff_latest_stats',
   PENDING_TRAVEL: 'ff_pending_travel',
-  LAST_SMUGGLING_CONTEXT: 'ff_last_smuggling_context',
-  PENDING_CUSTOMS: 'ff_pending_customs',
   NOTIFICATION_PREFERENCES: 'ff_notification_preferences',
   FIGHT_CLUB_STATS: 'ff_fight_club_stats',
   FIGHT_CLUB_FILTER: 'ff_fight_club_filter',
@@ -29,7 +27,6 @@ export const STORAGE_KEYS = {
 
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
-  MARKET_POLL: 'ff-market-poll',
   STREET_INTEL_POLL: 'ff-street-intel-poll',
   REQUEST_LOG_SWEEP: 'ff-request-log-sweep',
   CAREER_AUTO: 'ff-career-auto',
@@ -154,15 +151,6 @@ export const SHAPE_MAX_EVENTS = 50;
 // polling so often it's chatty.
 export const STREET_INTEL_POLL_INTERVAL_MS = 5 * 60_000;
 
-// Used to schedule the next background market poll when we don't have a precise
-// market-shift countdown to align to (e.g. the very first poll before any panel view
-// has told us the real cadence) — matches the community guide's observed ~10-minute
-// rotation, though we never assume this once a real countdown is available.
-export const MARKET_POLL_FALLBACK_INTERVAL_MS = 10 * 60_000;
-// Small buffer after the market-shift deadline, so the server has actually rotated
-// prices by the time we poll rather than catching the tail end of the old cycle.
-export const MARKET_POLL_BUFFER_MS = 5_000;
-
 // Seed data confirmed from a real `POST /api/travel.php action=get_cities` capture —
 // used to bootstrap the District table before the player has ever opened Travel in a
 // given install. Overwritten by the live payload the first time it's observed, so this
@@ -178,8 +166,7 @@ export const SEED_DISTRICTS: District[] = [
   { id: 8, name: 'The Syndicate', slug: 'syndicate', nativeItem: null, smugglingBonus: 0, bossLocked: true, levelRequired: 110, travelTimeWalk: 3600, travelTimeTaxi: 1590, travelCostTaxi: 42750 },
 ];
 
-// Arrival confirmation retry policy for the Travel Arrival Notification —
-// see docs/trade-assistant-plan.md "Travel Arrival Notification".
+// Arrival confirmation retry policy for the Travel Arrival Notification.
 export const ARRIVAL_CONFIRM_RETRIES = 3;
 export const ARRIVAL_CONFIRM_RETRY_DELAY_MS = 5_000;
 
@@ -200,9 +187,8 @@ export const CAREER_AUTO_FALLBACK_INTERVAL_MS = 2 * 60_000;
 export const CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 
 // Small buffer added after a tracked cooldown's expiry before the next
-// attempt fires, same reasoning as MARKET_POLL_BUFFER_MS — guards against
-// firing a few hundred ms early on clock skew and getting an ordinary
-// rejection back for it.
+// attempt fires — guards against firing a few hundred ms early on clock skew
+// and getting an ordinary rejection back for it.
 export const CAREER_AUTO_BUFFER_MS = 5_000;
 
 // Derived from this account's real `career.php` history (see

@@ -6,17 +6,17 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { DEFAULT_REQUEST_LOG_PREFERENCES } from '@/shared/requestLog/preferences';
 import { isExcluded } from '@/shared/requestLog/policy';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
-import { handleCapturedRequest as handleTradeAssistant } from './features/tradeAssistant';
+import { handleCapturedRequest as handleSmuggling } from './features/smuggling';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
 import { handleCapturedRequest as handleStreetIntel, initStreetIntelHighlights } from './features/streetIntel';
-import { initCourierPanel } from './features/tradeAssistant/courierPanel';
+import { initCourierPanel } from './features/smuggling/courierPanel';
 import { initRealEstateAdvisor } from './features/realEstate';
 import { initStockMarketStatus } from './features/stockMarket';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
 // matching dispatch on the message side.
-const handlers = [handlePlayerStats, handleTradeAssistant, handleFightClub, handleStreetIntel];
+const handlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel];
 
 // Bridge from the MAIN-world fetch/XHR hook (mainWorldHook.ts) — that script has no
 // chrome.* API access, so it can only forward raw bytes via postMessage; all parsing

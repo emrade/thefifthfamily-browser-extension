@@ -9,13 +9,13 @@ import type {
 } from '@/shared/types';
 
 /**
- * A DOM-free reimplementation of content/features/tradeAssistant/adapters/
- * smugglingV2PanelAdapter.ts, for the pet-courier automation's own background
- * fetches — MV3 service workers don't reliably have `DOMParser`, same reasoning as
- * smugglingHtmlRegexParser.ts. Fields are read by splitting the HTML on each
- * element's own opening tag and bounding the search to that one chunk, rather than
- * one whole-document regex per field — verified against real captured payloads
- * (see docs/smuggling-v2-plan.md) before being wired in.
+ * A DOM-free reimplementation of content/features/smuggling/adapters/
+ * smugglingPanelAdapter.ts, for the pet-courier automation's own background
+ * fetches — MV3 service workers don't reliably have `DOMParser`. Fields are read
+ * by splitting the HTML on each element's own opening tag and bounding the search
+ * to that one chunk, rather than one whole-document regex per field — verified
+ * against real captured payloads (see docs/smuggling-v2-plan.md) before being
+ * wired in.
  */
 export function parseSmugglingV2PanelRegex(responseText: string): SmugglingV2Snapshot | null {
   const envelope = unwrapPanelEnvelope(responseText);
