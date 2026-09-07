@@ -90,6 +90,7 @@ const PANEL_CSS = `
   background: #17130e; border: 1px solid rgba(201,168,76,0.16);
   border-radius: 10px; cursor: pointer;
 }
+.ff-cp-toggle-row[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
 .ff-cp-toggle-row__text { flex: 1; min-width: 0; }
 .ff-cp-toggle-row__title { font-family: 'Inter', system-ui, sans-serif; font-weight: 700; font-size: 12.5px; color: #f1ede2; }
 .ff-cp-toggle-row__status { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 9.5px; color: #6b6455; margin-top: 1px; line-height: 1.4; }
@@ -212,12 +213,22 @@ function renderSummary(run: CourierRunSummary | null): string {
 /** Answers "even when it is active i have no idea what it is doing" — a plain
  *  status readout of what the background courier-watch is currently tracking:
  *  whether the destination is open, when it'll next check, and when each
- *  in-flight pet is due back. Purely descriptive; never triggers anything. */
+ *  in-flight pet is due back. Purely descriptive; never triggers anything.
+ *
+ *  Everything past the toggle summary line is skipped when `watchEnabled` is
+ *  off — neither alarm is armed to keep it current at that point, so showing
+ *  it would read as "still checking" when nothing is (same reasoning as the
+ *  popup's `PetCouriersHome`). */
 function renderWatchStatus(watch: CourierWatchSummary): string {
   const now = Date.now();
   const parts: string[] = [
-    `<div class="ff-cp-watch-row">Auto-dispatch: ${watch.autoDispatchEnabled ? 'ON' : 'OFF'} · Auto-offload: ${watch.autoOffloadEnabled ? 'ON' : 'OFF'}</div>`,
+    `<div class="ff-cp-watch-row">Watch: ${watch.watchEnabled ? 'ON' : 'OFF'} · Auto-dispatch: ${watch.autoDispatchEnabled ? 'ON' : 'OFF'} · Auto-offload: ${watch.autoOffloadEnabled ? 'ON' : 'OFF'}</div>`,
   ];
+
+  if (!watch.watchEnabled) {
+    parts.push('<div class="ff-cp-watch-row">Background watch is off — no automatic checking or dispatching is happening.</div>');
+    return parts.join('');
+  }
 
   const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
   if (watch.lastCheckedAt === 0) {
@@ -400,6 +411,13 @@ function buildPanel(): HTMLDivElement {
       <div class="ff-cp-roster">Loading…</div>
       <label class="ff-cp-toggle-row">
         <div class="ff-cp-toggle-row__text">
+          <div class="ff-cp-toggle-row__title">Background watch</div>
+          <div class="ff-cp-toggle-row__status">Check for an open destination and track pets in flight, in the background</div>
+        </div>
+        <input class="ff-cp-watch-toggle ff-cp-toggle" type="checkbox">
+      </label>
+      <label class="ff-cp-toggle-row">
+        <div class="ff-cp-toggle-row__text">
           <div class="ff-cp-toggle-row__title">Auto-dispatch</div>
           <div class="ff-cp-toggle-row__status">Send idle pets automatically when a destination opens</div>
         </div>
@@ -428,23 +446,55 @@ function buildPanel(): HTMLDivElement {
 
   // Read/written straight through storage.ts rather than a message round-trip —
   // it's a plain config flag with no live network call behind it, same direct
-  // pattern the popup uses for e.g. Career Auto's config. Detection/notification
-  // from the background courier-watch alarm run regardless of either flag; they
-  // only gate whether a landed pet gets auto-offloaded and an open destination
-  // gets pets auto-dispatched. Two independent toggles, not one — this system's
-  // own convention (every auto feature) is that anything automated can be
-  // turned off on its own, and offload/dispatch are genuinely different
-  // actions with different risk profiles.
+  // pattern the popup uses for e.g. Career Auto's config. Three independent
+  // toggles, not two — this system's own convention (every auto feature) is
+  // that anything automated can be turned off on its own, and watch/offload/
+  // dispatch are genuinely different actions with different risk profiles
+  // (watch only reads and briefly drafts-then-cancels a shipment to detect an
+  // opening; offload only collects what's already landed; dispatch spends
+  // cash and commits a pet to a new trip). Dispatch/offload are meaningless
+  // without watch on, though — see `CourierAutoConfig`'s own doc — so they're
+  // visually disabled (not hidden, so a player who had them on can still see
+  // that and why) whenever watch is off.
+  const watchToggle = el.querySelector<HTMLInputElement>('.ff-cp-watch-toggle');
   const offloadToggle = el.querySelector<HTMLInputElement>('.ff-cp-autooffload-toggle');
   const dispatchToggle = el.querySelector<HTMLInputElement>('.ff-cp-autodispatch-toggle');
-  if (offloadToggle && dispatchToggle) {
+  if (watchToggle && offloadToggle && dispatchToggle) {
+    const applyWatchGate = (watchEnabled: boolean) => {
+      for (const toggle of [offloadToggle, dispatchToggle]) {
+        toggle.disabled = !watchEnabled;
+        toggle.closest('.ff-cp-toggle-row')?.setAttribute('aria-disabled', String(!watchEnabled));
+      }
+    };
+
     storage
       .getCourierAutoConfig()
       .then((config) => {
+        watchToggle.checked = config.watchEnabled;
         offloadToggle.checked = config.autoOffloadEnabled;
         dispatchToggle.checked = config.autoDispatchEnabled;
+        applyWatchGate(config.watchEnabled);
       })
       .catch((err) => console.error(LOG_PREFIX, 'courier panel auto config read failed', err));
+
+    watchToggle.addEventListener('change', () => {
+      storage
+        .getCourierAutoConfig()
+        .then((config) => storage.setCourierAutoConfig({ ...config, watchEnabled: watchToggle.checked }))
+        .then(() => storage.getCourierAutoConfig())
+        .then((config) => {
+          // Re-read rather than trusting the write above — turning watch off
+          // forces dispatch/offload off in the same write, from
+          // `watchConfigChanges` in courierWatch.ts, so the checkboxes here
+          // need to reflect that rather than staying checked.
+          offloadToggle.checked = config.autoOffloadEnabled;
+          dispatchToggle.checked = config.autoDispatchEnabled;
+          applyWatchGate(config.watchEnabled);
+          refresh();
+          if (watchToggle.checked) setTimeout(() => void refresh(), 6_000);
+        })
+        .catch((err) => console.error(LOG_PREFIX, 'courier panel watch config write failed', err));
+    });
 
     offloadToggle.addEventListener('change', () => {
       storage

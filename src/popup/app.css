@@ -896,6 +896,11 @@ button {
   cursor: pointer;
 }
 
+.ff-toggle-row[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .ff-toggle-row__text {
   flex: 1;
   min-width: 0;

@@ -395,6 +395,7 @@ export type CourierProgressEvent =
  *  no idea what it is doing or even if it is doing anything." Assembled fresh
  *  on every request from live alarm state + storage, not itself persisted. */
 export interface CourierWatchSummary {
+  watchEnabled: boolean;
   autoDispatchEnabled: boolean;
   autoOffloadEnabled: boolean;
   /** Epoch ms the current rotation closes at, or `null` if the last probe
@@ -437,10 +438,22 @@ export interface CourierStatus {
  *  on its own, and offload/dispatch are genuinely two different automated
  *  actions with two different risk profiles (offload only collects what's
  *  already landed; dispatch spends cash and commits a pet to a new trip).
- *  Detection and notification always run regardless of either flag; they
- *  only gate whether a landed pet gets auto-offloaded and an open
- *  destination gets pets auto-dispatched, versus just left for the player. */
+ *
+ *  `watchEnabled` is the master switch for detection itself — the hourly
+ *  destination probe (which drafts and cancels a real shipment just to read
+ *  the destination list) and the pet-return tracking alarm. Neither
+ *  `autoDispatchEnabled` nor `autoOffloadEnabled` has any other trigger to
+ *  run from (both only ever fire from inside the watch's own alarm
+ *  handlers — see `courierWatch.ts`), so they're meaningless without it;
+ *  turning `watchEnabled` off forces both back to `false` rather than
+ *  leaving them showing "on" while nothing can ever act on them. Defaults
+ *  to `true` — unlike the two action toggles below (off by default, an
+ *  install shouldn't do anything automated before the player opts in),
+ *  detection+notification has always run unconditionally for every existing
+ *  install, so this preserves that behavior until a player explicitly turns
+ *  it off. */
 export interface CourierAutoConfig {
+  watchEnabled: boolean;
   autoDispatchEnabled: boolean;
   autoOffloadEnabled: boolean;
 }

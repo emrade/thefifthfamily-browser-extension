@@ -79,6 +79,23 @@ export function PetCouriersHome() {
     <>
       <label class="ff-toggle-row">
         <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Background Watch</div>
+          <div class="ff-toggle-row__status">Check for an open destination and track pets in flight, in the background.</div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.watchEnabled}
+          onChange={() => saveConfig({ ...config, watchEnabled: !config.watchEnabled })}
+        />
+      </label>
+
+      {/* Meaningless without the watch above — neither has any other trigger
+          to run from, so turning watch off already forces both to false (see
+          `CourierAutoConfig`'s own doc); disabling them here just makes that
+          visible instead of surprising. */}
+      <label class="ff-toggle-row" aria-disabled={!config.watchEnabled}>
+        <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Auto-Dispatch</div>
           <div class="ff-toggle-row__status">Send idle pets automatically when a destination opens.</div>
         </div>
@@ -86,11 +103,12 @@ export function PetCouriersHome() {
           type="checkbox"
           class="ff-toggle"
           checked={config.autoDispatchEnabled}
+          disabled={!config.watchEnabled}
           onChange={() => saveConfig({ ...config, autoDispatchEnabled: !config.autoDispatchEnabled })}
         />
       </label>
 
-      <label class="ff-toggle-row">
+      <label class="ff-toggle-row" aria-disabled={!config.watchEnabled}>
         <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Auto-Offload</div>
           <div class="ff-toggle-row__status">Collect a landed pet's cargo automatically.</div>
@@ -99,44 +117,54 @@ export function PetCouriersHome() {
           type="checkbox"
           class="ff-toggle"
           checked={config.autoOffloadEnabled}
+          disabled={!config.watchEnabled}
           onChange={() => saveConfig({ ...config, autoOffloadEnabled: !config.autoOffloadEnabled })}
         />
       </label>
 
-      <div class="ff-section-label">Destination</div>
+      {/* Hidden entirely rather than shown stale — with watch off, neither
+          alarm is armed to keep any of this current, so displaying it would
+          read as "still checking" when nothing is. */}
+      {!config.watchEnabled && <div class="ff-empty">Background watch is off — no automatic checking or dispatching is happening.</div>}
 
-      {watch.lastCheckedAt === 0 && <div class="ff-empty">Not checked yet.</div>}
+      {config.watchEnabled && (
+        <>
+          <div class="ff-section-label">Destination</div>
 
-      {watch.lastCheckedAt !== 0 && watch.lastProbeResult === 'skipped-no-idle-pets' && (
-        <div class="ff-auto-row">No idle pets to check with (last tried {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
+          {watch.lastCheckedAt === 0 && <div class="ff-empty">Not checked yet.</div>}
+
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult === 'skipped-no-idle-pets' && (
+            <div class="ff-auto-row">No idle pets to check with (last tried {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
+          )}
+
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && destOpen && (
+            <div class="ff-auto-row">
+              Open, closes in {formatRelativeTime(watch.destinationOpenUntil!, now)} ({new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).
+            </div>
+          )}
+
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && !destOpen && (
+            <div class="ff-auto-row">Locked (checked {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
+          )}
+
+          {watch.nextDestCheckAt !== null && (
+            <div class="ff-auto-row">
+              Next check: {formatRelativeTime(watch.nextDestCheckAt, now)} ({new Date(watch.nextDestCheckAt).toLocaleTimeString()}).
+            </div>
+          )}
+
+          <div class="ff-section-label">En Route</div>
+
+          {watch.pendingReturns.length === 0 && <div class="ff-empty">No pets currently en route.</div>}
+
+          {watch.pendingReturns.length > 0 &&
+            watch.pendingReturns.map((p) => (
+              <div class="ff-auto-row" key={p.petName}>
+                {p.petName} — {p.arrivesAt <= now ? 'landed, offload pending' : `back in ${formatRelativeTime(p.arrivesAt, now)}`}
+              </div>
+            ))}
+        </>
       )}
-
-      {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && destOpen && (
-        <div class="ff-auto-row">
-          Open, closes in {formatRelativeTime(watch.destinationOpenUntil!, now)} ({new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).
-        </div>
-      )}
-
-      {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && !destOpen && (
-        <div class="ff-auto-row">Locked (checked {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
-      )}
-
-      {watch.nextDestCheckAt !== null && (
-        <div class="ff-auto-row">
-          Next check: {formatRelativeTime(watch.nextDestCheckAt, now)} ({new Date(watch.nextDestCheckAt).toLocaleTimeString()}).
-        </div>
-      )}
-
-      <div class="ff-section-label">En Route</div>
-
-      {watch.pendingReturns.length === 0 && <div class="ff-empty">No pets currently en route.</div>}
-
-      {watch.pendingReturns.length > 0 &&
-        watch.pendingReturns.map((p) => (
-          <div class="ff-auto-row" key={p.petName}>
-            {p.petName} — {p.arrivesAt <= now ? 'landed, offload pending' : `back in ${formatRelativeTime(p.arrivesAt, now)}`}
-          </div>
-        ))}
 
       <div class="ff-section-label">Last Run</div>
 

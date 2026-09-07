@@ -33,8 +33,13 @@ import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEn
  * check with, and shouldn't have to wait for the next hourly tick to do it.
  *
  * `CourierAutoConfig.autoDispatchEnabled` only gates the "send" side —
- * detection and notification always run regardless, so turning auto-dispatch
- * off falls back to "notify + badge, let the player decide."
+ * detection and notification run whenever `watchEnabled` is on regardless of
+ * that flag, so turning auto-dispatch off (with watch still on) falls back to
+ * "notify + badge, let the player decide." `watchEnabled` itself is the
+ * master switch for both alarms below — off means neither one is armed at
+ * all, and (per `CourierAutoConfig`'s own doc) forces `autoDispatchEnabled`/
+ * `autoOffloadEnabled` off too, since neither has any other trigger to run
+ * from.
  *
  * Every entry point below gates on `fetchLiveStatus()` first, and separately
  * catches a `SystemicActionError` with kind `'status-blocked'` from any of the
@@ -59,13 +64,27 @@ export function scheduleHourlyDestCheck(): void {
 
 /** Reacts live to the panel's checkbox writing a new config — same
  *  "chrome.storage.onChanged, registered once at module load" pattern as
- *  `careerAuto/index.ts`'s `watchConfigChanges`. Only an off→on transition
- *  does anything, for either flag: flipping auto-dispatch or auto-offload on
- *  shouldn't wait out however much of the current cycle is left before it
- *  first acts, the same reasoning as `CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS`.
- *  Turning either off needs no special reaction — detection keeps running on
- *  its own schedule either way (see the module doc above), so there's
- *  nothing to reschedule.
+ *  `careerAuto/index.ts`'s `watchConfigChanges`.
+ *
+ *  `watchEnabled` is handled first and takes priority over the other two:
+ *  it's the master switch for both alarms (see `CourierAutoConfig`'s own
+ *  doc), so an on→off transition clears both outright regardless of what
+ *  dispatch/offload were doing, and — since neither has any trigger left to
+ *  run from with the alarms gone — forces both back to `false` in the same
+ *  write rather than leaving them reading "on" for something that can no
+ *  longer act on them. That write re-enters this same listener, but with
+ *  `watchEnabled` unchanged (still `false`) on both sides of the diff, so the
+ *  off-branch below doesn't refire. An off→on transition re-arms the hourly
+ *  check immediately (same reasoning as the dispatch branch below) and, if
+ *  any pet is already in flight, the return alarm too — mirroring what
+ *  `init()` does on a fresh service-worker wake.
+ *
+ *  For dispatch/offload, only an off→on transition does anything: flipping
+ *  either on shouldn't wait out however much of the current cycle is left
+ *  before it first acts, the same reasoning as
+ *  `CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS`. Turning either off needs no
+ *  special reaction — detection keeps running on its own schedule either way
+ *  (as long as `watchEnabled` stays on), so there's nothing to reschedule.
  *
  *  The auto-offload branch exists because `SMUGGLING_COURIER_RETURN` only
  *  stays armed while a pet is still in flight — `recordFleetReturns` clears
@@ -98,6 +117,29 @@ function watchConfigChanges(): void {
     if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
     const next = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue as CourierAutoConfig | undefined;
     const prev = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].oldValue as CourierAutoConfig | undefined;
+
+    if (prev?.watchEnabled && !next?.watchEnabled) {
+      chrome.alarms.clear(ALARM_NAMES.SMUGGLING_DEST_POLL);
+      chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+      if (next && (next.autoDispatchEnabled || next.autoOffloadEnabled)) {
+        void storage.setCourierAutoConfig({ ...next, autoDispatchEnabled: false, autoOffloadEnabled: false });
+      }
+      return;
+    }
+    if (next?.watchEnabled && !prev?.watchEnabled) {
+      void (async () => {
+        const watchState = await storage.getCourierWatchState();
+        await storage.setCourierWatchState({ ...watchState, lastCheckedAt: 0, lastProbeResult: null });
+        chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+        const pendingReturns = await storage.getPendingCourierReturns();
+        if (pendingReturns.length > 0) {
+          chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+        }
+      })();
+      return;
+    }
+    if (!next?.watchEnabled) return; // both toggles below are meaningless without watch on
+
     if (next?.autoDispatchEnabled && !prev?.autoDispatchEnabled) {
       void (async () => {
         const watchState = await storage.getCourierWatchState();
@@ -112,9 +154,16 @@ function watchConfigChanges(): void {
 }
 
 /** Arms/re-arms the hourly check on every wake — cheap no-op after the first
- *  run, same "runs on every service-worker wake" shape as `ensureSweepAlarm`. */
+ *  run, same "runs on every service-worker wake" shape as `ensureSweepAlarm`.
+ *  Gated on `watchEnabled`: if the player has turned the master switch off,
+ *  neither alarm should come back just because the service worker restarted —
+ *  same "off means off, not just off-until-the-next-wake" expectation as
+ *  every other config-gated `init`. */
 export async function init(): Promise<void> {
   watchConfigChanges();
+  const config = await storage.getCourierAutoConfig();
+  if (!config.watchEnabled) return;
+
   const existing = await chrome.alarms.get(ALARM_NAMES.SMUGGLING_DEST_POLL);
   if (!existing) scheduleHourlyDestCheck();
 
@@ -144,6 +193,7 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
   ]);
 
   return {
+    watchEnabled: config.watchEnabled,
     autoDispatchEnabled: config.autoDispatchEnabled,
     autoOffloadEnabled: config.autoOffloadEnabled,
     destinationOpenUntil: watchState.destinationOpenUntil,
@@ -183,15 +233,16 @@ async function findGameTabId(): Promise<number | undefined> {
   return tabs[0]?.id;
 }
 
-/** Disables both auto-offload and auto-dispatch, clears both alarms, and
+/** Disables watch, auto-offload, and auto-dispatch, clears both alarms, and
  *  tells the player — reserved for a genuine `'shape'` error (an
  *  unrecognized response format), never for `'status-blocked'` (see the
- *  module doc above). Both toggles, not just dispatch: both alarms get
- *  cleared here, so nothing automated is running regardless — leaving
- *  `autoOffloadEnabled` on would misrepresent that as still-active. Mirrors
- *  `careerAuto/runner.ts`'s and `streetIntel/actionRunner.ts`'s `pause()`. */
+ *  module doc above). All three flags, not just dispatch: both alarms get
+ *  cleared here, so nothing automated (including detection itself) is
+ *  running regardless — leaving `watchEnabled`/`autoOffloadEnabled` on would
+ *  misrepresent that as still-active. Mirrors `careerAuto/runner.ts`'s and
+ *  `streetIntel/actionRunner.ts`'s `pause()`. */
 async function disableAutoWatch(message: string): Promise<void> {
-  await storage.setCourierAutoConfig({ autoDispatchEnabled: false, autoOffloadEnabled: false });
+  await storage.setCourierAutoConfig({ watchEnabled: false, autoDispatchEnabled: false, autoOffloadEnabled: false });
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_DEST_POLL);
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
   await notify('courierAutoStopped', {
@@ -422,6 +473,14 @@ async function evaluateDestination(idlePets: PetRosterEntry[], fleet: FleetEntry
 export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.SMUGGLING_DEST_POLL) return;
 
+  // Defense-in-depth against the alarm having already fired in the narrow
+  // window between the player flipping `watchEnabled` off and
+  // `watchConfigChanges`'s `chrome.alarms.clear` actually landing — without
+  // this, the unconditional `scheduleHourlyDestCheck()` calls below would
+  // re-arm an alarm the player just turned off, same class of race the
+  // per-call `fetchLiveStatus()` gate exists for elsewhere in this file.
+  if (!(await storage.getCourierAutoConfig()).watchEnabled) return;
+
   const status = await fetchLiveStatus();
   if (!status) {
     scheduleHourlyDestCheck();
@@ -468,6 +527,9 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
 
 export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.SMUGGLING_COURIER_RETURN) return;
+
+  // See the matching guard in `handleDestPollAlarm` above.
+  if (!(await storage.getCourierAutoConfig()).watchEnabled) return;
 
   const status = await fetchLiveStatus();
   if (!status) {

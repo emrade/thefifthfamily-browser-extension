@@ -46,10 +46,15 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   oddsMode: 'revealed',
 };
 
-// Both default off — an install shouldn't do anything automated to the
-// account before the player has explicitly opted in from the Pet Couriers
-// panel, matching every other auto feature's own off-by-default convention.
+// `autoDispatchEnabled`/`autoOffloadEnabled` default off — an install
+// shouldn't do anything automated to the account before the player has
+// explicitly opted in from the Pet Couriers panel, matching every other auto
+// feature's own off-by-default convention. `watchEnabled` defaults `true`
+// instead — detection+notification ran unconditionally for every existing
+// install before this flag existed, so this preserves that behavior for
+// anyone who hasn't touched it yet (see `CourierAutoConfig`'s own doc).
 const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
+  watchEnabled: true,
   autoDispatchEnabled: false,
   autoOffloadEnabled: false,
 };
