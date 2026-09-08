@@ -127,6 +127,13 @@ export interface RealEstateAdvisorPreferences {
  * docs/smuggling-v2-plan.md's "Pet roster discovery" note. Only learnable from a
  * `smug_tab=proto` response when the account has zero active shipments; persisted
  * once learned so the courier automation doesn't need that rare state on every run.
+ *
+ * The `milestone*` fields come from the same card's training-progress block — see
+ * docs/pet-training.md for the two-step mechanic (Feed/Train earn spendable Pet
+ * Points on the Menagerie page; only *allocating* those points into STR/DEF/AGI/DEX
+ * advances this milestone). `null` here means the block wasn't present on the card
+ * (observed only when a pet has crossed all the way to its final milestone — never
+ * seen on this account, so unconfirmed) rather than "not yet parsed."
  */
 export interface PetRosterEntry {
   userPetId: number;
@@ -134,6 +141,18 @@ export interface PetRosterEntry {
   tier: string;
   capacity: number;
   travelPenaltyPct: number;
+  /** "Training X / Y" — X milestones already crossed, out of Y total for this pet. */
+  milestoneCurrent: number | null;
+  milestoneMax: number | null;
+  /** How many more allocated STR/DEF/AGI/DEX points (any mix) cross the next
+   *  milestone — the same number the panel's "+N more" note shows. */
+  pointsNeededForNextMilestone: number | null;
+  /** What capacity/travel penalty become once that next milestone is crossed —
+   *  equal to the pet's *current* capacity/travel when a milestone only improves
+   *  travel time and leaves capacity unchanged (confirmed happens: see
+   *  docs/pet-training.md's Fox/Pigeon/Raccoon data). */
+  nextMilestoneCapacity: number | null;
+  nextMilestoneTravelPenaltyPct: number | null;
   lastSeen: number;
 }
 

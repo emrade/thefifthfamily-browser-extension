@@ -98,10 +98,52 @@ function parseRoster(doc: Document, timestamp: number): PetRosterEntry[] {
     const stats = Array.from(card.querySelectorAll('.sv2-cs-v'));
     const capacity = numberFrom(textOf(stats[0] ?? null));
     const travelPenaltyPct = numberFrom(textOf(stats[1] ?? null));
+    const milestone = parseMilestone(card);
 
-    entries.push({ userPetId, name, tier, capacity, travelPenaltyPct, lastSeen: timestamp });
+    entries.push({ userPetId, name, tier, capacity, travelPenaltyPct, ...milestone, lastSeen: timestamp });
   }
   return entries;
+}
+
+/**
+ * The "Training X / Y" bar plus its "+N more STR/DEF/AGI/DEX ... then carries Z
+ * at +W% travel time" note — see docs/pet-training.md, which is where this
+ * markup was first read closely. Reading the three bolded numbers out of the
+ * note by *position* (need, next capacity, next travel) rather than a single
+ * combined regex against the whole sentence, since the surrounding wording is
+ * exactly the kind of copy a game update tends to tweak without changing the
+ * numbers' order.
+ */
+function parseMilestone(card: Element): Pick<
+  PetRosterEntry,
+  'milestoneCurrent' | 'milestoneMax' | 'pointsNeededForNextMilestone' | 'nextMilestoneCapacity' | 'nextMilestoneTravelPenaltyPct'
+> {
+  const empty = {
+    milestoneCurrent: null,
+    milestoneMax: null,
+    pointsNeededForNextMilestone: null,
+    nextMilestoneCapacity: null,
+    nextMilestoneTravelPenaltyPct: null,
+  };
+  const [curText, maxText] = textOf(card.querySelector('.sv2-ms-head b')).split('/');
+  const milestoneCurrent = curText !== undefined ? numberFrom(curText) : NaN;
+  const milestoneMax = maxText !== undefined ? numberFrom(maxText) : NaN;
+  if (!Number.isFinite(milestoneCurrent) || !Number.isFinite(milestoneMax)) return empty;
+
+  // No note at all is the maxed-out case (never observed on this account, so
+  // unconfirmed) — every field except the milestone counters stays null.
+  const noteBolds = Array.from(card.querySelectorAll('.sv2-ms-note b')).map((b) => textOf(b));
+  const needed = noteBolds[0] ? numberFrom(noteBolds[0]) : NaN;
+  const nextCapacity = noteBolds[1] ? numberFrom(noteBolds[1]) : NaN;
+  const nextTravel = noteBolds[2] ? numberFrom(noteBolds[2]) : NaN;
+
+  return {
+    milestoneCurrent,
+    milestoneMax,
+    pointsNeededForNextMilestone: Number.isFinite(needed) ? needed : null,
+    nextMilestoneCapacity: Number.isFinite(nextCapacity) ? nextCapacity : null,
+    nextMilestoneTravelPenaltyPct: Number.isFinite(nextTravel) ? nextTravel : null,
+  };
 }
 
 function parseBlackMarket(doc: Document): BlackMarketItem[] {

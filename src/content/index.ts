@@ -11,6 +11,7 @@ import { handleCapturedRequest as handleFightClub, initFightClubControls } from 
 import { handleCapturedRequest as handleStreetIntel, initStreetIntelHighlights } from './features/streetIntel';
 import { initCourierPanel } from './features/smuggling/courierPanel';
 import { initRealEstateAdvisor } from './features/realEstate';
+import { initMenagerieAssistant } from './features/menagerieAssistant';
 import { initStockMarketStatus } from './features/stockMarket';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
@@ -117,6 +118,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.realEstateAdvisor) {
       initRealEstateAdvisor().catch((err) => console.error(LOG_PREFIX, 'initRealEstateAdvisor failed', err));
+    }
+    if (prefs.menagerieAssistant) {
+      initMenagerieAssistant().catch((err) => console.error(LOG_PREFIX, 'initMenagerieAssistant failed', err));
     }
     if (prefs.stockMarketStatus) {
       initStockMarketStatus();

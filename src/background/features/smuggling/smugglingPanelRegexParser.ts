@@ -84,10 +84,48 @@ function parseRoster(html: string, timestamp: number): PetRosterEntry[] {
       tier: roleMatch ? roleMatch[1] : '',
       capacity: numberFrom(stats[0]),
       travelPenaltyPct: numberFrom(stats[1]),
+      ...parseMilestone(chunk),
       lastSeen: timestamp,
     });
   }
   return entries;
+}
+
+/** DOM-free twin of smugglingPanelAdapter.ts's `parseMilestone` — see that one's
+ *  doc comment for what these fields mean and where the markup comes from. */
+function parseMilestone(chunk: string): Pick<
+  PetRosterEntry,
+  'milestoneCurrent' | 'milestoneMax' | 'pointsNeededForNextMilestone' | 'nextMilestoneCapacity' | 'nextMilestoneTravelPenaltyPct'
+> {
+  const empty = {
+    milestoneCurrent: null,
+    milestoneMax: null,
+    pointsNeededForNextMilestone: null,
+    nextMilestoneCapacity: null,
+    nextMilestoneTravelPenaltyPct: null,
+  };
+  const headMatch = chunk.match(/sv2-ms-head">[^]*?<b>(\d+)\s*\/\s*(\d+)<\/b>/);
+  if (!headMatch) return empty;
+  const milestoneCurrent = Number(headMatch[1]);
+  const milestoneMax = Number(headMatch[2]);
+
+  // No note at all is the maxed-out case (never observed on this account, so
+  // unconfirmed) — bounded to a short window past the marker rather than an
+  // unbounded search, since the note itself is always short.
+  const noteStart = chunk.indexOf('sv2-ms-note');
+  if (noteStart === -1) return { ...empty, milestoneCurrent, milestoneMax };
+  const bolds = [...chunk.slice(noteStart, noteStart + 400).matchAll(/<b>([^<]+)<\/b>/g)].map((m) => m[1]);
+  const needed = bolds[0] ? numberFrom(bolds[0]) : NaN;
+  const nextCapacity = bolds[1] ? numberFrom(bolds[1]) : NaN;
+  const nextTravel = bolds[2] ? numberFrom(bolds[2]) : NaN;
+
+  return {
+    milestoneCurrent,
+    milestoneMax,
+    pointsNeededForNextMilestone: Number.isFinite(needed) ? needed : null,
+    nextMilestoneCapacity: Number.isFinite(nextCapacity) ? nextCapacity : null,
+    nextMilestoneTravelPenaltyPct: Number.isFinite(nextTravel) ? nextTravel : null,
+  };
 }
 
 function parseBlackMarket(html: string): BlackMarketItem[] {

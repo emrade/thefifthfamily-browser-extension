@@ -27,6 +27,11 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',
   },
   {
+    id: 'menagerieAssistant',
+    label: 'Menagerie Assistant',
+    description: 'On the Menagerie Care tab, shows each pet’s banked stat points against what its next Smuggling capacity/speed milestone actually needs — no more switching between the two pages per pet to check.',
+  },
+  {
     id: 'stockMarketStatus',
     label: 'Stock Market Tracker',
     description:
