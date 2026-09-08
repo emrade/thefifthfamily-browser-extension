@@ -97,14 +97,43 @@ of the roster (Wild Boar, Blue Crab, etc.) is likely sitting on the same kind of
 ready-to-cash-in balance — worth checking each the same way rather than assuming only
 George was affected.
 
+## Confirmed on a second data point: 2026-09-08 allocation pass
+
+`fifth-family-archive-2026-09-08T13-49-53-102Z.ndjson.gz` (2026-09-06 10:30 →
+2026-09-08 13:49) captured the player allocating banked points across the whole
+12-pet roster in one ~10-minute session (13:38–13:49 UTC). Comparing panel snapshots
+immediately before and after:
+
+| Pet | Capacity change | Travel-time change | Tier |
+|---|---|---|---|
+| George | 30 → **33** | +160% → +136% | 0→1 |
+| Wild Boar | 23 → **25** | +160% → +136% | 0→1 |
+| House Cat | 8 → **9** | +82% → +67% | 1→2 |
+| Red-Tailed Hawk | 10 → **11** | +60% → +46% | 0→1 |
+| Fox | unchanged (5) | +55% → **+42%** | 1→2 |
+| Pigeon | unchanged (2) | +46% → **+33%** | 1→2 |
+| Raccoon | unchanged (7) | +91% → **+75%** | 1→2 |
+| Blue Crab, Moray Eel, Gino, German Shepherd, Peregrine Falcon | unchanged | unchanged | allocated but short 1–3 points of the next tier |
+
+Two things this resolves:
+
+- **Not every milestone raises capacity.** Fox, Pigeon, and Raccoon's tier-1→2
+  crossings only cut travel time — capacity stayed exactly the same. The panel's own
+  "then carries X at +Y%" note already said as much per-pet (X sometimes equals the
+  current capacity), it just wasn't obvious from George's case alone, where both
+  numbers moved together.
+- **Leftover points do carry forward, confirmed.** George's milestone note read
+  "+10 more" in the capture taken immediately after his 0→1 crossing, then "+6 more"
+  in the capture ~10 minutes later with no additional Feed/Train in between — the 4
+  points left over from the original +6 allocation (out of 10 banked) rolled straight
+  into tier 1→2 progress rather than being lost.
+
 ## Still unconfirmed
 
-- The actual `menAllocConfirm` backend action name/shape — never called in the captured
-  archive window (only an unrelated `action=allocate&perk_id=...` for the Academy
-  perk-tree showed up, a different system entirely). Whatever it is, it isn't
+- The actual `menAllocConfirm` backend action name/shape — never called in either
+  captured archive window (only an unrelated `action=allocate&perk_id=...` for the
+  Academy perk-tree showed up, a different system entirely). Whatever it is, it isn't
   `menagerie.php`'s `feed_pet`/`train_pet`.
-- Whether leftover banked stat points really do carry forward across a milestone
-  crossing, or reset — plausible from the cumulative "+N trained" display, not directly
-  observed pre/post a second crossing.
 - The exact per-tier point cost for tiers beyond each pet's current one (only the
-  *next* tier's cost is ever shown).
+  *next* tier's cost is ever shown), and whether the travel-time-only pattern (seen at
+  tier 1→2 for three pets here) is specific to that tier or recurs elsewhere.
