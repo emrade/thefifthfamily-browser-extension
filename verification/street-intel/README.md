@@ -19,11 +19,18 @@ python3 verification/street-intel/verify_exact_formula.py [--archive /path/to/ar
 python3 verification/street-intel/verify_env_stat_parsing.py [--archive ...]
 python3 verification/street-intel/verify_risk_tier_bands.py [--archive ...]
 python3 verification/street-intel/verify_complications.py [--archive ...]
+python3 verification/street-intel/verify_complication_type_stats.py [--archive ... [--archive ...]]
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
 under `~/Downloads` or `~/Desktop` — pass it explicitly if the archive lives
 somewhere else or you want to pin a specific export.
+
+`verify_complication_type_stats.py` is the one exception: it defaults to
+*every* matching archive found (not just the newest) and `--archive` is
+repeatable there, since a per-scenario check needs more combined history
+than any single export's window usually holds. Overlapping exports are
+deduplicated automatically.
 
 ## What each script checks
 
@@ -45,14 +52,25 @@ somewhere else or you want to pin a specific export.
   win/loss and cash-lost figures, reconstructed by pairing each
   `action=attempt` (which carries `complication.type`) with the following
   `action=complication` response for the same `opportunity_id`.
+- **`verify_complication_type_stats.py`** — same pairing as
+  `verify_complications.py`, but broken down by scenario *and* choice (a
+  reconstruction of the extension's own `complicationTypeStats`), checking
+  every bucket against `docs/street-intel-complication-tracking.md`'s
+  ~15-20-per-bucket noise threshold. Answers "is Section 7C's per-scenario
+  advice trustworthy yet" directly rather than needing the question re-run
+  by hand each time. As of 2026-09-08 (two archives combined): no.
 
 ## What these scripts can't check
 
-`docs/street-intel-estimate-calculation.md` Section 8 also cites a
-`complicationStats` snapshot (146 events, fight/run fallback win rates) from
-*after* this archive's time window. That number lives in the extension's own
-runtime storage, not in any request archive — the only way to check it is to
-read it straight out of the extension's popup UI ("Complication History"
-section) on a real account.
+`docs/street-intel-estimate-calculation.md` Section 8 also cites a live
+`complicationStats` snapshot (146 events at the time, fight/run fallback win
+rates) read straight from the extension's own runtime storage rather than
+derived from an archive. Per-choice and per-scenario complication figures
+*are* derivable from an archive (see the two scripts above — combine enough
+exports and they converge on the same numbers), but that specific snapshot
+was a point-in-time read of live storage, taken via the popup UI ("Complication
+History" section) rather than reconstructed — re-deriving the *exact same*
+historical number requires an archive covering that snapshot's full window,
+which retention may have already evicted.
 
 `_lib.py` is shared, not a standalone script.

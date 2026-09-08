@@ -44,6 +44,53 @@ def resolve_archive_path(args) -> str:
     return args.archive or find_default_archive()
 
 
+def add_archives_arg(parser: argparse.ArgumentParser) -> None:
+    """Plural counterpart to add_archive_arg, for scripts that benefit from
+    combining more than one export (a single archive's window often doesn't
+    hold enough events for a per-bucket check to mean anything — see
+    verify_complication_type_stats.py). Repeatable: `--archive a.gz --archive
+    b.gz`. Defaults to *every* matching file found, not just the newest."""
+    parser.add_argument(
+        "--archive",
+        dest="archives",
+        action="append",
+        default=None,
+        help="Path to a fifth-family-archive-*.ndjson.gz (repeatable to combine several; "
+        "default: every match under ~/Downloads or ~/Desktop)",
+    )
+
+
+def resolve_archive_paths(args) -> list:
+    if args.archives:
+        return args.archives
+    candidates = sorted(p for pattern in ARCHIVE_GLOBS for p in glob(pattern))
+    if not candidates:
+        raise SystemExit(
+            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz "
+            "(repeatable)\n"
+            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
+        )
+    return candidates
+
+
+def load_records_deduped(archive_paths):
+    """Same as load_records, but across several archives whose time windows
+    may overlap (each export is a rolling window off the same underlying
+    IndexedDB, so re-running this later against a fresh export plus an old
+    one will see the same request twice). De-duplicates by (timestamp,
+    requestBody) — good enough since a genuine re-send of the identical body
+    in the identical millisecond has never been observed and isn't
+    meaningfully different from a duplicate anyway."""
+    seen = set()
+    for path in archive_paths:
+        for row in load_records(path):
+            key = (row.get("timestamp"), row.get("requestBody"))
+            if key in seen:
+                continue
+            seen.add(key)
+            yield row
+
+
 def load_records(archive_path: str):
     """Yields each parsed JSON line except the header (first line)."""
     opener = gzip.open if archive_path.endswith(".gz") else open
