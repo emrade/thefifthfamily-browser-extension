@@ -64,27 +64,45 @@ function parseFleet(html: string): FleetEntry[] {
   return entries;
 }
 
+// Matches both a normal card (`<div class="sv2-cc">`) and one carrying extra
+// modifier classes (`<div class="sv2-cc off hid">`, confirmed on a pet
+// that's "deployed as combat pet" — see below). A plain literal split on
+// `'<div class="sv2-cc">'` (the original version of this) silently missed
+// every modified card, merging it into the previous card's chunk instead of
+// giving it one of its own.
+const CARD_BOUNDARY_RE = /<div class="sv2-cc(?: [^"]*)?">/;
+
 /** Only non-empty when the account has zero active shipments — see
  *  docs/smuggling-v2-plan.md's "Pet roster discovery" note. */
 function parseRoster(html: string, timestamp: number): PetRosterEntry[] {
   const entries: PetRosterEntry[] = [];
-  const chunks = html.split('<div class="sv2-cc">').slice(1);
+  const chunks = html.split(CARD_BOUNDARY_RE).slice(1);
   for (const raw of chunks) {
-    const chunk = raw.split('<div class="sv2-cc">')[0]; // next card (if any) is a hard stop
+    const chunk = raw.split(CARD_BOUNDARY_RE)[0]; // next card (if any) is a hard stop
 
-    const idMatch = chunk.match(/Game\.smugV2Draft\((\d+),'([^']+)'\)/);
-    if (!idMatch) continue;
+    // The "Send <Pet>" button is absent when a pet can't currently be
+    // drafted (e.g. deployed as combat pet — see `PetRosterEntry.draftBlockedReason`'s
+    // own doc comment) — `Game.smugV2Fav` (the pin button) is the fallback
+    // id source in that case, same reasoning as the DOM adapter twin.
+    const draftMatch = chunk.match(/Game\.smugV2Draft\((\d+),'([^']+)'\)/);
+    const favMatch = draftMatch ? null : chunk.match(/Game\.smugV2Fav\((\d+),\d+\)/);
+    const nameMatch = draftMatch ? null : chunk.match(/sv2-cc-name">([^<]+)</);
+    const userPetId = draftMatch ? Number(draftMatch[1]) : favMatch ? Number(favMatch[1]) : NaN;
+    const name = draftMatch ? draftMatch[2] : (nameMatch?.[1] ?? null);
+    if (!Number.isFinite(userPetId) || !name) continue;
 
     const roleMatch = chunk.match(/sv2-cc-role">([^<]+)</);
     const stats = [...chunk.matchAll(/sv2-cs-v[^"]*">([^<]+)</g)].map((m) => m[1]);
+    const blockMatch = draftMatch ? null : chunk.match(/sv2-cc-block">(?:<i[^>]*><\/i>)?([^<]+)</);
 
     entries.push({
-      userPetId: Number(idMatch[1]),
-      name: idMatch[2],
+      userPetId,
+      name,
       tier: roleMatch ? roleMatch[1] : '',
       capacity: numberFrom(stats[0]),
       travelPenaltyPct: numberFrom(stats[1]),
       ...parseMilestone(chunk),
+      draftBlockedReason: blockMatch ? blockMatch[1] : null,
       lastSeen: timestamp,
     });
   }

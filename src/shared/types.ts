@@ -153,6 +153,21 @@ export interface PetRosterEntry {
    *  docs/pet-training.md's Fox/Pigeon/Raccoon data). */
   nextMilestoneCapacity: number | null;
   nextMilestoneTravelPenaltyPct: number | null;
+  /**
+   * Why the "Send <Pet>" button is missing from this card, verbatim from the
+   * game's own `.sv2-cc-block` text — null when the pet is normally
+   * draftable. Confirmed reason so far: `"Deployed as your combat pet"`
+   * (equipping a pet for Fight Club blocks it from smuggling duty until
+   * unequipped) — surfaced as free text rather than an enum since the card
+   * copy is exactly as reliable a source for a reason the game adds later as
+   * for this one. `petCourier.ts` excludes any pet with this set from the
+   * idle-pet pool, since `v2_draft` rejects it outright (confirmed: `{"ok":
+   * false,"error":"Pigeon is deployed as your combat pet. Unequip it
+   * first."}`) — before this field existed, a pet in this state still
+   * *looked* idle (just absent from the active fleet) to that check, so the
+   * automation kept re-attempting the same doomed draft every run.
+   */
+  draftBlockedReason: string | null;
   lastSeen: number;
 }
 

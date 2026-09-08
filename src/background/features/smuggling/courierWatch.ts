@@ -207,7 +207,13 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
 async function getIdlePets(fleet: FleetEntry[]): Promise<PetRosterEntry[]> {
   const roster = await getRoster();
   const activeNames = new Set(fleet.map((f) => f.petName));
-  return roster.filter((p) => !activeNames.has(p.name));
+  // Same distinction as petCourier.ts's own idle-pet filter: not in the
+  // active fleet isn't the same as actually draftable (a pet equipped as
+  // your Fight Club combat pet is neither) — see `PetRosterEntry.draftBlockedReason`.
+  // Matters doubly here: `evaluateDestination` below probes with
+  // `idlePets[0]`, so a blocked pet sitting first in this list would waste
+  // the hourly destination check on a doomed draft instead of a real probe.
+  return roster.filter((p) => !activeNames.has(p.name) && !p.draftBlockedReason);
 }
 
 async function updateBadge(idleCount: number): Promise<void> {

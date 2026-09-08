@@ -366,7 +366,19 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
 
     const roster = await getRoster();
     const activeNames = new Set(snapshot.fleet.map((f) => f.petName));
-    const idlePets = roster.filter((p) => !activeNames.has(p.name));
+    // Not in the active fleet isn't the same as actually draftable — a pet
+    // can be sitting out idle on the smuggling side while still rejected by
+    // `v2_draft` for an unrelated reason (confirmed: equipping a pet as your
+    // Fight Club combat pet blocks it here too — "Pigeon is deployed as your
+    // combat pet. Unequip it first."). Checked here, before ever attempting a
+    // draft, rather than discovered per-pet as a wasted failed request the
+    // way it was the first time this happened — see `PetRosterEntry.draftBlockedReason`.
+    for (const pet of roster) {
+      if (!activeNames.has(pet.name) && pet.draftBlockedReason) {
+        pushSkipped({ petName: pet.name, reason: pet.draftBlockedReason });
+      }
+    }
+    const idlePets = roster.filter((p) => !activeNames.has(p.name) && !p.draftBlockedReason);
 
     if (idlePets.length === 0) {
       summary.stoppedReason = 'no-idle-pets';

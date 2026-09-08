@@ -89,8 +89,18 @@ function parseFleet(doc: Document): FleetEntry[] {
 function parseRoster(doc: Document, timestamp: number): PetRosterEntry[] {
   const entries: PetRosterEntry[] = [];
   for (const card of Array.from(doc.querySelectorAll('.sv2-crew .sv2-cc'))) {
-    const args = onclickArgs(card.querySelector('.sv2-go'), 'Game\\.smugV2Draft');
-    const userPetId = args ? Number(args[0]) : NaN;
+    // The "Send <Pet>" button (`.sv2-go`) is absent entirely when a pet can't
+    // currently be drafted — confirmed for "deployed as your combat pet"
+    // (`.sv2-cc-block` replaces it), and the pin button (`Game.smugV2Fav`)
+    // is the only other element on the card that still carries the pet's
+    // real id in that state, so it's the fallback rather than skipping the
+    // card outright. Skipping it outright is exactly what silently dropped
+    // a deployed pet's roster entry from ever being refreshed, leaving a
+    // stale "still draftable" record in storage indefinitely — see
+    // docs/pet-training.md's sibling note in petCourier.ts on this.
+    const draftArgs = onclickArgs(card.querySelector('.sv2-go'), 'Game\\.smugV2Draft');
+    const pinArgs = draftArgs ? null : onclickArgs(card.querySelector('.sv2-pin'), 'Game\\.smugV2Fav');
+    const userPetId = draftArgs ? Number(draftArgs[0]) : pinArgs ? Number(pinArgs[0]) : NaN;
     if (!Number.isFinite(userPetId)) continue;
 
     const name = textOf(card.querySelector('.sv2-cc-name'));
@@ -99,8 +109,13 @@ function parseRoster(doc: Document, timestamp: number): PetRosterEntry[] {
     const capacity = numberFrom(textOf(stats[0] ?? null));
     const travelPenaltyPct = numberFrom(textOf(stats[1] ?? null));
     const milestone = parseMilestone(card);
+    // e.g. "Deployed as your combat pet" — whatever reason the game gives for
+    // why `.sv2-go` is missing. Kept as free text rather than a fixed enum:
+    // this is the only reason confirmed so far, but the card's own copy is
+    // exactly as reliable a source for a *future* reason as for this one.
+    const draftBlockedReason = draftArgs ? null : (textOf(card.querySelector('.sv2-cc-block')) || null);
 
-    entries.push({ userPetId, name, tier, capacity, travelPenaltyPct, ...milestone, lastSeen: timestamp });
+    entries.push({ userPetId, name, tier, capacity, travelPenaltyPct, ...milestone, draftBlockedReason, lastSeen: timestamp });
   }
   return entries;
 }
