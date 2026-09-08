@@ -9,6 +9,22 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.20.1] - 2026-09-08
+
+### Fixed
+- Pet Couriers: a pet equipped as your Fight Club combat pet has no "Send"
+  button on its Smuggling roster card, which the roster parsers read as "not
+  a pet at all" rather than "not draftable right now" — so its cached
+  roster entry never got refreshed while equipped, kept looking idle
+  forever, and the automation (both the manual Run button and the
+  background auto-dispatch/hourly probe) repeatedly tried and failed to
+  draft it every cycle. Both parsers now fall back to the card's pin button
+  for the pet's id when the draft button is missing, and record the game's
+  own reason text (`PetRosterEntry.draftBlockedReason`) instead of dropping
+  the card. The automation excludes any pet with that reason set from its
+  idle pool up front and reports it as a clean skip instead of a wasted,
+  failing draft request.
+
 ## [0.20.0] - 2026-09-08
 
 ### Added
