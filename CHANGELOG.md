@@ -9,6 +9,32 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.20.0] - 2026-09-08
+
+### Added
+- Menagerie Assistant: a floating overlay on the Menagerie's Care tab listing
+  every pet's banked "Stat Points Ready" against what its *next* Smuggling
+  capacity/speed milestone actually costs — the two numbers previously only
+  existed on two different pages, so checking meant switching tabs once per
+  pet. Flags any pet whose banked points already cover the next milestone,
+  and shows Feed/Train cooldown status per pet without needing to open each
+  one individually. Reads the Smuggling page's own roster/milestone data
+  (persisted opportunistically, same as the pet-courier automation already
+  did for capacity/travel) rather than fetching anything itself, so the
+  milestone numbers are "as of last seen," not always live — each row shows
+  how long ago its data was captured. Read-only: it never allocates points
+  on the player's behalf. New "Menagerie Assistant" toggle under Settings,
+  on by default alongside the extension's other page overlays.
+- `PetRosterEntry` (and both parsers that build it) now also capture each
+  pet's training-milestone progress: current tier, points still needed for
+  the next one, and the capacity/travel-time it unlocks — the data the new
+  Menagerie Assistant is built on.
+- `docs/pet-training.md`: documents the pet capacity/training mechanic in
+  full, reverse-engineered from real archive captures — Feed/Train only earn
+  a spendable Pet Points balance; nothing changes until those points are
+  manually allocated into STR/DEF/AGI/DEX on the Care tab, and not every
+  milestone raises capacity (some tiers only cut travel time).
+
 ## [0.19.0] - 2026-09-07
 
 ### Removed
