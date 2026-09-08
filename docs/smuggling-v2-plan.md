@@ -73,10 +73,18 @@ but it's a prediction embedded in the response, not an observed transition — e
 in the archive sits at a fixed 0/10 or 1/10 the entire 7-day window, so no capture
 actually shows a capacity value change from one response to the next. What acquires and
 advances pets is confirmed separately, via `POST /actions/menagerie.php`: `buy_pet`
-("Acquired Wild Boar") adds a new pet to the roster, `train_pet`/`feed_pet` ("+10
-points"/"+1 point") advance the 0/10 bar — "same stats it fights with — raise them in
-the Menagerie" (`panel.php?type=menagerie`, itself a tracked-but-unbuilt endpoint in the
-archive). Travel time penalty is a multiplier on the district-pair's base time —
+("Acquired Wild Boar") adds a new pet to the roster; `train_pet`/`feed_pet` ("+10
+points"/"+1 point") earn a spendable **Pet Points** balance — "same stats it fights with
+— raise them in the Menagerie" (`panel.php?type=menagerie`, itself a tracked-but-unbuilt
+endpoint in the archive).
+
+> **Correction, see [pet-training.md](./pet-training.md):** the line above originally
+> read feed/train as directly advancing the 0/10 bar. They don't — they only fill a
+> Pet Points balance that then has to be *manually spent* (5 points per +1 STR/DEF/AGI/DEX,
+> via the Care tab's "Spend Pet Points" allocator) before the milestone bar moves at all.
+> Confirmed from a real account stuck at 0/10 for 4 straight days despite active daily
+> feeding, and from a live fix that crossed the milestone the moment banked points were
+> allocated. Travel time penalty is a multiplier on the district-pair's base time —
 `v2_depart`'s `travel_mod` field (`1.6` for Pigeon in one capture) is exactly this
 number, confirming the fleet-strip stat and the actual departure math agree.
 
