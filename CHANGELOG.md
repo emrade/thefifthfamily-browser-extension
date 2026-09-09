@@ -9,7 +9,7 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
-## [0.20.1] - 2026-09-08
+## [0.20.1] - 2026-09-09
 
 ### Fixed
 - Pet Couriers: a pet equipped as your Fight Club combat pet has no "Send"
@@ -24,6 +24,16 @@ whenever a version is bumped for release, listing what actually shipped.
   the card. The automation excludes any pet with that reason set from its
   idle pool up front and reports it as a clean skip instead of a wasted,
   failing draft request.
+- Pet Couriers: turning off "Background Watch" on the in-page Smuggling
+  panel greyed out the Auto-Dispatch/Auto-Offload toggles but left them
+  showing their previous checked state indefinitely, instead of visibly
+  flipping off. The panel wrote only `watchEnabled` and then immediately
+  read storage back to pick up the background script's separate corrective
+  write (which forces both off) — a cross-context race it reliably lost,
+  since the background script hadn't even received the change event yet.
+  It now computes and writes the fully-correct state itself in one call, so
+  the toggles flip off in sync with the grey-out instead of needing a
+  since-removed race with the background write to ever catch up.
 
 ## [0.20.0] - 2026-09-08
 
