@@ -480,13 +480,28 @@ function buildPanel(): HTMLDivElement {
     watchToggle.addEventListener('change', () => {
       storage
         .getCourierAutoConfig()
-        .then((config) => storage.setCourierAutoConfig({ ...config, watchEnabled: watchToggle.checked }))
-        .then(() => storage.getCourierAutoConfig())
         .then((config) => {
-          // Re-read rather than trusting the write above — turning watch off
-          // forces dispatch/offload off in the same write, from
-          // `watchConfigChanges` in courierWatch.ts, so the checkboxes here
-          // need to reflect that rather than staying checked.
+          // Compute the forced-off state ourselves and write it in this one
+          // call, rather than writing just `watchEnabled` and re-reading
+          // storage to pick up courierWatch.ts's own corrective write. That
+          // re-read raced the background script's cross-context reaction to
+          // this same write and reliably lost — background hadn't received
+          // the storage-change event yet, let alone finished its own write,
+          // so the checkboxes here read back the *stale* dispatch/offload
+          // values and just sat there, greyed out but never actually
+          // flipped off (confirmed live: reproduces every time turning watch
+          // off, and nothing afterward ever re-synced them — the 30s
+          // periodic refresh only touches status text, not these
+          // checkboxes). Mirrors the same forced-off rule `watchConfigChanges`
+          // enforces, so when that listener does react to this write, its
+          // own guard (`next.autoDispatchEnabled || next.autoOffloadEnabled`)
+          // is already false and it makes no redundant second write.
+          const next = watchToggle.checked
+            ? { ...config, watchEnabled: true }
+            : { ...config, watchEnabled: false, autoDispatchEnabled: false, autoOffloadEnabled: false };
+          return storage.setCourierAutoConfig(next).then(() => next);
+        })
+        .then((config) => {
           offloadToggle.checked = config.autoOffloadEnabled;
           dispatchToggle.checked = config.autoDispatchEnabled;
           applyWatchGate(config.watchEnabled);
