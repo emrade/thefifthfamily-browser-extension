@@ -9,6 +9,16 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.21.0] - 2026-09-09
+
+### Added
+- A persistent sidebar UI alongside the existing popup, sharing the same
+  Preact app and views (`src/sidebar/`). The popup stays the default
+  toolbar-click target on both browsers; the sidebar is opened separately —
+  via Chrome's side panel picker (`side_panel.default_path`) or Firefox's
+  View → Sidebars menu (`sidebar_action`) — so the panel can stay open
+  across page navigation instead of closing on every click-away.
+
 ## [0.20.1] - 2026-09-09
 
 ### Fixed
