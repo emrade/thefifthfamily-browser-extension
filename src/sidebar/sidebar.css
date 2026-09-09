@@ -1,0 +1,15 @@
+/* Overrides app.css's popup-fixed sizing for the persistent side panel/sidebar
+   surface. app.css is injected via a JS import inside App.tsx, so its position
+   in <head> relative to this linked stylesheet isn't guaranteed — !important
+   is used here instead of relying on cascade order. */
+
+html, body {
+  width: 100% !important;
+  max-height: none !important;
+  height: 100%;
+}
+
+#app, .popup-root {
+  width: 100% !important;
+  max-width: none !important;
+}

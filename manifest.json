@@ -7,7 +7,8 @@
     "alarms",
     "notifications",
     "storage",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://www.thefifthfamily.com/*"
@@ -43,6 +44,18 @@
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
+  },
+  "side_panel": {
+    "default_path": "src/sidebar/index.html"
+  },
+  "sidebar_action": {
+    "default_panel": "src/sidebar/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "The Fifth Family Enhancements"
   },
   "browser_specific_settings": {
     "gecko": {
