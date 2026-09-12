@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.21.1] - 2026-09-12
+
+### Fixed
+- Pet Couriers auto-watch: an interruption (jailed/hospitalized) that landed
+  right as the machine went to sleep for an extended period could leave its
+  rescheduled alarm sitting overdue indefinitely — `chrome.alarms` persist
+  across sleep, but redelivery of one that's already due isn't guaranteed
+  promptly on wake. A shipment left stranded mid-load from the original
+  interruption blocks every other pet from drafting anything, so the whole
+  feature stayed fully stuck until the player happened to reopen the panel by
+  hand. `init()` (which already runs on every service-worker wake) now
+  detects an overdue alarm and force re-arms it a few seconds out, making
+  wake itself the trigger to catch up. Also aligned two of the dest-poll
+  cycle's transient-fetch-failure retries from up to an hour to 60 seconds,
+  matching the return-alarm's own retry — the slow path made this exact
+  wake-up window worse if the first post-wake check hit a transient failure.
+
 ## [0.21.0] - 2026-09-09
 
 ### Added
