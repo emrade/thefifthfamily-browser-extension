@@ -22,6 +22,11 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'A floating panel on the Smuggling page with a Run button and last-run summary, so running couriers doesn’t need the popup open.',
   },
   {
+    id: 'streetIntelStatusPanel',
+    label: 'Street Intel Status Panel',
+    description: 'A floating panel on the Street Intel page showing the Auto-Attempt toggle, today’s attempts and earnings, and the last result — no popup needed to check.',
+  },
+  {
     id: 'realEstateAdvisor',
     label: 'Real Estate Advisor',
     description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',

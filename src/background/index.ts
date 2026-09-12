@@ -24,6 +24,7 @@ import {
   resume as resumeStockMarketTracker,
 } from './features/stockMarket';
 import type { ExtensionMessage } from '@/shared/messaging';
+import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { enqueueRecord } from '@/shared/requestLog/queue';
 import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retention';
@@ -112,6 +113,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // and cash banked, without committing to a full buy/load/depart cycle.
   if (msg.type === 'courier-offload-requested') {
     return runOffloadBatch(sender.tab?.id);
+  }
+
+  // Sent by the in-page Street Intel status overlay — see that message type's
+  // own doc in messaging.ts for why this is the one piece it can't read
+  // straight out of `chrome.storage` itself.
+  if (msg.type === 'street-intel-next-check-requested') {
+    return chrome.alarms.get(ALARM_NAMES.STREET_INTEL_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
   }
 
   // Read-only counterpart, for a UI surface (the in-page floating panel) that

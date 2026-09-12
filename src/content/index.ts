@@ -9,6 +9,7 @@ import { handleCapturedRequest as handlePlayerStats } from './features/playerSta
 import { handleCapturedRequest as handleSmuggling } from './features/smuggling';
 import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
 import { handleCapturedRequest as handleStreetIntel, initStreetIntelHighlights } from './features/streetIntel';
+import { initStreetIntelStatusPanel } from './features/streetIntel/statusPanel';
 import { initCourierPanel } from './features/smuggling/courierPanel';
 import { initRealEstateAdvisor } from './features/realEstate';
 import { initMenagerieAssistant } from './features/menagerieAssistant';
@@ -112,6 +113,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.streetIntelHighlights) {
       initStreetIntelHighlights();
+    }
+    if (prefs.streetIntelStatusPanel) {
+      initStreetIntelStatusPanel();
     }
     if (prefs.courierPanel) {
       initCourierPanel();

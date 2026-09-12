@@ -98,6 +98,18 @@ export type ExtensionMessage =
   // the poll re-fetches the panel itself on every cycle rather than working off
   // whatever this particular view happened to show.
   | { type: 'street-intel-viewed'; timestamp: number }
+  // Sent from the in-page Street Intel status overlay (content/features/
+  // streetIntel/statusPanel.ts) — same request/response exception as
+  // 'stock-tracker-status-requested'. Everything else that overlay shows
+  // (`StreetIntelAutoConfig`/`StreetIntelAutoStatus`) lives in
+  // `chrome.storage.local`, which a content script can read directly the
+  // same way the popup does — no round trip needed. `chrome.alarms`, unlike
+  // `chrome.storage`, isn't reachable from a content script at all, so the
+  // one thing that *does* need asking background is the poll alarm's own
+  // `scheduledTime`, for the narrow "no attempt has ever run yet, so
+  // `StreetIntelAutoStatus.nextEligibleAt` is still null" case — mirrors
+  // `StreetIntelAutoHome.tsx`'s own `nextAlarmAt` fallback in the popup.
+  | { type: 'street-intel-next-check-requested' }
   // Sent from the popup's Career Auto tab, not a content-script adapter — same
   // request/response exception as 'courier-run-requested'. Returns a fresh
   // Promise<CareerCatalogEntry[]> (background fetches+parses the live careers
