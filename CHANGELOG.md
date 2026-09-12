@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.22.0] - 2026-09-12
+
+### Added
+- Street Intel: a floating in-page status panel, same shape as the Pet
+  Courier panel — collapsed, it shows today's earnings at a glance;
+  expanded, it adds the Auto-Attempt toggle, today's attempts/earnings, the
+  last result, and a live countdown to the next check. Stays in sync with
+  the popup's own Street Intel Auto view via `chrome.storage`, so a change
+  from either surface (or the background auto-runner itself) shows up on
+  both immediately. Toggle it off under Settings → Page Features if you
+  don't want it (on by default, matching the other in-page panels).
+
 ## [0.21.1] - 2026-09-12
 
 ### Fixed
