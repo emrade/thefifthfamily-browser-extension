@@ -158,14 +158,32 @@ function watchConfigChanges(): void {
  *  Gated on `watchEnabled`: if the player has turned the master switch off,
  *  neither alarm should come back just because the service worker restarted —
  *  same "off means off, not just off-until-the-next-wake" expectation as
- *  every other config-gated `init`. */
+ *  every other config-gated `init`.
+ *
+ *  Also catches up any alarm whose `scheduledTime` has already passed —
+ *  confirmed real (2026-09-12): a status-blocked reschedule armed
+ *  `SMUGGLING_DEST_POLL` for a few minutes later, the machine then slept for
+ *  the rest of the night, and nothing about the machine waking back up made
+ *  Chrome redeliver that now-overdue alarm on its own — the courier sat
+ *  fully stuck (a shipment left `drafting` from the original interruption
+ *  blocks every other pet from drafting anything) until the player happened
+ *  to open the panel by hand hours later. `chrome.alarms` persist across
+ *  sleep/restart, but *delivery* of one that was already due isn't
+ *  guaranteed promptly on its own — so every wake re-checks each alarm's
+ *  `scheduledTime` against now and, if it's in the past, re-arms it a few
+ *  seconds out to force a prompt redelivery on this wake rather than trusting
+ *  however long Chrome takes to notice on its own. */
 export async function init(): Promise<void> {
   watchConfigChanges();
   const config = await storage.getCourierAutoConfig();
   if (!config.watchEnabled) return;
 
   const existing = await chrome.alarms.get(ALARM_NAMES.SMUGGLING_DEST_POLL);
-  if (!existing) scheduleHourlyDestCheck();
+  if (!existing) {
+    scheduleHourlyDestCheck();
+  } else if (existing.scheduledTime <= Date.now()) {
+    chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + 60_000 });
+  }
 
   // `chrome.alarms` don't survive an extension reload/update the way
   // `chrome.storage` does. Without this, a reload while pets are mid-flight
@@ -174,9 +192,14 @@ export async function init(): Promise<void> {
   // all — and if every pet is still away when the alarm gets wiped, nothing
   // is ever going to re-arm it on its own. Confirmed real (2026-08-29).
   const pendingReturns = await storage.getPendingCourierReturns();
-  if (pendingReturns.length > 0 && !(await chrome.alarms.get(ALARM_NAMES.SMUGGLING_COURIER_RETURN))) {
-    const earliest = Math.min(...pendingReturns.map((p) => p.arrivesAt));
-    chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
+  if (pendingReturns.length > 0) {
+    const returnAlarm = await chrome.alarms.get(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+    if (!returnAlarm) {
+      const earliest = Math.min(...pendingReturns.map((p) => p.arrivesAt));
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
+    } else if (returnAlarm.scheduledTime <= Date.now()) {
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + 60_000 });
+    }
   }
 }
 
@@ -489,7 +512,13 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
 
   const status = await fetchLiveStatus();
   if (!status) {
-    scheduleHourlyDestCheck();
+    // A transient fetch failure, not "nothing to do this hour" — waiting out
+    // `scheduleHourlyDestCheck()`'s up-to-an-hour gap here would compound
+    // exactly the kind of stall this alarm exists to avoid (e.g. right after
+    // a machine wakes from sleep, before cookies/session are fully live
+    // again). Matches `handleCourierReturnAlarm`'s own 60s retry for the same
+    // failure case below.
+    chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + 60_000 });
     return;
   }
   if (status.travelling || status.jailed || status.hospitalized) {
@@ -500,7 +529,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
   try {
     const snapshot = await fetchPanel();
     if (!snapshot) {
-      scheduleHourlyDestCheck();
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + 60_000 });
       return;
     }
     await recordFleetReturns(snapshot.fleet);
