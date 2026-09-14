@@ -144,6 +144,22 @@ const PANEL_CSS = `
 .ff-rp-run:hover:not(:disabled) { border-color: rgba(212,175,55,0.9); }
 .ff-rp-run:disabled { opacity: 0.4; cursor: default; }
 
+.ff-rp-race-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; flex-shrink: 0; }
+.ff-rp-run-all {
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 7px;
+  color: #9ca3af;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ff-rp-run-all:hover:not(:disabled) { border-color: rgba(255,255,255,0.32); color: #ccc; }
+.ff-rp-run-all:disabled { opacity: 0.4; cursor: default; }
+
 /* Progress bar + car icon shown only on the row currently racing — the fill
  * width and car position are driven by direct style writes with an explicit
  * transition duration matching the real sampled delay (see
@@ -166,9 +182,12 @@ interface BatchSummary {
   won: number;
   lost: number;
   cash: number;
-  skipped: number;
   errors: string[];
   stopped: boolean;
+  /** Name of the single race this run was scoped to, or `null` for a
+   *  "Race All Unlocked" run — captured at the start of `runBatch` since
+   *  `batchScopeRaceId` itself is reset back to `null` once the run ends. */
+  scopedRaceName: string | null;
 }
 
 let panelEl: HTMLDivElement | null = null;
@@ -185,6 +204,11 @@ let batchState: 'idle' | 'confirming' | 'running' = 'idle';
 let batchCancelRequested = false;
 let batchProgressText = '';
 let batchSummary: BatchSummary | null = null;
+// `null` scopes a run to every eligible race ("Race All Unlocked"); a race
+// id scopes it to just that one race's own remaining attempts ("Run All"
+// on its row) — both go through the same confirm/run/stop machinery below,
+// just with the queue restricted differently.
+let batchScopeRaceId: number | null = null;
 
 // Drives the countdown text under the active progress bar — cleared whenever
 // a race finishes or a new one starts, since only one can ever be animating.
@@ -244,6 +268,14 @@ function renderRace(race: RaceCatalogEntry): string {
 
   const btnLabel = running ? 'Racing…' : locked ? locked : atCap ? 'Done today' : `Race Now (${remaining} left)`;
 
+  // Only worth offering when there's actually more than one attempt to
+  // chain — at `remaining === 1` it would be identical to the Race Now
+  // button above it.
+  const runAllBtn =
+    locked == null && !atCap && remaining > 1
+      ? `<button class="ff-rp-run-all" type="button" data-race-id="${race.id}" ${disabled ? 'disabled' : ''}>Run All (${remaining})</button>`
+      : '';
+
   const result = lastRowResults.get(race.id);
   const rowError = rowErrors.get(race.id);
   let resultHtml = '';
@@ -274,7 +306,10 @@ function renderRace(race: RaceCatalogEntry): string {
           <div class="ff-rp-race-name">${race.name}</div>
           <div class="ff-rp-race-opp">${race.opponentName} · ${race.cityName}</div>
         </div>
-        <button class="ff-rp-run" type="button" data-race-id="${race.id}" data-race-name="${race.name}" ${disabled ? 'disabled' : ''}>${btnLabel}</button>
+        <div class="ff-rp-race-actions">
+          <button class="ff-rp-run" type="button" data-race-id="${race.id}" data-race-name="${race.name}" ${disabled ? 'disabled' : ''}>${btnLabel}</button>
+          ${runAllBtn}
+        </div>
       </div>
       <div class="ff-rp-race-meta">
         <span>${race.attemptsToday}/${race.dailyAttempts} today</span>
@@ -291,8 +326,8 @@ function renderRace(race: RaceCatalogEntry): string {
 function renderBatchSummary(): string {
   if (!batchSummary) return '';
   const parts = [`${batchSummary.won} won`, `${batchSummary.lost} lost`, `${money(batchSummary.cash)} earned`];
-  if (batchSummary.skipped) parts.push(`${batchSummary.skipped} skipped`);
-  let html = `<div class="ff-rp-batch-summary"><button class="ff-rp-batch-summary-close" type="button" title="Dismiss">✕</button>Race All ${
+  const subject = batchSummary.scopedRaceName ? batchSummary.scopedRaceName : 'Race All';
+  let html = `<div class="ff-rp-batch-summary"><button class="ff-rp-batch-summary-close" type="button" title="Dismiss">✕</button>${subject} ${
     batchSummary.stopped ? 'stopped' : 'finished'
   } — ${parts.join(', ')}.`;
   if (batchSummary.errors.length) html += `<br>${batchSummary.errors.join('<br>')}`;
@@ -300,9 +335,22 @@ function renderBatchSummary(): string {
   return html;
 }
 
+/** Total remaining *attempts*, not the number of distinct races — a race
+ *  with `dailyAttempts=3`/`attemptsToday=0` still has 3 runnable attempts
+ *  left today, and both "Race All Unlocked" and a single row's "Run All"
+ *  are meant to burn through all of them, not stop after one pass.
+ *  `scopeRaceId` narrows this to one race's own remaining attempts — same
+ *  restriction `runBatch`'s own `eligibleForThisRun` applies when actually
+ *  running. */
+function totalEligibleAttempts(scopeRaceId: number | null = null): number {
+  if (!catalog) return 0;
+  return catalog.races
+    .filter((r) => isEligible(r) && (scopeRaceId == null || r.id === scopeRaceId))
+    .reduce((sum, r) => sum + (r.dailyAttempts - r.attemptsToday), 0);
+}
+
 function renderBatchControls(): string {
   if (!catalog) return '';
-  const eligible = catalog.races.filter(isEligible);
 
   if (batchState === 'running') {
     return `
@@ -316,10 +364,13 @@ function renderBatchControls(): string {
   }
 
   if (batchState === 'confirming') {
-    const estimateSeconds = Math.round((eligible.length * STREET_RACING_MINIGAME_DELAY_MEAN_MS) / 1000);
+    const totalAttempts = totalEligibleAttempts(batchScopeRaceId);
+    const scopedRace = batchScopeRaceId != null ? catalog.races.find((r) => r.id === batchScopeRaceId) : null;
+    const estimateSeconds = Math.round((totalAttempts * STREET_RACING_MINIGAME_DELAY_MEAN_MS) / 1000);
+    const subjectText = scopedRace ? `on ${scopedRace.name}` : 'across your unlocked races';
     return `
       <div class="ff-rp-batch">
-        <div class="ff-rp-batch-text">Race all ${eligible.length} unlocked race${eligible.length === 1 ? '' : 's'} back-to-back? Takes ~${estimateSeconds}s total.</div>
+        <div class="ff-rp-batch-text">Race all ${totalAttempts} remaining attempt${totalAttempts === 1 ? '' : 's'} ${subjectText}? Takes ~${estimateSeconds}s total.</div>
         <div class="ff-rp-batch-actions">
           <button class="ff-rp-batch-confirm" type="button">Confirm</button>
           <button class="ff-rp-batch-cancel" type="button">Cancel</button>
@@ -328,8 +379,11 @@ function renderBatchControls(): string {
     `;
   }
 
-  if (!eligible.length) return '';
-  return `<button class="ff-rp-batch-start" type="button">Race All Unlocked (${eligible.length} left)</button>`;
+  // Idle state only ever shows the global start button — a per-race "Run
+  // All" lives inline on that race's own row instead (see `renderRace`).
+  const totalAttempts = totalEligibleAttempts(null);
+  if (!totalAttempts) return '';
+  return `<button class="ff-rp-batch-start" type="button">Race All Unlocked (${totalAttempts} left)</button>`;
 }
 
 /** Only shown when the catalog actually has Family Challenges in it — makes
@@ -369,12 +423,21 @@ function renderAll(): void {
       void handleRun(raceId, raceName);
     });
   });
+  panelEl.querySelectorAll<HTMLButtonElement>('.ff-rp-run-all').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      batchScopeRaceId = Number(btn.dataset.raceId);
+      batchState = 'confirming';
+      renderAll();
+    });
+  });
   panelEl.querySelector('.ff-rp-batch-start')?.addEventListener('click', () => {
+    batchScopeRaceId = null;
     batchState = 'confirming';
     renderAll();
   });
   panelEl.querySelector('.ff-rp-batch-cancel')?.addEventListener('click', () => {
     batchState = 'idle';
+    batchScopeRaceId = null;
     renderAll();
   });
   panelEl.querySelector('.ff-rp-batch-confirm')?.addEventListener('click', () => void runBatch());
@@ -505,39 +568,57 @@ async function runBatch(): Promise<void> {
   batchState = 'running';
   batchCancelRequested = false;
   batchSummary = null;
-  const tally: BatchSummary = { won: 0, lost: 0, cash: 0, skipped: 0, errors: [], stopped: false };
+  const scopeId = batchScopeRaceId;
+
+  // A race that fails an attempt (most commonly: not enough stamina) doesn't
+  // advance its own `attemptsToday` — the failure happens at `can_race`,
+  // before the server would ever bump that counter — so it would otherwise
+  // still look "eligible" afterward and get picked again next iteration,
+  // fail the same way, forever. Once a race has errored once in this run,
+  // it's dropped from consideration for the rest of it (but stays fully
+  // eligible again next time "Race All"/"Run All" is started fresh).
+  const abandoned = new Set<number>();
+  const eligibleForThisRun = (r: RaceCatalogEntry) => isEligible(r) && !abandoned.has(r.id) && (scopeId == null || r.id === scopeId);
 
   // Refreshed right before starting, not reused from whatever was last
   // loaded — the player may have raced a few by hand (in this panel or the
   // real mini-game) since this panel was last opened, and this is what
-  // keeps "Race All" from re-queuing anything already spent for the day.
+  // keeps "Race All"/"Run All" from re-queuing anything already spent for
+  // the day.
   batchProgressText = 'Checking today’s attempts…';
   renderAll();
   await refresh();
 
-  const queue = (catalog?.races ?? []).filter(isEligible);
-  for (let i = 0; i < queue.length; i++) {
-    if (batchCancelRequested) {
-      tally.stopped = true;
-      break;
-    }
-    const race = queue[i];
-    // Re-checked against the live catalog entry, not the snapshot taken at
-    // queue time — a race earlier in this same loop can't affect a later
-    // one's eligibility, but this stays correct if that ever changes.
-    const current = catalog?.races.find((r) => r.id === race.id);
-    if (!current || !isEligible(current)) {
-      tally.skipped++;
-      continue;
-    }
+  const tally: BatchSummary = {
+    won: 0,
+    lost: 0,
+    cash: 0,
+    errors: [],
+    stopped: false,
+    scopedRaceName: scopeId != null ? (catalog?.races.find((r) => r.id === scopeId)?.name ?? null) : null,
+  };
 
-    batchProgressText = `Racing ${i + 1} of ${queue.length}: ${race.name}…`;
+  // Picks whichever eligible race sorts first, runs one attempt on it, then
+  // re-picks — not a fixed queue built once up front. `attemptsToday` only
+  // ever increases as attempts run, so this always terminates: a race that
+  // still has attempts left after running keeps getting picked (using up
+  // all `dailyAttempts` for it, e.g. 3, before moving on to the next race),
+  // and one that's now at cap (or just got abandoned) drops out of
+  // `eligibleForThisRun` for good.
+  while (!batchCancelRequested) {
+    const race = catalog?.races.find(eligibleForThisRun);
+    if (!race) break;
+
+    const attemptNumber = race.attemptsToday + 1;
+    const remaining = (catalog?.races ?? []).filter(eligibleForThisRun).reduce((sum, r) => sum + (r.dailyAttempts - r.attemptsToday), 0);
+    batchProgressText = `Racing ${race.name} — attempt ${attemptNumber} of ${race.dailyAttempts} (${remaining} left)…`;
     renderAll();
     await handleRun(race.id, race.name);
 
     const err = rowErrors.get(race.id);
     if (err) {
       tally.errors.push(`${race.name}: ${err}`);
+      abandoned.add(race.id);
       if (looksSystemic(err)) {
         tally.stopped = true;
         break;
@@ -554,8 +635,10 @@ async function runBatch(): Promise<void> {
       }
     }
   }
+  if (batchCancelRequested) tally.stopped = true;
 
   batchState = 'idle';
+  batchScopeRaceId = null;
   batchSummary = tally;
   renderAll();
 }
