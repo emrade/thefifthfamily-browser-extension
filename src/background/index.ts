@@ -16,6 +16,7 @@ import {
 } from './features/streetIntel';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
+import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
 import {
   getStatus as getStockTrackerStatus,
   handlePollAlarm as handleStockMarketPollAlarm,
@@ -164,6 +165,19 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // time-based schedule needs this escape hatch.
   if (msg.type === 'crimes-check-requested') {
     return runCrimesAutoCheckNow();
+  }
+
+  // Sent by the in-page Street Racing overlay on mount/refresh — see that
+  // message type's own doc in shared/messaging.ts.
+  if (msg.type === 'street-race-catalog-requested') {
+    return fetchStreetRacingCatalog();
+  }
+
+  // Sent by the overlay's per-race Run button — resolves only once the whole
+  // can_race -> (sampled minigame delay) -> attempt_race sequence has run,
+  // so this is a genuinely slow (~20-27s) call, not an instant one.
+  if (msg.type === 'street-race-run-requested') {
+    return runStreetRace(msg.raceId, msg.raceName, sender.tab?.id);
   }
 
   // Archive writes are split off onto their own queue rather than joining the

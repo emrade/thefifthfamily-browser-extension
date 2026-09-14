@@ -15,6 +15,7 @@ import type {
   StockMarketPollStatus,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
+  StreetRacingStatus,
 } from './types';
 import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS, STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
@@ -196,6 +197,11 @@ export const storage = {
 
   getCrimesAutoStatus: () => get<CrimesAutoStatus | null>(STORAGE_KEYS.CRIMES_AUTO_STATUS, null),
   setCrimesAutoStatus: (v: CrimesAutoStatus) => set(STORAGE_KEYS.CRIMES_AUTO_STATUS, v),
+
+  // Same simple-nullable shape as Crimes Auto's own status above — no
+  // "today" merge to do, see `StreetRacingStatus`'s own doc.
+  getStreetRacingStatus: () => get<StreetRacingStatus | null>(STORAGE_KEYS.STREET_RACING_STATUS, null),
+  setStreetRacingStatus: (v: StreetRacingStatus) => set(STORAGE_KEYS.STREET_RACING_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

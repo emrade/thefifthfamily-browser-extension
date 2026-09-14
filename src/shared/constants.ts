@@ -23,6 +23,7 @@ export const STORAGE_KEYS = {
   PENDING_COURIER_RETURNS: 'ff_pending_courier_returns',
   CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
   CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
+  STREET_RACING_STATUS: 'ff_street_racing_status',
 } as const;
 
 export const ALARM_NAMES = {
@@ -286,3 +287,34 @@ export const CRIMES_AUTO_RETRY_DELAY_MS = 2_500;
 // automation from the popup shouldn't wait out the full fallback interval
 // above before its first check.
 export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+
+// --- Street Racing overlay ----------------------------------------------------
+//
+// Derived from this account's real `races_v2.php` history: 23 real
+// `attempt_race` calls submitted `accuracy` values ranging continuously from
+// 74-96 (mean 88.7, median 90, stdev 5.9) — every value in that range was
+// distinct, unlike Career Auto's mini-game, which (see
+// CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS) snaps to a handful of discrete
+// zones. This one looks genuinely continuous, so a value sampled from a
+// normal distribution around this account's own real mean/stdev — not a
+// fixed number, and never the maximum — matches its actual play better than
+// either a constant or a small discrete set.
+export const STREET_RACING_ACCURACY_MEAN = 89;
+export const STREET_RACING_ACCURACY_STDDEV = 6;
+// Clamped a little past the observed 74-96 range rather than exactly to it —
+// a hard wall right at this account's own historical min/max would itself be
+// a tell if enough attempts ever got compared.
+export const STREET_RACING_ACCURACY_MIN = 68;
+export const STREET_RACING_ACCURACY_MAX = 99;
+
+// Derived from the same history: matching `can_race` -> `attempt_race`
+// timestamp pairs for the same `race_id` landed 22-25s apart in 22 of 23
+// samples (mean ~23.4s, stdev ~1s excluding one 31.7s outlier) — the
+// mini-game's own on-screen animation length. Firing `attempt_race`
+// immediately after `can_race` would make an automated race look instant
+// next to that real timing, so the runner waits this long (sampled per
+// attempt, not fixed) before submitting the result.
+export const STREET_RACING_MINIGAME_DELAY_MEAN_MS = 23_400;
+export const STREET_RACING_MINIGAME_DELAY_STDDEV_MS = 1_000;
+export const STREET_RACING_MINIGAME_DELAY_MIN_MS = 20_000;
+export const STREET_RACING_MINIGAME_DELAY_MAX_MS = 27_000;

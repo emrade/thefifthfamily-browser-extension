@@ -37,6 +37,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'On the Menagerie Care tab, shows each pet’s banked stat points against what its next Smuggling capacity/speed milestone actually needs — no more switching between the two pages per pet to check.',
   },
   {
+    id: 'streetRacingOverlay',
+    label: 'Street Racing Overlay',
+    description:
+      'A floating panel on the Street Racing page listing every race with a Run button, so you can clear the day’s attempts without playing the timing mini-game — accuracy and race timing are sampled from this account’s own real results, not maxed out.',
+  },
+  {
     id: 'stockMarketStatus',
     label: 'Stock Market Tracker',
     description:

@@ -125,6 +125,30 @@ export type ExtensionMessage =
   // alarm fires — this lets the player force the recheck immediately instead
   // of it going unnoticed until the original wait elapses anyway.
   | { type: 'crimes-check-requested' }
+  // Sent from the in-page Street Racing overlay on mount/refresh — same
+  // "live fetch+parse only background can do" exception as
+  // 'career-catalog-requested'. Returns a fresh `RaceCatalog` (car, weather,
+  // every race with its current unlocked/attemptsToday/wins state) rather
+  // than anything cached, since the overlay's whole point is showing the
+  // player's real current standing before they tap a race.
+  | { type: 'street-race-catalog-requested' }
+  // Sent from the overlay when the player taps a race's Run button — same
+  // request/response shape as 'courier-run-requested': background performs
+  // the whole `can_race` -> (sampled minigame delay) -> `attempt_race`
+  // sequence (see `background/features/streetRacing`) and returns the
+  // resulting `RaceAttemptResult` directly, so the overlay can update just
+  // that race's row the moment it resolves rather than re-fetching the
+  // whole catalog. `raceName` is threaded through only because
+  // `attempt_race`'s own response never echoes it back.
+  | { type: 'street-race-run-requested'; raceId: number; raceName: string }
+  // Broadcast (via `chrome.tabs.sendMessage`, not `chrome.runtime.sendMessage`
+  // — same targeting reason as 'courier-run-progress') the moment `can_race`
+  // clears and the sampled minigame delay starts, so the overlay can show a
+  // real progress bar/countdown against `durationMs` instead of an
+  // indeterminate spinner for the ~20-27s wait before `attempt_race` actually
+  // fires. `startedAt` (not just `durationMs`) lets the overlay compute
+  // accurate remaining time even if this message arrives a little late.
+  | { type: 'street-race-progress'; raceId: number; startedAt: number; durationMs: number }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.

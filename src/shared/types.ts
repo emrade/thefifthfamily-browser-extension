@@ -810,3 +810,83 @@ export interface StockMarketPollStatus {
    *  normal. Cleared only by an explicit resume (see poller.ts's `resume`). */
   paused: boolean;
 }
+
+/** One entry from `races_v2.php`'s `get_all` — the racing overlay's own list.
+ *  Manual/tap-triggered (see `runRace` in `background/features/streetRacing`),
+ *  not a background auto-runner, so unlike Crimes/Career Auto there is no
+ *  config type here: nothing to pick ahead of time beyond which race the
+ *  player taps. `attemptsToday`/`dailyCap` are the server's own count, not a
+ *  locally-tracked one — the same call that runs a race also returns the
+ *  post-attempt values, so there's nothing to drift out of sync locally. */
+export interface RaceCatalogEntry {
+  id: number;
+  name: string;
+  opponentName: string;
+  opponentTitle: string;
+  cityName: string;
+  cashReward: number;
+  xpReward: number;
+  staminaCost: number;
+  dailyAttempts: number;
+  attemptsToday: number;
+  unlocked: boolean;
+  requiredBossId: number | null;
+  bossCleared: boolean;
+  grudgeLocked: boolean;
+  wins: number;
+  losses: number;
+  currentStreak: number;
+  bestStreak: number;
+}
+
+export interface RaceCatalog {
+  weather: string;
+  weatherPct: number;
+  car: {
+    name: string;
+    category: string;
+    vehicleClass: string;
+    topSpeed: number;
+    handling: number;
+    acceleration: number;
+  };
+  races: RaceCatalogEntry[];
+}
+
+/** What one manually-triggered race attempt actually did — same "last
+ *  attempt" role `CrimeAttemptResult` plays for Crimes Auto, just returned
+ *  directly to the overlay's `chrome.runtime.sendMessage` call rather than
+ *  only stored, since the overlay needs it immediately to update the race
+ *  row that was just run. */
+export interface RaceAttemptResult {
+  timestamp: number;
+  raceId: number;
+  raceName: string;
+  opponentName: string;
+  won: boolean;
+  /** The value actually submitted as `accuracy` — sampled from this
+   *  account's own real minigame-result spread, see
+   *  `STREET_RACING_ACCURACY_MEAN`'s doc for where that spread came from. */
+  accuracySent: number;
+  cashAwarded: number;
+  xpAwarded: number;
+  wins: number;
+  losses: number;
+  attemptsToday: number;
+  dailyCap: number;
+  currentStreak: number;
+}
+
+/** Background-owned lifetime tally for the Street Racing overlay — same
+ *  "simple running counters, no daily boundary tracked locally" shape as
+ *  Crimes Auto's, since the per-race daily cap is already the server's own
+ *  `attemptsToday`/`dailyCap` on each `RaceCatalogEntry`/`RaceAttemptResult`
+ *  rather than something this needs to reset itself. */
+export interface StreetRacingStatus {
+  lastAttempt: RaceAttemptResult | null;
+  attempts: number;
+  wins: number;
+  losses: number;
+  cashEarned: number;
+  xpEarned: number;
+}
