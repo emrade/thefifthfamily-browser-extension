@@ -9,10 +9,24 @@ import {
   STREET_RACING_MINIGAME_DELAY_MIN_MS,
   STREET_RACING_MINIGAME_DELAY_STDDEV_MS,
 } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import type { RaceAttemptResult, RaceCatalog, RaceCatalogEntry, StreetRacingStatus } from '@/shared/types';
-import { postAction, sleep } from '../../gameAction';
+import { depositCashOnHand, fetchLiveStatus, postAction, sleep } from '../../gameAction';
+
+/** Same opponent-name-to-slug mapping the live racing panel's own client JS
+ *  hardcodes to decide "is this the family I picked this week" — see
+ *  `RaceCatalogEntry.familySlug`'s own doc. Kept here rather than derived
+ *  from the crest URL (also present on each race) since this is the exact
+ *  logic the game itself uses, confirmed by reading its panel HTML. */
+const FAMILY_SLUG_BY_OPPONENT: Record<string, string> = {
+  'Iron River': 'iron_river',
+  SBP: 'sbp',
+  'Kito-gumi': 'kito_gumi',
+  Viola: 'viola',
+  Volkskaya: 'volkskaya',
+};
 
 const DEFAULT_STATUS: StreetRacingStatus = {
   lastAttempt: null,
@@ -57,6 +71,8 @@ function mapRace(raw: any): RaceCatalogEntry {
     losses: raw.losses,
     currentStreak: raw.current_streak,
     bestStreak: raw.best_streak,
+    raceType: raw.race_type,
+    familySlug: raw.race_type === 'family' ? (FAMILY_SLUG_BY_OPPONENT[raw.opponent_name] ?? null) : null,
   };
 }
 
@@ -80,6 +96,12 @@ export async function fetchCatalog(): Promise<RaceCatalog> {
       acceleration: json.car?.derived?.acceleration ?? 0,
     },
     races: ((json.races ?? []) as any[]).map(mapRace),
+    // Confirmed real (2026-09-14 capture) to reset to `null` on a weekly
+    // boundary until `choose_family` is called again — see
+    // `RaceCatalog.allegiance`'s own doc.
+    allegiance: json.allegiance ?? null,
+    allegianceFavor: json.allegiance_favor ?? 0,
+    allegianceCap: json.allegiance_cap ?? 2.1,
   };
 }
 
@@ -148,6 +170,21 @@ export async function runRace(raceId: number, raceName: string, tabId?: number):
     cashEarned: status.cashEarned + result.cashAwarded,
     xpEarned: status.xpEarned + result.xpAwarded,
   });
+
+  // Same "sweep whatever's sitting exposed" reasoning as Street Intel's own
+  // post-attempt deposit (actionRunner.ts) and Pet Courier's
+  // depositLeftoverCash — a win's cash sitting on hand is exactly what a
+  // mugging takes, so this checks live cash (not just this race's own
+  // award, which could be 0 on a loss while cash from *before* this race is
+  // still sitting there) and sweeps it into the bank. Best-effort: a deposit
+  // failure doesn't fail the race result the player is waiting on — it's
+  // already resolved by this point — just logged.
+  try {
+    const postStatus = await fetchLiveStatus();
+    if (postStatus && postStatus.cash > 0) await depositCashOnHand();
+  } catch (err) {
+    console.error(LOG_PREFIX, 'street racing post-attempt deposit failed', err);
+  }
 
   return result;
 }

@@ -837,6 +837,18 @@ export interface RaceCatalogEntry {
   losses: number;
   currentStreak: number;
   bestStreak: number;
+  /** `'district'` or `'family'` — a `'family'` race is one of the five
+   *  weekly Family Challenges (Iron River/SBP/Kito-gumi/Viola/Volkskaya),
+   *  which are additionally gated by `RaceCatalog.allegiance` regardless of
+   *  `unlocked`/`bossCleared` — see `familySlug`'s own doc. */
+  raceType: string;
+  /** Only set for a `raceType === 'family'` entry — the same
+   *  opponent-name-to-slug mapping the live panel's own client JS uses
+   *  (`{"Iron River":"iron_river","SBP":"sbp",...}[opponent_name]`) to
+   *  decide whether this is the family the player picked for the week.
+   *  `null` for a `'district'` race, or if `opponentName` is ever an
+   *  unrecognized value the mapping doesn't cover. */
+  familySlug: string | null;
 }
 
 export interface RaceCatalog {
@@ -851,6 +863,16 @@ export interface RaceCatalog {
     acceleration: number;
   };
   races: RaceCatalogEntry[];
+  /** The one family slug (see `RaceCatalogEntry.familySlug`) the player
+   *  picked this week, confirmed from real captures to reset to `null` on a
+   *  weekly boundary until they pick again via `choose_family` — a
+   *  `'family'`-type race is only actually runnable when this matches its
+   *  own `familySlug`; every other family race is locked ("Not Your
+   *  Family") for the rest of the week regardless of anything else about
+   *  it. */
+  allegiance: string | null;
+  allegianceFavor: number;
+  allegianceCap: number;
 }
 
 /** What one manually-triggered race attempt actually did — same "last

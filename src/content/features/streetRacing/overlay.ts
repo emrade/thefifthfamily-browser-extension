@@ -213,6 +213,17 @@ function money(n: number): string {
 function lockLabel(race: RaceCatalogEntry): string | null {
   if (!race.unlocked) return race.requiredBossId != null && !race.bossCleared ? 'Boss locked' : 'Locked';
   if (race.grudgeLocked) return 'Grudge locked';
+  // A Family Challenge (race_type "family") is only ever runnable against
+  // the one family the player picked this week — `unlocked`/`bossCleared`
+  // say nothing about this at all (confirmed real: every family race comes
+  // back `unlocked: true` regardless of allegiance). Mirrors the live
+  // panel's own client JS, which forces its Run button's `spent` flag (and
+  // so its disabled state) true for exactly this case — see
+  // `RaceCatalogEntry.familySlug`'s own doc for the mapping this checks.
+  if (race.familySlug != null) {
+    if (!catalog?.allegiance) return 'Pick a family';
+    if (catalog.allegiance !== race.familySlug) return 'Not your family';
+  }
   return null;
 }
 
@@ -321,6 +332,18 @@ function renderBatchControls(): string {
   return `<button class="ff-rp-batch-start" type="button">Race All Unlocked (${eligible.length} left)</button>`;
 }
 
+/** Only shown when the catalog actually has Family Challenges in it — makes
+ *  the "Not your family"/"Pick a family" lock labels self-explanatory
+ *  instead of leaving the player to guess why those five rows are disabled. */
+function renderAllegianceLine(): string {
+  if (!catalog || !catalog.races.some((r) => r.familySlug != null)) return '';
+  if (!catalog.allegiance) {
+    return '<div class="ff-rp-car">Family Challenges: no family picked this week — pick one in-game to unlock them.</div>';
+  }
+  const label = catalog.allegiance.replace(/_/g, ' ');
+  return `<div class="ff-rp-car">Riding for <strong>${label}</strong> this week · ${catalog.allegianceFavor.toFixed(2)} / ${catalog.allegianceCap.toFixed(2)} Favor earned</div>`;
+}
+
 function renderBody(): string {
   if (loadError) return `<div class="ff-rp-error">${loadError}</div>`;
   if (!catalog) return '<div class="ff-rp-empty">Loading races…</div>';
@@ -329,7 +352,7 @@ function renderBody(): string {
   const car = catalog.car;
   const carLine = `<div class="ff-rp-car"><strong>${car.name}</strong> · ${car.topSpeed} top speed / ${car.handling} handling / ${car.acceleration} accel · ${catalog.weather}</div>`;
 
-  return carLine + renderBatchSummary() + renderBatchControls() + catalog.races.map(renderRace).join('');
+  return carLine + renderAllegianceLine() + renderBatchSummary() + renderBatchControls() + catalog.races.map(renderRace).join('');
 }
 
 function renderAll(): void {
