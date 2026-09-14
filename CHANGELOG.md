@@ -9,6 +9,32 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.23.0] - 2026-09-14
+
+### Added
+- Street Racing: a floating in-page overlay on the Racing page listing every
+  race with a Run button, so you can clear the day's attempts without
+  playing the timing mini-game. The submitted accuracy and the wait before
+  each result are both sampled from this account's own real historical
+  spread — never maxed out or instant — with a live progress bar (and
+  countdown) showing the actual wait, correctly resynced if you navigate
+  away mid-race and come back.
+- "Race All Unlocked" and a per-race "Run All" button burn through every
+  remaining attempt (not just one per race) with a confirmation step, live
+  per-attempt progress, a "stop after this race" control, and a finishing
+  summary — refreshing from the server first so it never re-runs an attempt
+  already spent today, and stopping the whole batch (not just skipping) on
+  a systemic rejection like being jailed or hospitalized.
+- Family Challenges are now correctly locked to whichever family you picked
+  for the week, matching the game's own "Not Your Family" rule — previously
+  every family race looked equally runnable to this feature regardless of
+  your weekly pick. A status line shows who you're riding for and this
+  week's Favor progress.
+- Cash is swept into the bank after every race attempt, same as Street
+  Intel and Pet Couriers, so a win doesn't sit exposed to a mugging.
+- On by default under Settings → Page Features, like the other in-page
+  panels.
+
 ## [0.22.0] - 2026-09-12
 
 ### Added
