@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.25.0] - 2026-09-15
+
+### Added
+- Item Market: a Price Advisor on the "List an Item for Sale" form. Every
+  item in the sell grid is badged with how many units sold market-wide in
+  the last 7 days, so which of your items would actually move is visible at
+  a glance instead of needing to click through one at a time. Selecting an
+  item shows a suggested per-unit price with a one-click "Use This" button —
+  undercutting the cheapest currently-listed price by a few percent when one
+  exists, capped near the 7-day average so a stale or inflated lone listing
+  can't drag the suggestion up with it, or matching the 7-day average when
+  nothing's currently listed. Says plainly when there isn't enough market
+  data for a confident number rather than guessing.
+- A "Sort: Best Sellers/wk" toggle reorders the sell grid by that same
+  weekly-sales figure, and a "Hide Consumables" toggle filters them out
+  without needing to leave the "All" tab — both on the game's own live
+  cards, not a separate view, and both persisted across visits.
+- On by default under Settings → Page Features ("Item Market Price
+  Advisor"), like the other in-page panels.
+
 ## [0.24.0] - 2026-09-15
 
 ### Added
