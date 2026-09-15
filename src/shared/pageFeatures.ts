@@ -12,6 +12,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'Adds a sort and max-rating filter toolbar to the Fight Club target list.',
   },
   {
+    id: 'fightClubRecon',
+    label: 'Fight Club Recon',
+    description:
+      'Surfaces the win-odds/threat/steal-estimate the game already computes for a target — automatically when you open their attack view, or on demand via a Recon button added to each target card.',
+  },
+  {
     id: 'streetIntelHighlights',
     label: 'Street Intel Highlights',
     description: 'Highlights the best-value job, risky-but-lucrative jobs, and the best scout odds on the Street Intel page.',

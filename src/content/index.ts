@@ -7,7 +7,7 @@ import { DEFAULT_REQUEST_LOG_PREFERENCES } from '@/shared/requestLog/preferences
 import { isExcluded } from '@/shared/requestLog/policy';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleSmuggling } from './features/smuggling';
-import { handleCapturedRequest as handleFightClub, initFightClubControls } from './features/fightClub';
+import { handleCapturedRequest as handleFightClub, initFightClubControls, initFightClubReconOverlay } from './features/fightClub';
 import { handleCapturedRequest as handleStreetIntel, initStreetIntelHighlights } from './features/streetIntel';
 import { initStreetIntelStatusPanel } from './features/streetIntel/statusPanel';
 import { initCourierPanel } from './features/smuggling/courierPanel';
@@ -111,6 +111,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
   storage.getPageFeaturePreferences().then((prefs) => {
     if (prefs.fightClubToolbar) {
       initFightClubControls().catch((err) => console.error(LOG_PREFIX, 'initFightClubControls failed', err));
+    }
+    if (prefs.fightClubRecon) {
+      initFightClubReconOverlay();
     }
     if (prefs.streetIntelHighlights) {
       initStreetIntelHighlights();

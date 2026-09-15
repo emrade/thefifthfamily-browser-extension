@@ -112,6 +112,52 @@ export interface FightClubFilterPrefs {
   maxRating: number | null;
 }
 
+/**
+ * `GET /actions/attack.php?type=recon&target_id=X` — the game's own pre-attack
+ * scouting read. Confirmed real (captured 2026-09): the server already computes
+ * a win-probability estimate, a categorical threat/steal read, and a same-day
+ * attack cap, all before a single attack is thrown. `successChance`/
+ * `threatLevel`/`stealEstimate` already factor in things the response doesn't
+ * otherwise expose (e.g. the target's current HP) — a target sitting near-dead
+ * shows up as a high `successChance`/"Easy Pickings" `threatLevel` despite a
+ * respectable `combatRating`, with no HP field anywhere in this payload. This
+ * is deliberately *not* run through gameAction.ts's `postAction` — it's a GET,
+ * carries no `_csrf`, and every capture seen so far comes back `ok:true` with
+ * no rejection shape observed yet to build a `status-blocked`/`auth` split
+ * against.
+ */
+export interface FightClubRecon {
+  targetId: number;
+  username: string;
+  level: number;
+  respect: number;
+  combatRating: number;
+  family: string;
+  online: boolean;
+  jailed: boolean;
+  hospitalized: boolean;
+  targetWeapon: string;
+  targetArmor: string;
+  myWeapon: string;
+  myArmor: string;
+  /** 0-100. The server's own win-probability estimate for this matchup. */
+  successChance: number;
+  /** Free-text bucket the game itself uses — seen so far: "Easy Pickings",
+   *  "Favorable", "Even Match", "Dangerous". Not a closed enum: rendered as
+   *  a plain label (with a neutral fallback color) for anything unrecognized,
+   *  since the game could add a bucket at any point without warning. */
+  threatLevel: string;
+  /** Free-text bucket — seen so far: "Low-Medium", "Medium-High", "Unknown". */
+  stealEstimate: string;
+  dailyAttacks: number;
+  dailyLimit: number;
+  staminaCost: number;
+  myStamina: number;
+  /** When this scout was fetched — not from the response (it carries no
+   *  timestamp), so callers know how stale a cached card badge is. */
+  timestamp: number;
+}
+
 /** How often the player actually collects Real Estate properties — the Real
  *  Estate advisor overlay (content/features/realEstate) needs this to know how
  *  much vault capacity a property actually needs, since a longer gap between
