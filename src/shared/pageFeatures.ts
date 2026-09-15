@@ -49,6 +49,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A floating panel on the Street Racing page listing every race with a Run button, so you can clear the day’s attempts without playing the timing mini-game — accuracy and race timing are sampled from this account’s own real results, not maxed out.',
   },
   {
+    id: 'itemMarketAdvisor',
+    label: 'Item Market Price Advisor',
+    description:
+      'On the Item Market’s "List an Item for Sale" form, badges every item with how many sold market-wide this week, and suggests a listing price (undercutting the cheapest current ask, or matching the 7-day average when nothing’s listed) with a one-click "Use This" button.',
+  },
+  {
     id: 'stockMarketStatus',
     label: 'Stock Market Tracker',
     description:

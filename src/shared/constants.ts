@@ -24,6 +24,7 @@ export const STORAGE_KEYS = {
   CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
   CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
   STREET_RACING_STATUS: 'ff_street_racing_status',
+  ITEM_MARKET_SORT_PREFS: 'ff_item_market_sort_prefs',
 } as const;
 
 export const ALARM_NAMES = {

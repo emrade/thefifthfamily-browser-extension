@@ -112,6 +112,16 @@ export interface FightClubFilterPrefs {
   maxRating: number | null;
 }
 
+/** The Item Market sell grid's toolbar choices — persisted so they don't need
+ *  re-enabling every visit, same as Fight Club's toolbar sort/filter.
+ *  `hideConsumables` exists because consumables (Nerve Tonic, Energy Drink,
+ *  etc.) trade in the thousands/week and otherwise bury every piece of gear
+ *  at the top of a "sort by weekly sales" view. */
+export interface ItemMarketSortPrefs {
+  sortByVolume: boolean;
+  hideConsumables: boolean;
+}
+
 /**
  * `GET /actions/attack.php?type=recon&target_id=X` — the game's own pre-attack
  * scouting read. Confirmed real (captured 2026-09): the server already computes

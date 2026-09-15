@@ -8,6 +8,7 @@ import type {
   CrimesAutoStatus,
   FightClubFilterPrefs,
   FightClubHeroStats,
+  ItemMarketSortPrefs,
   PendingCourierReturn,
   PendingTravel,
   PlayerStatsSnapshot,
@@ -97,6 +98,11 @@ export const storage = {
 
   getFightClubFilter: () => get<FightClubFilterPrefs | null>(STORAGE_KEYS.FIGHT_CLUB_FILTER, null),
   setFightClubFilter: (v: FightClubFilterPrefs) => set(STORAGE_KEYS.FIGHT_CLUB_FILTER, v),
+
+  // Simple boolean-pair default — no merge-with-defaults needed, same shape
+  // as Fight Club's filter prefs above.
+  getItemMarketSortPrefs: () => get<ItemMarketSortPrefs>(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, { sortByVolume: false, hideConsumables: false }),
+  setItemMarketSortPrefs: (v: ItemMarketSortPrefs) => set(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, v),
 
   // Merged with the defaults rather than returned as-is: a notification type added
   // in a later version won't exist yet in an existing install's stored object, and
