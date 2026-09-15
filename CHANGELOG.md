@@ -9,6 +9,31 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.24.0] - 2026-09-15
+
+### Added
+- Fight Club: a "Recon" button on every target card in the list fetches the
+  game's own pre-attack scouting read for that one player — win-odds
+  percentage, threat level (Easy Pickings/Favorable/Even Match/Dangerous),
+  and a gold-steal estimate — and badges the card with it. Deliberately one
+  request per click rather than a batch scan of the whole visible list: a
+  burst of 20-40 sequential scouting calls at a uniform pace is a request
+  pattern no manual browsing session produces and would stand out in the
+  game's own server logs, where a single click per target a player is
+  actually considering does not.
+- That same data now also surfaces automatically wherever the game's own
+  client already fetches it — most usefully on the pre-fight "Target Recon"
+  confirmation screen, where the game shows every other scouting field for
+  free but hides the win-odds behind a "Want to know your odds? Buy Intel"
+  prompt. Confirmed unrelated to the paid Intel feature: Intel's own response
+  is a different, qualitative payload (threat bracket, stat comparisons,
+  gear tier, family) with no odds number of its own — the free number was
+  never actually behind that paywall.
+- Shown in a small floating panel (collapsed to a badge, same shape as the
+  Street Racing panel) on both the target list and the pre-fight
+  confirmation screen. On by default under Settings → Page Features
+  ("Fight Club Recon"), like the other in-page panels.
+
 ## [0.23.0] - 2026-09-14
 
 ### Added
