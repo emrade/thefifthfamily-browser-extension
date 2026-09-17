@@ -11,29 +11,46 @@
  * other content-script overlay already keys off of — reused directly from
  * the existing feature that owns each page where one already exists
  * (Street Racing's `RACING_MARKER`, Menagerie's `CARE_MARKER`, etc.), found
- * fresh from a 2026-09-17 archive capture for every page that had no
- * existing feature yet.
+ * fresh from real archive captures for every page that had no existing
+ * feature yet. Every marker below was confirmed to occur exactly once in
+ * a real, non-truncated capture of that page.
  *
- * Coarse for now (whole category, not yet split by line) on five pages —
- * real per-line data for "Combat & PvP" and "Shops & Economy" hasn't been
- * captured yet, so there's nothing to split by name against. Revisit once
- * a capture of those categories exists.
+ * Every category's real line list (name + description) was pulled from a
+ * 2026-09-17 archive where every one of the 25 achievement categories was
+ * visited and captured in full — the three splits below (Combat & PvP,
+ * Pets & Vigilantes, Shops & Economy) are built from those real
+ * descriptions, not guessed from names alone:
  *
- * `.ar-page` (Arena) and `.shop-hero` (Fifth Shop) were found on a second,
- * more careful pass — the first pass's `av2-sub` "marker" for Arena turned
- * out to be a dead CSS rule with no matching element anywhere in the page
- * (confirmed: exactly one occurrence in the whole document, inside
- * `<style>`, never as a real `class=` attribute), and `panel-content`
- * (Fifth Shop) was too generic a name to trust as unique without checking —
- * `.ar-page`/`.shop-hero` are each confirmed to occur exactly once, wrapping
- * that page's own hero/title content.
+ * - **Combat & PvP**: "Fight Club Victor"/"Go the Distance"/"Street
+ *   Dominance" all explicitly say "Fight Club" in their own description;
+ *   "Last One Standing"/"Arena Reign" explicitly say "Arena". The remaining
+ *   seven (Heavy Hitter, Hold the Line, Untouchable, Deadeye, Battle
+ *   Companion, Dressed for War, Giant Killer) describe generic PvP
+ *   mechanics with no mode named, so they're shown on both pages.
+ * - **Pets & Vigilantes**: a clean split with no ambiguous lines — seven
+ *   lines are explicitly about pets (Menagerie/Daily Care/Training
+ *   Partners/etc.), five are explicitly about Vigilantes (Shard
+ *   Hunter/Connections/Five Networks/etc.).
+ * - **Shops & Economy**: turned out *not* to include the Stock Market at
+ *   all — none of its 11 real lines mention stocks, trading, or shares.
+ *   "Fifth Shop Customer"/"Fifth Shop Catalogue" go to the Fifth Shop;
+ *   "Quick Sale" (its description literally says "Teaches quicksell") goes
+ *   to the Item Market; "Black Market Contact"/"Back-Room Buyer"/"Fence
+ *   Operator" belong to the Black Market (still unwired — see below) once
+ *   it has a marker. The other five (District Shopper, Secure Holdings,
+ *   Lifetime Earnings, Gold Reserve, Diversified Empire) describe
+ *   account-wide economic behavior with no single owning page, so they're
+ *   left unmapped rather than attached somewhere misleading.
  *
- * Deliberately not wired at all yet: Black Market (every one of 105
- * captures in the archive came back `truncated: true` before the response
- * finished — what little was visible had no `class`/`id` anywhere, but a
- * real marker may simply be further into the page than any capture
- * reached), and the categories with no page decided yet (FRS, Player &
- * District Progression, Lore & Codex — see conversation).
+ * Deliberately not wired at all yet: Black Market and Forge — every
+ * capture of either in the archive (105 for Black Market, every Forge
+ * capture across all four archives) came back `truncated: true` before the
+ * response finished. What little of Black Market was visible had no
+ * `class`/`id` anywhere at all; Forge was never captured far enough in to
+ * check. And the categories with no page decided yet: FRS, Player &
+ * District Progression, Lore & Codex (see conversation — Lore & Codex in
+ * particular was described as cutting across the whole game rather than
+ * belonging to one page).
  */
 export interface AchievementPageScope {
   /** Human label only, for logging — not a lookup key. */
@@ -42,6 +59,8 @@ export interface AchievementPageScope {
   category: string;
   lineNames: string[] | 'all';
 }
+
+const COMBAT_PVP_SHARED = ['Heavy Hitter', 'Hold the Line', 'Untouchable', 'Deadeye', 'Battle Companion', 'Dressed for War', 'Giant Killer'];
 
 export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
   {
@@ -60,13 +79,13 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'fightClub',
     marker: '.fc-hero',
     category: 'Combat & PvP',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Fight Club Victor', 'Go the Distance', 'Street Dominance', ...COMBAT_PVP_SHARED],
   },
   {
     id: 'arena',
     marker: '.ar-page',
     category: 'Combat & PvP',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Last One Standing', 'Arena Reign', ...COMBAT_PVP_SHARED],
   },
   {
     id: 'streetIntel',
@@ -78,13 +97,13 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'menagerie',
     marker: '.men-care',
     category: 'Pets & Vigilantes',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Menagerie', 'District Companions', 'Family Companions', 'Daily Care', 'Training Partners', 'Growing Together', 'Developed Menagerie'],
   },
   {
     id: 'vigilantes',
     marker: '.vig-page-header',
     category: 'Pets & Vigilantes',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Shard Hunter', 'Connections', 'Five Networks', 'Rising Stars', 'Complete Network'],
   },
   {
     id: 'smuggling',
@@ -99,22 +118,16 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     lineNames: 'all',
   },
   {
-    id: 'stockMarket',
-    marker: '#lsv2-data',
-    category: 'Shops & Economy',
-    lineNames: 'all', // coarse — see module doc
-  },
-  {
     id: 'itemMarket',
     marker: '#sellGrid',
     category: 'Shops & Economy',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Quick Sale'],
   },
   {
     id: 'fifthShop',
     marker: '.shop-hero',
     category: 'Shops & Economy',
-    lineNames: 'all', // coarse — see module doc
+    lineNames: ['Fifth Shop Customer', 'Fifth Shop Catalogue'],
   },
   {
     id: 'emergency',
@@ -132,6 +145,66 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'familyHq',
     marker: '.fhq-page',
     category: 'Family Upgrades',
+    lineNames: 'all',
+  },
+  {
+    id: 'academy',
+    marker: '.acd-wrap',
+    category: 'Academy',
+    lineNames: 'all',
+  },
+  {
+    id: 'careers',
+    marker: '.cv2-tabs',
+    category: 'Careers',
+    lineNames: 'all',
+  },
+  {
+    id: 'crimes',
+    marker: '.crime-hero-banner',
+    category: 'Crimes',
+    lineNames: 'all',
+  },
+  {
+    id: 'heists',
+    marker: '.heist-grid',
+    category: 'Heists',
+    lineNames: 'all',
+  },
+  {
+    id: 'travel',
+    marker: '.tp-wrap',
+    category: 'Travel',
+    lineNames: 'all',
+  },
+  {
+    id: 'rackets',
+    marker: '.rkv2-hero',
+    category: 'Rackets',
+    lineNames: 'all',
+  },
+  {
+    id: 'mansion',
+    marker: '.est2-hero',
+    category: 'Estate',
+    lineNames: 'all',
+  },
+  {
+    id: 'bloodline',
+    marker: '.bl-hero',
+    category: 'Bloodlines',
+    lineNames: 'all',
+  },
+  {
+    id: 'bloodBonds',
+    marker: '.bb-hero',
+    category: 'Blood Bonds',
+    lineNames: 'all',
+  },
+  {
+    id: 'battlePass',
+    marker: '.bp-hero',
+    category: 'Battle Pass',
     lineNames: 'all',
   },
 ];
