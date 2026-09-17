@@ -135,13 +135,23 @@ whatever `open_next_page` would have returned — the one piece that's genuinely
 unrecoverable in this path is the boss's win%, which only ever appears in
 `open_next_page`'s own response (see "Boss threshold" above).
 
+A page counts as "still needs finishing" — and is resumed rather than skipped past into
+`open_next_page` — on any of three independent signals, not just one: a live unfought
+opponent, an engageable boss, or (confirmed real, `parseIsPotActive`) the page's own pot
+banner still reading `ar-pot-active` rather than `ar-pot-banked`. The third one is what
+catches a page the player fully fought — including the boss — but never banked: no live
+opponents and no engageable boss remain, so the first two checks alone would wrongly
+conclude there's nothing left to do and open the next page with a real pot still sitting
+unbanked on the one behind it.
+
 ## Known gaps
 
-- **`bank`'s own implicit behavior toward a leftover pot on an old page is unconfirmed**
-  — this automation always calls `bank` explicitly before treating a page as done,
-  rather than relying on `open_next_page` to sweep it automatically, since no real
-  capture has ever shown what happens to an unbanked pot if `open_next_page` is called
-  without banking first.
+- **`bank`'s own implicit behavior toward a leftover pot on an old page is unconfirmed,
+  but no longer reachable** — `resolveOpenPage` (see below) now refuses to call
+  `open_next_page` at all while the current page's own pot banner still reads
+  `ar-pot-active` (a real, unbanked pot), so this automation should never actually put
+  that question to the test. What the game itself would do with a leftover pot if forced
+  remains unconfirmed, it just isn't a path this code can trigger anymore.
 - **`refresh` (re-rolling a page's opponents before combat begins) is unused** — real
   captures confirm it exists and costs Mafia Gold, but nothing the player described
   called for using it, so it isn't part of this automation's own decision-making.

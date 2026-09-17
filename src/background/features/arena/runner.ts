@@ -5,7 +5,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
-import { parseArenaTimerEnd, parseBossEnginePageId, parseCurrentPageNumber, parseOpenOpponents, unwrapArenaPanelHtml } from './arenaPanelParser';
+import { parseArenaTimerEnd, parseBossEnginePageId, parseCurrentPageNumber, parseIsPotActive, parseOpenOpponents, unwrapArenaPanelHtml } from './arenaPanelParser';
 import type { ArenaAutoConfig, ArenaAutoStatus, ArenaBossResult, ArenaOpponentResult, ArenaPageResult } from '@/shared/types';
 
 const FEATURE_KEY = 'arena';
@@ -183,11 +183,16 @@ async function resolveOpenPage(): Promise<{ state: OpenPageState; html: string }
   const opponentIds = parseOpenOpponents(html);
   const pageNumber = parseCurrentPageNumber(html);
 
-  if (opponentIds.length > 0 || parseBossEnginePageId(html) !== null) {
-    // Something's already open — resuming, not opening. Boss win% is
-    // simply unrecoverable in this path (see the field's own doc); a
-    // resumed page whose boss is already unlocked skips the boss step
-    // entirely below rather than guessing at a number.
+  if (opponentIds.length > 0 || parseBossEnginePageId(html) !== null || parseIsPotActive(html)) {
+    // Something's already open — resuming, not opening. The pot-active
+    // check (see its own doc) is what catches a page fully fought,
+    // including the boss, but never banked: the other two checks alone
+    // would see no live opponents and no engageable boss and wrongly
+    // conclude there's nothing left to do, when there's still a real,
+    // unbanked pot sitting there. Boss win% is simply unrecoverable in
+    // this path (see the field's own doc); a resumed page whose boss is
+    // already unlocked skips the boss step entirely below rather than
+    // guessing at a number.
     return { state: { pageNumber, opponentIds, bossWinPct: null }, html };
   }
 

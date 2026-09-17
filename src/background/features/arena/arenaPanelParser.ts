@@ -100,6 +100,20 @@ export function parseCurrentPageNumber(html: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/** Whether the current page has a real, unbanked pot right now — the page's
+ *  own pot summary renders as either `ar-pot-banner ar-pot-active` (a live
+ *  "Bank N" button, confirmed real) or `ar-pot-banner ar-pot-banked` ("Page
+ *  Banked — +N Score", also confirmed real, alongside every opponent card
+ *  — including the boss's — switching to a disabled "Page Closed" state).
+ *  This is the authoritative "is there anything left to do on this page"
+ *  signal: unlike `parseOpenOpponents`/`parseBossEnginePageId`, it also
+ *  catches the case where every opponent (and the boss) has already been
+ *  fought but the page was never banked — those two checks alone would see
+ *  nothing left to fight and wrongly conclude the page is done. */
+export function parseIsPotActive(html: string): boolean {
+  return html.includes('ar-pot-banner ar-pot-active');
+}
+
 export function unwrapArenaPanelHtml(responseText: string): string | null {
   return unwrapPanelEnvelope(responseText)?.html ?? null;
 }
