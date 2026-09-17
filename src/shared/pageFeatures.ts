@@ -73,6 +73,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A floating panel on the Arena page showing Auto-Attack status, the boss win% threshold, and the last page it ran — with the toggle right there so you don’t need the popup to turn it on or off.',
   },
   {
+    id: 'arenaBossOdds',
+    label: 'Arena Boss Odds',
+    description:
+      'Badges the boss card on the Arena page with its real win % — the game computes this the moment you open a page, it just never shows it. Only appears after you open the page yourself (manually or via Refresh); a page Auto-Attack opened on its own has no way to be shown this way.',
+  },
+  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:
