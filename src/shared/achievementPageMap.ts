@@ -39,21 +39,28 @@
  *   "Fifth Shop Customer"/"Fifth Shop Catalogue" go to the Fifth Shop;
  *   "Quick Sale" (its description literally says "Teaches quicksell") goes
  *   to the Item Market; "Black Market Contact"/"Back-Room Buyer"/"Fence
- *   Operator" belong to the Black Market (still unwired — see below) once
- *   it has a marker. The other five (District Shopper, Secure Holdings,
- *   Lifetime Earnings, Gold Reserve, Diversified Empire) describe
- *   account-wide economic behavior with no single owning page, so they're
- *   left unmapped rather than attached somewhere misleading.
+ *   Operator" go to the Black Market. "District Shopper" is on *both* Fifth
+ *   Shop and Black Market — the player confirmed both restock different
+ *   items per district, and the line's own text ("standard shops across all
+ *   districts") doesn't distinguish between them. The remaining four
+ *   (Secure Holdings, Lifetime Earnings, Gold Reserve, Diversified Empire)
+ *   go to the Bank per the player — "Secure Holdings"' own progress text
+ *   ("Purchase all 30 bank upgrades · 18 / 30") confirms it directly, and
+ *   the other three (general Cash/Gold-earned meta stats) were grouped with
+ *   it at the player's direction rather than left unmapped.
  *
- * Deliberately not wired at all yet: Black Market and Forge — every
- * capture of either in the archive (105 for Black Market, every Forge
- * capture across all four archives) came back `truncated: true` before the
- * response finished. What little of Black Market was visible had no
- * `class`/`id` anywhere at all; Forge was never captured far enough in to
- * check. And the categories with no page decided yet: FRS, Player &
- * District Progression, Lore & Codex (see conversation — Lore & Codex in
- * particular was described as cutting across the whole game rather than
- * belonging to one page).
+ * Black Market's marker (`#bm-tab-v2`) came from a full, non-truncated
+ * capture the player supplied directly — every one of the 105 Black Market
+ * captures already in the archive had come back `truncated: true`, so the
+ * page previously looked like it had no `class`/`id` at all. It does; the
+ * truncation just always cut off before reaching them.
+ *
+ * Deliberately not wired at all yet: Forge (every capture across all four
+ * archives came back `truncated: true` before the response finished — never
+ * captured far enough in to find a marker), and the categories with no page
+ * decided yet: FRS, Player & District Progression, Lore & Codex (see
+ * conversation — Lore & Codex in particular was described as cutting across
+ * the whole game rather than belonging to one page).
  */
 export interface AchievementPageScope {
   /** Human label only, for logging — not a lookup key. */
@@ -137,7 +144,27 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'fifthShop',
     marker: '.shop-hero',
     category: 'Shops & Economy',
-    lineNames: ['Fifth Shop Customer', 'Fifth Shop Catalogue'],
+    // "District Shopper" is deliberately on both Fifth Shop and Black
+    // Market — the player confirmed both restock different items per
+    // district, and its own description ("standard shops across all
+    // districts") doesn't distinguish between them.
+    lineNames: ['Fifth Shop Customer', 'Fifth Shop Catalogue', 'District Shopper'],
+  },
+  {
+    id: 'blackMarket',
+    marker: '#bm-tab-v2',
+    category: 'Shops & Economy',
+    lineNames: ['Black Market Contact', 'Back-Room Buyer', 'Fence Operator', 'District Shopper'],
+  },
+  {
+    id: 'bank',
+    marker: '.bank-terminal',
+    category: 'Shops & Economy',
+    // Confirmed by the player: "Secure Holdings"' own progress text reads
+    // "Purchase all 30 bank upgrades · 18 / 30" — unambiguously the Bank
+    // page, not Stock Market. The other three (general Cash/Gold-earned
+    // meta stats, previously left unmapped) go here too, per the player.
+    lineNames: ['Secure Holdings', 'Lifetime Earnings', 'Gold Reserve', 'Diversified Empire'],
   },
   {
     id: 'emergency',
