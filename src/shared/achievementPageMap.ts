@@ -59,6 +59,12 @@
  * player supplied directly after every prior archive capture of the page
  * came back truncated before reaching any usable selector.
  *
+ * Gym's marker (`.gym-master-hud`) came from a full capture supplied
+ * directly too — Gym wasn't found missing due to truncation like Forge, it
+ * simply hadn't been discovered as its own achievement category until
+ * `src/shared/data/achievements.json` was extracted from the full archive
+ * set and turned up a 25th category with no page scope yet.
+ *
  * Categories with no page decided yet: FRS, Player & District Progression,
  * Lore & Codex (see conversation — Lore & Codex in particular was described
  * as cutting across the whole game rather than belonging to one page).
@@ -249,6 +255,12 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'forge',
     marker: '.forge-hero',
     category: 'Forge',
+    lineNames: 'all',
+  },
+  {
+    id: 'gym',
+    marker: '.gym-master-hud',
+    category: 'Gym',
     lineNames: 'all',
   },
 ];

@@ -1,0 +1,1151 @@
+{
+  "_note": "Static reference of every known achievement category, line, and capstone — name + description only. Per-tier thresholds and rewards are NOT included: the game only ever exposes the next uncompleted tiers reward/threshold for a given account, never the full bronze/silver/gold/crown ladder, so there is no static ladder to capture here. See src/background/features/achievements/achievementsPanelParser.ts for the live parser that reads an accounts actual tier/progress/ready state at runtime.",
+  "_extractedFrom": "Player-supplied archive captures, 2026-09-14 to 2026-09-17 (see /Downloads/fifth-family-archive-*.ndjson.gz).",
+  "categoryCount": 25,
+  "categories": [
+    {
+      "category": "Academy",
+      "lineCount": 5,
+      "lines": [
+        {
+          "name": "Coursework",
+          "description": "Rewards completing the full Academy course catalogue."
+        },
+        {
+          "name": "Degree Holder",
+          "description": "Rewards completing the nineteen Academy degrees."
+        },
+        {
+          "name": "Combat Curriculum",
+          "description": "Guides completion of the five physical and combat-stat degrees."
+        },
+        {
+          "name": "Enterprise Curriculum",
+          "description": "Guides completion of the ten crime, income, smuggling, and casino degrees."
+        },
+        {
+          "name": "Specialist Curriculum",
+          "description": "Guides completion of the four Gym, Gear, Pet, and Black Market utility degrees."
+        }
+      ],
+      "capstone": {
+        "name": "Dean of the Underworld",
+        "description": "Earn Crown in every Academy achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Battle Pass",
+      "lineCount": 9,
+      "lines": [
+        {
+          "name": "Pass Progression",
+          "description": "Guides the full 100-level journey within a single Battle Pass."
+        },
+        {
+          "name": "Season Veteran",
+          "description": "Rewards completing multiple Battle Passes over time."
+        },
+        {
+          "name": "Reward Track",
+          "description": "Rewards claiming earned Battle Pass levels across multiple passes."
+        },
+        {
+          "name": "Crime Pays",
+          "description": "Rewards Battle Pass XP earned through Crime."
+        },
+        {
+          "name": "Working the Pass",
+          "description": "Rewards Battle Pass XP earned through Career."
+        },
+        {
+          "name": "Actionable Intelligence",
+          "description": "Rewards Battle Pass XP earned through Street Intel."
+        },
+        {
+          "name": "Protection Points",
+          "description": "Rewards Battle Pass XP earned through Rackets."
+        },
+        {
+          "name": "Fighting for Rank",
+          "description": "Rewards Battle Pass XP earned through Fight Club PvP."
+        },
+        {
+          "name": "Every Avenue",
+          "description": "Encourages earning BP XP from the entire eligible activity roster within one pass."
+        }
+      ],
+      "capstone": {
+        "name": "Seasoned Veteran",
+        "description": "Earn Crown in every Battle Pass achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Blood Bonds",
+      "lineCount": 11,
+      "lines": [
+        {
+          "name": "Chosen Family",
+          "description": "Guides the complete 39-month Blood Bond relationship."
+        },
+        {
+          "name": "Trust Milestones",
+          "description": "Rewards unlocking the full passive milestone schedule."
+        },
+        {
+          "name": "Shared Powers",
+          "description": "Rewards unlocking the complete active-power schedule."
+        },
+        {
+          "name": "Always There",
+          "description": "Rewards active use of Blood Bond support rather than passive ownership only."
+        },
+        {
+          "name": "Signals Sent",
+          "description": "Highlights the five Fight Club Signal powers."
+        },
+        {
+          "name": "Watch Your Six",
+          "description": "Use the Blood Bond heist-support power."
+        },
+        {
+          "name": "Two-Headed Negotiator",
+          "description": "Use the Blood Bond smuggling-support power."
+        },
+        {
+          "name": "Friend of the Family",
+          "description": "Use the Blood Bond pet-support power."
+        },
+        {
+          "name": "Safety in Numbers",
+          "description": "Use the Blood Bond partner-travel power."
+        },
+        {
+          "name": "Shared Supplies",
+          "description": "Highlights Catch Your Breath, Shared Courage, and One More Push."
+        },
+        {
+          "name": "Bloodbound Stand",
+          "description": "Rewards repeated use of the Month 39 capstone in meaningful Fight Club support."
+        }
+      ],
+      "capstone": {
+        "name": "Bloodbound",
+        "description": "Earn Crown in every Blood Bonds achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Bloodlines",
+      "lineCount": 5,
+      "lines": [
+        {
+          "name": "Legacy Points",
+          "description": "Guides spending the complete 199-point Bloodline budget."
+        },
+        {
+          "name": "Deepest Roots",
+          "description": "Guides completion of the most-developed Bloodline branch."
+        },
+        {
+          "name": "Dual Heritage",
+          "description": "Guides the intended second completed Bloodline branch."
+        },
+        {
+          "name": "Threefold Legacy",
+          "description": "Guides the intended 39-point investment into the remaining branch."
+        },
+        {
+          "name": "Bloodline Reach",
+          "description": "Rewards unlocking the intended breadth of Bloodline tiers."
+        }
+      ],
+      "capstone": {
+        "name": "Bloodline Legacy",
+        "description": "Earn Crown in every Bloodlines achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Careers",
+      "lineCount": 7,
+      "lines": [
+        {
+          "name": "On the Clock",
+          "description": "Rewards cumulative completed Career Shifts."
+        },
+        {
+          "name": "Working Overtime",
+          "description": "Ensures players engage with the Overtime progression line."
+        },
+        {
+          "name": "Résumé Builder",
+          "description": "Guides players through the full Career catalogue."
+        },
+        {
+          "name": "Career Mastery",
+          "description": "Rewards reaching final rank across Careers."
+        },
+        {
+          "name": "Executive Benefits",
+          "description": "Rewards collecting permanent Career passive unlocks."
+        },
+        {
+          "name": "Company Property",
+          "description": "Rewards collecting Rank 5 Career-exclusive items."
+        },
+        {
+          "name": "Perfect Shift Streak",
+          "description": "Rewards consecutive Perfect Shift outcomes."
+        }
+      ],
+      "capstone": {
+        "name": "Chairman of Industry",
+        "description": "Earn Crown in every Careers achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Combat & PvP",
+      "lineCount": 12,
+      "lines": [
+        {
+          "name": "Fight Club Victor",
+          "description": "Rewards cumulative wins in the standard 20-round PvP mode."
+        },
+        {
+          "name": "Go the Distance",
+          "description": "Highlights Fight Club battles that reach and complete the twentieth round."
+        },
+        {
+          "name": "Street Dominance",
+          "description": "Rewards sustained Fight Club win streaks."
+        },
+        {
+          "name": "Last One Standing",
+          "description": "Rewards cumulative victories in fight-to-the-death Arena combat."
+        },
+        {
+          "name": "Arena Reign",
+          "description": "Rewards sustained Arena win streaks."
+        },
+        {
+          "name": "Heavy Hitter",
+          "description": "Teaches Strength-led combat output through cumulative valid PvP damage."
+        },
+        {
+          "name": "Hold the Line",
+          "description": "Teaches the defensive Block mechanic."
+        },
+        {
+          "name": "Untouchable",
+          "description": "Teaches the Agility-driven Dodge mechanic."
+        },
+        {
+          "name": "Deadeye",
+          "description": "Teaches the Dexterity-driven Critical Hit mechanic."
+        },
+        {
+          "name": "Battle Companion",
+          "description": "Rewards winning valid PvP battles with an equipped pet."
+        },
+        {
+          "name": "Dressed for War",
+          "description": "Rewards winning valid PvP battles while a complete equipment set is active."
+        },
+        {
+          "name": "Giant Killer",
+          "description": "Rewards wins over opponents at or above the player&#039;s level."
+        }
+      ],
+      "capstone": {
+        "name": "Champion of the Streets",
+        "description": "Earn Crown in every Combat & PvP achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Crimes",
+      "lineCount": 10,
+      "lines": [
+        {
+          "name": "Criminal Record",
+          "description": "Rewards sustained successful Crime completion."
+        },
+        {
+          "name": "Criminal Catalogue",
+          "description": "Guides players through the full authored Crime catalogue."
+        },
+        {
+          "name": "District Crime Sweep",
+          "description": "Guides full Crime completion in every district."
+        },
+        {
+          "name": "Capstone Operator",
+          "description": "Highlights the higher-tier half of each district Crime roster."
+        },
+        {
+          "name": "Iron River Business",
+          "description": "Rewards successful Crimes carrying the Iron River affiliation."
+        },
+        {
+          "name": "SBP Business",
+          "description": "Rewards successful Crimes carrying the SBP affiliation."
+        },
+        {
+          "name": "Kito-gumi Business",
+          "description": "Rewards successful Crimes carrying the Kito-gumi affiliation."
+        },
+        {
+          "name": "Viola Business",
+          "description": "Rewards successful Crimes carrying the Viola affiliation."
+        },
+        {
+          "name": "Volkskaya Business",
+          "description": "Rewards successful Crimes carrying the Volkskaya affiliation."
+        },
+        {
+          "name": "Clean Run",
+          "description": "Rewards sustained successful Crime play without a failure."
+        }
+      ],
+      "capstone": {
+        "name": "Lord of the Underworld",
+        "description": "Earn Crown in every Crimes achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Equipment & Sets",
+      "lineCount": 10,
+      "lines": [
+        {
+          "name": "Arsenal",
+          "description": "Pushes broad collection of unique permanent equippable items."
+        },
+        {
+          "name": "Fully Equipped",
+          "description": "Teaches filling the seven equipment slots."
+        },
+        {
+          "name": "Elite Loadout",
+          "description": "Pushes a complete high-rarity loadout rather than one isolated premium item."
+        },
+        {
+          "name": "Rarity Ladder",
+          "description": "Guides discovery across the complete equipment rarity ladder."
+        },
+        {
+          "name": "District Arsenal",
+          "description": "Rewards completing district equipment collections."
+        },
+        {
+          "name": "Set Collector",
+          "description": "Rewards complete equipment sets across every set family."
+        },
+        {
+          "name": "Independent Operator",
+          "description": "Highlights the Neutral set ladder."
+        },
+        {
+          "name": "Family Colours",
+          "description": "Highlights the Family set ladder without requiring unavailable allegiance changes."
+        },
+        {
+          "name": "At the Head of the Table",
+          "description": "Highlights the five Fifth Family endgame sets."
+        },
+        {
+          "name": "Trophies of Power",
+          "description": "Pushes collection of the ten district boss exclusive items."
+        }
+      ],
+      "capstone": {
+        "name": "Master Collector",
+        "description": "Earn Crown in every Equipment & Sets achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Estate",
+      "lineCount": 12,
+      "lines": [
+        {
+          "name": "Mansion Development",
+          "description": "Rewards cumulative Estate upgrade levels across all infrastructure."
+        },
+        {
+          "name": "Breaking Ground",
+          "description": "Encourages opening and using the full Estate node catalogue."
+        },
+        {
+          "name": "Finished Facilities",
+          "description": "Rewards fully completing individual Estate nodes."
+        },
+        {
+          "name": "Finance Office",
+          "description": "Guides complete development of the Finance Office."
+        },
+        {
+          "name": "Gym / Training Hall",
+          "description": "Guides complete development of the Gym / Training Hall."
+        },
+        {
+          "name": "Logistical Operations Office",
+          "description": "Guides complete development of the Logistical Operations Office."
+        },
+        {
+          "name": "Spa & Wellness Wing",
+          "description": "Guides complete development of the Spa & Wellness Wing."
+        },
+        {
+          "name": "Medical Center",
+          "description": "Guides complete development of the Medical Center."
+        },
+        {
+          "name": "Security Wing",
+          "description": "Guides complete development of the Security Wing."
+        },
+        {
+          "name": "Armory",
+          "description": "Guides complete development of the Armory."
+        },
+        {
+          "name": "Kennel",
+          "description": "Guides complete development of the Kennel."
+        },
+        {
+          "name": "Complete Estate",
+          "description": "Rewards total completion across every Estate wing and node."
+        }
+      ],
+      "capstone": {
+        "name": "Lord of the Manor",
+        "description": "Earn Crown in every Estate achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Family Upgrades",
+      "lineCount": 6,
+      "lines": [
+        {
+          "name": "Family Benefactor",
+          "description": "Rewards personal Cash contributed to permanent family infrastructure."
+        },
+        {
+          "name": "Upgrade Sponsor",
+          "description": "Rewards contributing to upgrade levels that are actually completed."
+        },
+        {
+          "name": "Lane Builder",
+          "description": "Guides meaningful progress within an individual upgrade lane."
+        },
+        {
+          "name": "Infrastructure Breadth",
+          "description": "Encourages personal contribution across the full upgrade registry."
+        },
+        {
+          "name": "Finished Infrastructure",
+          "description": "Rewards helping fully maximize multiple family upgrade lanes."
+        },
+        {
+          "name": "Family Headquarters",
+          "description": "Rewards total family infrastructure completion while preventing passive leech credit."
+        }
+      ],
+      "capstone": {
+        "name": "Family Architect",
+        "description": "Earn Crown in every Family Upgrades achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Forge",
+      "lineCount": 6,
+      "lines": [
+        {
+          "name": "Hammer and Fire",
+          "description": "Rewards cumulative successful Forge enhancement steps."
+        },
+        {
+          "name": "Climbing the Ladder",
+          "description": "Introduces progressively harder enhancement levels."
+        },
+        {
+          "name": "Against the Odds",
+          "description": "Rewards successful late-tier enhancements where success rates are lowest."
+        },
+        {
+          "name": "Perfected Arsenal",
+          "description": "Pushes collection of multiple fully enhanced items."
+        },
+        {
+          "name": "Forged Loadout",
+          "description": "Guides progressive enhancement across an entire equipped loadout."
+        },
+        {
+          "name": "Set in Steel",
+          "description": "Pushes full-set enhancement rather than upgrading only one favored item."
+        }
+      ],
+      "capstone": {
+        "name": "Master Smith",
+        "description": "Earn Crown in every Forge achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "FRS",
+      "lineCount": 20,
+      "lines": [
+        {
+          "name": "Known to the Families",
+          "description": "Rewards combined Lifetime Favor across all five families."
+        },
+        {
+          "name": "Iron River Standing",
+          "description": "Rewards long-term Lifetime Favor earned with Iron River."
+        },
+        {
+          "name": "SBP Standing",
+          "description": "Rewards long-term Lifetime Favor earned with SBP."
+        },
+        {
+          "name": "Kito-gumi Standing",
+          "description": "Rewards long-term Lifetime Favor earned with Kito-gumi."
+        },
+        {
+          "name": "Viola Standing",
+          "description": "Rewards long-term Lifetime Favor earned with Viola."
+        },
+        {
+          "name": "Volkskaya Standing",
+          "description": "Rewards long-term Lifetime Favor earned with Volkskaya."
+        },
+        {
+          "name": "Iron River Recognition",
+          "description": "Rewards unlocks along the authored Iron River FRS reward track."
+        },
+        {
+          "name": "SBP Recognition",
+          "description": "Rewards unlocks along the authored SBP FRS reward track."
+        },
+        {
+          "name": "Kito-gumi Recognition",
+          "description": "Rewards unlocks along the authored Kito-gumi FRS reward track."
+        },
+        {
+          "name": "Viola Recognition",
+          "description": "Rewards unlocks along the authored Viola FRS reward track."
+        },
+        {
+          "name": "Volkskaya Recognition",
+          "description": "Rewards unlocks along the authored Volkskaya FRS reward track."
+        },
+        {
+          "name": "Recognized Across the City",
+          "description": "Rewards total FRS reward unlocks across every family."
+        },
+        {
+          "name": "Family Store Access",
+          "description": "Rewards the authored FRS Store unlock points."
+        },
+        {
+          "name": "Favoured Companions",
+          "description": "Highlights the five FRS family pets."
+        },
+        {
+          "name": "Family Motorcade",
+          "description": "Highlights the five FRS family vehicles."
+        },
+        {
+          "name": "Family Consumables",
+          "description": "Rewards use of family-stat consumables."
+        },
+        {
+          "name": "Endorsements",
+          "description": "Rewards use of Favor boosters."
+        },
+        {
+          "name": "Respect Through Crime",
+          "description": "Rewards final Favor earned from this FRS source."
+        },
+        {
+          "name": "Respect Through Work",
+          "description": "Rewards final Favor earned from this FRS source."
+        },
+        {
+          "name": "Respect Through Smuggling",
+          "description": "Rewards final Favor earned from this FRS source."
+        }
+      ],
+      "capstone": {
+        "name": "Respected by All",
+        "description": "Earn Crown in every FRS achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Gym",
+      "lineCount": 6,
+      "lines": [
+        {
+          "name": "Built, Not Born",
+          "description": "Rewards cumulative completed Gym training sessions."
+        },
+        {
+          "name": "Strength Training",
+          "description": "Guides sustained Gym development of Strength."
+        },
+        {
+          "name": "Defence Training",
+          "description": "Guides sustained Gym development of Defence."
+        },
+        {
+          "name": "Agility Training",
+          "description": "Guides sustained Gym development of Agility."
+        },
+        {
+          "name": "Dexterity Training",
+          "description": "Guides sustained Gym development of Dexterity."
+        },
+        {
+          "name": "Balanced Regimen",
+          "description": "Encourages developing every combat stat rather than abandoning one lane."
+        }
+      ],
+      "capstone": {
+        "name": "Peak Condition",
+        "description": "Earn Crown in every Gym achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Heat, Jail & Hospital",
+      "lineCount": 7,
+      "lines": [
+        {
+          "name": "Cool Off",
+          "description": "Rewards actively reducing accumulated Heat."
+        },
+        {
+          "name": "Under the Radar",
+          "description": "Rewards successful heat-generating activity while maintaining a low Heat profile."
+        },
+        {
+          "name": "Bust a Friend",
+          "description": "Rewards successfully freeing other players from jail."
+        },
+        {
+          "name": "Paid in Full",
+          "description": "Introduces and reinforces the solo bail option without making incarceration the main grind."
+        },
+        {
+          "name": "Getaway Plans",
+          "description": "Teaches jail recovery-item use."
+        },
+        {
+          "name": "Back on Your Feet",
+          "description": "Teaches hospital recovery-item use and valid early discharge."
+        },
+        {
+          "name": "Risk Management",
+          "description": "Rewards difficult successful content without jail or hospital consequences."
+        }
+      ],
+      "capstone": {
+        "name": "Untouchable",
+        "description": "Earn Crown in every Heat, Jail & Hospital achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Heists",
+      "lineCount": 7,
+      "lines": [
+        {
+          "name": "The Big Score",
+          "description": "Rewards full final-stage Heist completions."
+        },
+        {
+          "name": "Heist Catalogue",
+          "description": "Guides completion of every unique Heist."
+        },
+        {
+          "name": "District Scores",
+          "description": "Guides clearing both Heists in each district."
+        },
+        {
+          "name": "Bonus Haul",
+          "description": "Rewards receiving the gated completion-loot package."
+        },
+        {
+          "name": "Knowing When to Leave",
+          "description": "Teaches the early cash-out decision."
+        },
+        {
+          "name": "All the Way",
+          "description": "Rewards final clears without taking an early exit."
+        },
+        {
+          "name": "Sovereign Score",
+          "description": "Highlights the highest-level Heist."
+        }
+      ],
+      "capstone": {
+        "name": "Mastermind",
+        "description": "Earn Crown in every Heists achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Lore & Codex",
+      "lineCount": 9,
+      "lines": [
+        {
+          "name": "City Archivist",
+          "description": "Rewards total permanent Codex discovery."
+        },
+        {
+          "name": "District Historian",
+          "description": "Rewards completing district-specific Codex collections."
+        },
+        {
+          "name": "Family Historian",
+          "description": "Rewards learning the history and identity of all five families."
+        },
+        {
+          "name": "Vigilante Archivist",
+          "description": "Rewards unlocking the full Vigilante Codex."
+        },
+        {
+          "name": "Item Historian",
+          "description": "Rewards unlocking equipment lore across the item catalogue."
+        },
+        {
+          "name": "Pet Archivist",
+          "description": "Rewards unlocking pet lore across the Menagerie."
+        },
+        {
+          "name": "Vehicle Archivist",
+          "description": "Rewards unlocking vehicle histories and descriptions."
+        },
+        {
+          "name": "Set Archivist",
+          "description": "Rewards unlocking complete-set lore."
+        },
+        {
+          "name": "Boss Chronicle",
+          "description": "Rewards learning the story behind every district boss."
+        }
+      ],
+      "capstone": {
+        "name": "Keeper of the City",
+        "description": "Earn Crown in every Lore & Codex achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Pets & Vigilantes",
+      "lineCount": 12,
+      "lines": [
+        {
+          "name": "Menagerie",
+          "description": "Rewards collecting the full permanent pet catalogue."
+        },
+        {
+          "name": "District Companions",
+          "description": "Highlights the pet exclusive to each district."
+        },
+        {
+          "name": "Family Companions",
+          "description": "Highlights the five FRS family pets within the wider pet collection."
+        },
+        {
+          "name": "Daily Care",
+          "description": "Teaches the regular pet feeding loop."
+        },
+        {
+          "name": "Training Partners",
+          "description": "Teaches the weekly pet training loop."
+        },
+        {
+          "name": "Growing Together",
+          "description": "Rewards converting pet points into permanent pet stats."
+        },
+        {
+          "name": "Developed Menagerie",
+          "description": "Encourages meaningful development of several pets rather than only one."
+        },
+        {
+          "name": "Shard Hunter",
+          "description": "Rewards cumulative Vigilante shard acquisition."
+        },
+        {
+          "name": "Connections",
+          "description": "Pushes collection of the full Vigilante roster."
+        },
+        {
+          "name": "Five Networks",
+          "description": "Guides Vigilante collection across all five family affiliations."
+        },
+        {
+          "name": "Rising Stars",
+          "description": "Rewards post-unlock Vigilante progression."
+        },
+        {
+          "name": "Complete Network",
+          "description": "Pushes full development of multiple Vigilantes."
+        }
+      ],
+      "capstone": {
+        "name": "Keeper of the Network",
+        "description": "Earn Crown in every Pets & Vigilantes achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Player & District Progression",
+      "lineCount": 3,
+      "lines": [
+        {
+          "name": "Rising Through the Ranks",
+          "description": "Guides the full player-level journey from early access to the level cap."
+        },
+        {
+          "name": "District Access",
+          "description": "Guides players through the full ten-district unlock sequence."
+        },
+        {
+          "name": "Kingslayer",
+          "description": "Highlights the unique boss and exclusive-drop objective in every district."
+        }
+      ],
+      "capstone": {
+        "name": "Master of the Ten Districts",
+        "description": "Earn Crown in every Player & District Progression achievement line",
+        "rewardCash": 50000000,
+        "rewardGold": 500
+      }
+    },
+    {
+      "category": "Rackets",
+      "lineCount": 9,
+      "lines": [
+        {
+          "name": "Protection Collection",
+          "description": "Rewards valid Racket income collections."
+        },
+        {
+          "name": "Racket Network",
+          "description": "Guides acquisition of the full Racket catalogue."
+        },
+        {
+          "name": "Specialized Operations",
+          "description": "Teaches every Racket specialization."
+        },
+        {
+          "name": "Cash Machine",
+          "description": "Rewards repeated operation under the Cash Machine specialization."
+        },
+        {
+          "name": "Quiet Operation",
+          "description": "Rewards repeated operation under the Quiet Operation specialization."
+        },
+        {
+          "name": "Money Launderer",
+          "description": "Rewards repeated operation under the Money Launderer specialization."
+        },
+        {
+          "name": "Front Business",
+          "description": "Rewards repeated operation under the Front Business specialization."
+        },
+        {
+          "name": "Lay Low",
+          "description": "Teaches deliberate investigation reduction."
+        },
+        {
+          "name": "Under Surveillance",
+          "description": "Rewards collecting while investigation pressure is meaningful."
+        }
+      ],
+      "capstone": {
+        "name": "The Protection Business",
+        "description": "Earn Crown in every Rackets achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Real Estate",
+      "lineCount": 7,
+      "lines": [
+        {
+          "name": "Rent Day",
+          "description": "Rewards valid property-income collections."
+        },
+        {
+          "name": "Property Portfolio",
+          "description": "Guides ownership of the complete property catalogue."
+        },
+        {
+          "name": "Revenue Development",
+          "description": "Guides the property revenue-upgrade track."
+        },
+        {
+          "name": "Vault Development",
+          "description": "Guides the property vault-upgrade track."
+        },
+        {
+          "name": "Fully Developed",
+          "description": "Rewards maximizing both development tracks."
+        },
+        {
+          "name": "District Landlord",
+          "description": "Guides ownership across all districts."
+        },
+        {
+          "name": "Passive Empire",
+          "description": "Rewards cumulative property income collected."
+        }
+      ],
+      "capstone": {
+        "name": "Own the City",
+        "description": "Earn Crown in every Real Estate achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Shops & Economy",
+      "lineCount": 11,
+      "lines": [
+        {
+          "name": "District Shopper",
+          "description": "Guides purchases through standard shops across all districts."
+        },
+        {
+          "name": "Fifth Shop Customer",
+          "description": "Rewards repeated use of district Fifth Shops."
+        },
+        {
+          "name": "Fifth Shop Catalogue",
+          "description": "Pushes collection of unique permanent Fifth Shop listings."
+        },
+        {
+          "name": "Black Market Contact",
+          "description": "Guides finding and using Black Markets across the city."
+        },
+        {
+          "name": "Back-Room Buyer",
+          "description": "Rewards repeated Black Market purchasing."
+        },
+        {
+          "name": "Fence Operator",
+          "description": "Teaches fencing and rewards sustained legitimate use."
+        },
+        {
+          "name": "Quick Sale",
+          "description": "Teaches quicksell and rewards sustained legitimate use."
+        },
+        {
+          "name": "Secure Holdings",
+          "description": "Highlights Gold-funded bank progression."
+        },
+        {
+          "name": "Lifetime Earnings",
+          "description": "Rewards total Cash earned through gameplay without requiring the player to hoard it."
+        },
+        {
+          "name": "Gold Reserve",
+          "description": "Rewards F2P Gold earned from gameplay sources."
+        },
+        {
+          "name": "Diversified Empire",
+          "description": "Guides players into earning meaningful Cash from many systems."
+        }
+      ],
+      "capstone": {
+        "name": "Master of the Market",
+        "description": "Earn Crown in every Shops & Economy achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Smuggling",
+      "lineCount": 5,
+      "lines": [
+        {
+          "name": "Moving Product",
+          "description": "Rewards completed profitable smuggling sales."
+        },
+        {
+          "name": "Cargo Moved",
+          "description": "Rewards cumulative delivered smuggling item volume."
+        },
+        {
+          "name": "Smuggled Catalogue",
+          "description": "Guides profitable sale of all 30 authored goods."
+        },
+        {
+          "name": "Loaded Down",
+          "description": "Rewards profitable sales made at full current cargo capacity."
+        },
+        {
+          "name": "Smuggling Profit",
+          "description": "Rewards cumulative net profit."
+        }
+      ],
+      "capstone": {
+        "name": "Continental Supply Line",
+        "description": "Earn Crown in every Smuggling achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Street Intel",
+      "lineCount": 9,
+      "lines": [
+        {
+          "name": "Eyes Everywhere",
+          "description": "Rewards cumulative successful Intel completions."
+        },
+        {
+          "name": "Perfect Information",
+          "description": "Rewards Critical Success outcomes."
+        },
+        {
+          "name": "Against the Odds",
+          "description": "Guides players toward High and Extreme risk opportunities."
+        },
+        {
+          "name": "Complication Handler",
+          "description": "Rewards successfully resolving Intel complications."
+        },
+        {
+          "name": "Versatile Operator",
+          "description": "Teaches all complication-resolution approaches."
+        },
+        {
+          "name": "Specialist Network",
+          "description": "Guides category mastery across Robbery, Interception, Extortion, Exploitation, and Leverage."
+        },
+        {
+          "name": "Street Contacts",
+          "description": "Guides contact unlocks and re-earning contacts through prestige cycles."
+        },
+        {
+          "name": "Go Dark",
+          "description": "Rewards the complete Go Dark prestige path."
+        },
+        {
+          "name": "Legendary Intelligence",
+          "description": "Rewards completion of Legendary Intel opportunities."
+        }
+      ],
+      "capstone": {
+        "name": "Ghost Network",
+        "description": "Earn Crown in every Street Intel achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Travel",
+      "lineCount": 5,
+      "lines": [
+        {
+          "name": "Miles of Concrete",
+          "description": "Rewards completed journeys."
+        },
+        {
+          "name": "District Traveller",
+          "description": "Guides visits to every district."
+        },
+        {
+          "name": "Route Network",
+          "description": "Guides completion of all undirected district pairings."
+        },
+        {
+          "name": "All-Weather Operator",
+          "description": "Guides travel through all authored weather tags."
+        },
+        {
+          "name": "Frequent Passenger",
+          "description": "Rewards cumulative actual travel duration."
+        }
+      ],
+      "capstone": {
+        "name": "King of the Road",
+        "description": "Earn Crown in every Travel achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    },
+    {
+      "category": "Vehicles & Chop Shop",
+      "lineCount": 8,
+      "lines": [
+        {
+          "name": "Garage",
+          "description": "Guides acquisition of the permanent obtainable vehicle catalogue."
+        },
+        {
+          "name": "District Rides",
+          "description": "Highlights each district-exclusive vehicle."
+        },
+        {
+          "name": "Family Fleet",
+          "description": "Highlights the five FRS family vehicles."
+        },
+        {
+          "name": "Parts Changed",
+          "description": "Rewards actual vehicle-part replacement."
+        },
+        {
+          "name": "Donor Network",
+          "description": "Guides use of parts sourced from different vehicle models."
+        },
+        {
+          "name": "Finish Line",
+          "description": "Rewards race victories."
+        },
+        {
+          "name": "First Chop",
+          "description": "Teaches and rewards vehicle chopping."
+        },
+        {
+          "name": "Chop Shop Revenue",
+          "description": "Rewards cumulative Cash earned from chopping."
+        }
+      ],
+      "capstone": {
+        "name": "Master of the Motor Pool",
+        "description": "Earn Crown in every Vehicles & Chop Shop achievement line",
+        "rewardCash": 40000000,
+        "rewardGold": 400
+      }
+    }
+  ]
+}
