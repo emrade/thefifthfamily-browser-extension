@@ -64,7 +64,7 @@ export const PAGE_FEATURE_DEFINITIONS = [
     id: 'achievementChip',
     label: 'Achievement Tracker',
     description:
-      'A small icon at the top-right of the page (on 26 pages so far) showing only the achievement lines relevant to that page — current tier, progress to the next one, and a Claim button the moment a line is ready. Click it to open.',
+      'A small icon at the top-right of the page (on 27 pages so far) showing only the achievement lines relevant to that page — current tier, progress to the next one, and a Claim button the moment a line is ready. Click it to open.',
   },
   {
     id: 'garageBulkOps',

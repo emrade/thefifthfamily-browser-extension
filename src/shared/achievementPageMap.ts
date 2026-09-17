@@ -55,12 +55,13 @@
  * page previously looked like it had no `class`/`id` at all. It does; the
  * truncation just always cut off before reaching them.
  *
- * Deliberately not wired at all yet: Forge (every capture across all four
- * archives came back `truncated: true` before the response finished — never
- * captured far enough in to find a marker), and the categories with no page
- * decided yet: FRS, Player & District Progression, Lore & Codex (see
- * conversation — Lore & Codex in particular was described as cutting across
- * the whole game rather than belonging to one page).
+ * Forge's marker (`.forge-hero`) came the same way — a full capture the
+ * player supplied directly after every prior archive capture of the page
+ * came back truncated before reaching any usable selector.
+ *
+ * Categories with no page decided yet: FRS, Player & District Progression,
+ * Lore & Codex (see conversation — Lore & Codex in particular was described
+ * as cutting across the whole game rather than belonging to one page).
  */
 export interface AchievementPageScope {
   /** Human label only, for logging — not a lookup key. */
@@ -242,6 +243,12 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'battlePass',
     marker: '.bp-hero',
     category: 'Battle Pass',
+    lineNames: 'all',
+  },
+  {
+    id: 'forge',
+    marker: '.forge-hero',
+    category: 'Forge',
     lineNames: 'all',
   },
 ];
