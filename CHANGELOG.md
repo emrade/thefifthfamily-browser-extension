@@ -9,6 +9,16 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.26.1] - 2026-09-18
+
+### Fixed
+- Street Racing automation now forwards `can_race`'s `run_token` on the
+  following `attempt_race` call. Without it, the server silently discarded
+  the submitted mini-game accuracy and fell back to a neutral value on every
+  automated race — invisible on the 100%-base-chance races run so far, but a
+  real loss of win-chance bonus on any race with a real base chance under
+  100% (e.g. the family-challenge races).
+
 ## [0.26.0] - 2026-09-17
 
 ### Added
