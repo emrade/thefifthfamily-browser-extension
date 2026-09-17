@@ -19,6 +19,7 @@ import { initItemMarketPriceAdvisor } from './features/itemMarket';
 import { initGarageOverlay } from './features/garage/overlay';
 import { initAchievementChip } from './shared/achievementChip';
 import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
+import { initArenaOverlay } from './features/arena/overlay';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -148,6 +149,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.achievementChip) {
       initAchievementChip(ACHIEVEMENT_PAGE_SCOPES);
+    }
+    if (prefs.arenaOverlay) {
+      initArenaOverlay();
     }
   });
 }

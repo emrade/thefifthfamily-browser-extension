@@ -56,6 +56,17 @@ export const NOTIFICATION_DEFINITIONS = [
     label: 'Crimes Auto Stopped',
     description: 'Notify when the crimes auto-runner stops itself after an unrecognized response.',
   },
+  {
+    id: 'arenaPageUnlocked',
+    label: 'Arena Page Unlocked',
+    description:
+      'Notify when a new Arena page is ready to open. Repeats periodically for as long as it sits unopened — works whether or not Arena Auto-Attack itself is on, so you can rely on it as a reminder even with automation switched off.',
+  },
+  {
+    id: 'arenaAutoStopped',
+    label: 'Arena Auto Stopped',
+    description: 'Notify when Arena Auto-Attack stops itself after an unrecognized response.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

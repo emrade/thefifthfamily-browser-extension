@@ -1201,3 +1201,79 @@ export interface AchievementCategory {
 export interface AchievementClaimResult {
   message: string;
 }
+
+// --- Arena auto-attack --------------------------------------------------------
+
+export interface ArenaAutoConfig {
+  enabled: boolean;
+  /** Attack the boss only when its own server-computed `win_pct` (see
+   *  `ArenaBossResult`) is at least this — the boss is never shown a "%
+   *  CHANCE" badge in-game the way regular opponents are, but the number
+   *  exists and is exposed in `open_next_page`'s own response regardless.
+   *  Player-set (player's own words: "let us proceed... make the things
+   *  that can be editable like so, like the percentage"), default derived
+   *  from the same conversation. */
+  bossWinPctThreshold: number;
+}
+
+export interface ArenaOpponentResult {
+  name: string;
+  won: boolean;
+  /** The opponent's own `win_pct` as shown on the page at the moment this
+   *  fight was attempted — recorded per-fight rather than trusted to still
+   *  match a page-open-time snapshot, since a `Refresh` (before combat
+   *  begins) can change the roster. */
+  winPctAtAttack: number;
+  bountyEarned: number;
+}
+
+export interface ArenaBossResult {
+  name: string;
+  attacked: boolean;
+  won: boolean | null;
+  /** Always recorded, whether or not the boss was actually attacked — this
+   *  is what a skip decision was judged against, so it belongs in the log
+   *  either way. */
+  winPct: number;
+  /** Non-null only when `attacked` is false — e.g. "43% < 50% threshold". */
+  skippedReason: string | null;
+}
+
+/** What one fully-automated page cycle actually did — shown in the popup as
+ *  "last page", same role `CareerShiftResult`/`CrimeAttemptResult` play for
+ *  their own auto-runners. */
+export interface ArenaPageResult {
+  timestamp: number;
+  pageNumber: number;
+  /** In the order actually attacked (see runner.ts for the ordering rule),
+   *  not necessarily `opponent_ids` order. */
+  opponents: ArenaOpponentResult[];
+  /** Null only if the boss's own "ENGAGE BOSS" button never appeared at all
+   *  this cycle (unconfirmed edge case — every real capture so far reached
+   *  it once all four regular opponents were attacked). */
+  boss: ArenaBossResult | null;
+  banked: number;
+  seasonScore: number;
+}
+
+export interface ArenaAutoStatus {
+  lastPage: ArenaPageResult | null;
+  /** The next page's own `unlocks_next_at`, straight from the game — both
+   *  what the runner's own alarm aligns to and what the passive "page
+   *  unlocked" notification (see runner.ts's `runPassiveCheck`) watches for
+   *  independently of whether `enabled` is on. */
+  nextUnlockAt: number | null;
+  pausedReason: 'error' | null;
+  pausedMessage: string | null;
+  pausedAt: number | null;
+  pagesRun: number;
+  totalBanked: number;
+}
+
+/** Read-only counterpart to `CourierStatus` — a surface that can't reach
+ *  `storage` directly (the in-page overlay) gets both config and status in
+ *  one message round-trip instead of two. */
+export interface ArenaStatusResponse {
+  config: ArenaAutoConfig;
+  status: ArenaAutoStatus | null;
+}

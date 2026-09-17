@@ -1,3 +1,84 @@
+# Arena Combat — Round-by-Round Dice, Not a Fixed Script
+
+Measured 2026-09-17 against real `POST /actions/arena_v2.php` captures, including one
+full round-by-round combat log for a loss and confirmed `win_pct` values for both a
+regular opponent and (see below) the boss.
+
+## `win_pct` is a real probability, already computed server-side
+
+Every regular opponent's card shows its own "N% CHANCE" — and that number is exactly
+what the account owner sees before attacking, not an estimate this extension derives.
+The boss is the one exception **in the UI only**: its card never renders a "% CHANCE"
+badge at all. The server computes one anyway — `open_next_page`'s own response carries
+`boss_data.win_pct` unconditionally, it's just never rendered. Confirmed real
+(2026-09-17): a boss with `win_pct: 43` was fought and won, `win_pct: 48` on the
+opponent fought just before it.
+
+**There is nothing to predict here that isn't already known.** `win_pct` already is the
+answer to "what are my real odds" — building a model to re-derive it would be
+reverse-engineering a number the game already hands over for free.
+
+## A single fight is genuinely random — `win_pct` is not a guarantee
+
+A real captured loss, round by round, shows both fighters rolling independently against
+their own dodge/crit/block chances *every round*:
+
+```
+round 1 → attacker: dodge_chance 6,  dodge_roll 14  → no dodge
+                     crit_chance  8,  crit_roll  47  → no crit
+                     block_chance 9,  block_roll 56  → no block
+          defender:  dodge_chance 5.5, dodge_roll 78 → no dodge
+                      block_chance 10.5, block_roll 24 → no block
+```
+
+Even the base damage per hit isn't fixed for a given weapon/stat pairing — the same
+account, same weapon, same opponent produced `base_dmg` values of 322, 256, 289, 305,
+307, 261, 322 (that one a crit)... across consecutive rounds of the *same* fight. The
+fight resolved over 19 rounds of this compounding independently, ending 0 HP to 221.
+
+**Consequence:** a 48% (or 51%, or 43%) win chance is a real probability over many
+trials, never a certainty on any one attempt. At 51% the outcome is barely better than
+a coin flip on that specific fight — losing it is not evidence anything is wrong, and
+winning a 43% fight (as happened, real capture) is not evidence the number was wrong
+either. There is no pre-roll or seed exposed anywhere the client (or this extension)
+can read before committing to an attack; the dice are rolled server-side at the moment
+of the `attack` call itself.
+
+## Total combat power hides *how* it's distributed — and that's what decides fights
+
+Two opponents with near-identical combat power can be very different matchups, because
+damage reduction is driven by the opponent's own DEF specifically (see the `reduction`
+field subtracted from `base_dmg` in the round log above), not a general "power" scalar:
+
+| | Combat Power | STR | DEF | AGI | DEX | Win% |
+|---|---|---|---|---|---|---|
+| Regular opponent, defeated | 2,932 | 576 | 627 | 466 | 567 | 48% |
+| Boss, same page | 2,916 | 627 | **1,063** | **271** | **355** | **43%** |
+
+Nearly identical totals, but the boss put almost everything into DEF at the cost of
+AGI/DEX — making it the *harder* matchup despite matching power, not an equal one. A
+"combat power comparison" heuristic (e.g. "I beat someone with slightly more CP, so I'm
+favored here too") reliably undersells risk in exactly this shape. Read `win_pct`
+directly instead; it already accounts for the full stat distribution on both sides.
+
+## The player's own combat power is also already computed, not something to estimate
+
+`preview_loadout` (an `arena_v2.php` action) returns the account's exact Arena-locked
+`fighting_stats` (strength/defence/agility/dexterity) — confirmed matching the Gym
+page's own HUD numbers exactly (554/563/435/522 on the account this was measured
+against). These are **frozen for the whole season** the moment it starts — the response
+says so directly: *"This is what you fight with — for both attack and defence — until
+the season ends. Changing your gear, perks, family, career, or anything else outside
+Arena has no effect here."* Gear changed mid-season doesn't touch Arena combat at all.
+
+`preview_loadout`'s own `bonuses` array (50+ entries on the account measured — Bloodline
+traits, Career V2, Estate, Family, Pets, V2 Vigilantes) is the full breakdown of *where*
+those frozen stats come from. Informative for a player wondering why their numbers are
+what they are, but doesn't change any decision on its own — `fighting_stats` already
+sums all of it.
+
+---
+
 # Smuggling Mechanics — Measured
 
 Rules recovered from this account's own captured data, not from the community guide.

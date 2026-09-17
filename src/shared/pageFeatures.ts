@@ -67,6 +67,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A small icon at the top-right of the page (on 28 pages so far) showing only the achievement lines relevant to that page — current tier, progress to the next one, and a Claim button the moment a line is ready. Click it to open.',
   },
   {
+    id: 'arenaOverlay',
+    label: 'Arena Status Panel',
+    description:
+      'A floating panel on the Arena page showing Auto-Attack status, the boss win% threshold, and the last page it ran — with the toggle right there so you don’t need the popup to turn it on or off.',
+  },
+  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:

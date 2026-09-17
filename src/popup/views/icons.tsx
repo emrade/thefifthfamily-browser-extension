@@ -83,6 +83,15 @@ export function CrosshairIcon() {
   );
 }
 
+/** Shield — for Arena Auto. */
+export function ShieldIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M12 2 4 5v6c0 5 3.4 8.8 8 11 4.6-2.2 8-6 8-11V5l-8-3Z" />
+    </svg>
+  );
+}
+
 /** Paper plane — dispatch/sending, for Pet Couriers. */
 export function SendIcon() {
   return (

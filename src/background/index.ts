@@ -30,6 +30,13 @@ import {
 } from './features/garage';
 import { claimLine as claimAchievementLine, fetchCategory as fetchAchievementCategory } from './features/achievements';
 import {
+  getStatus as getArenaStatus,
+  handleAlarm as handleArenaAlarm,
+  handleMessage as handleArena,
+  init as initArena,
+  runCheckNow as runArenaCheckNow,
+} from './features/arena';
+import {
   getStatus as getStockTrackerStatus,
   handlePollAlarm as handleStockMarketPollAlarm,
   init as initStockMarket,
@@ -49,7 +56,7 @@ import type { CourierStatus } from '@/shared/types';
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
 // content/index.ts for the matching dispatch on the capture side.
-const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel];
+const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArena];
 
 async function handleMessage(msg: ExtensionMessage) {
   for (const handle of messageHandlers) await handle(msg);
@@ -74,6 +81,11 @@ initStreetIntelAuto();
 // Same idea, for the Crime Alley auto-runner — see
 // features/crimesAuto/index.ts's init.
 initCrimesAuto();
+
+// Re-arms Arena's own shared alarm (auto-attack cycle or passive "page
+// ready" watcher, depending on `ArenaAutoConfig.enabled`) — see
+// features/arena/index.ts's init.
+initArena();
 
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
 // No config gate: unlike the two auto-runners above, this is read-only data
@@ -256,6 +268,20 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return claimAchievementLine(msg.lineId);
   }
 
+  // Sent by the popup's Arena Auto view and the in-page overlay alike —
+  // both read the same config/status, this is just the one place that
+  // assembles them for a surface that can't reach `storage` directly
+  // (the overlay; the popup reads storage straight through as usual).
+  if (msg.type === 'arena-status-requested') {
+    return getArenaStatus();
+  }
+
+  // Sent by the overlay's own "Check Now" button — see that message
+  // type's own doc in shared/messaging.ts.
+  if (msg.type === 'arena-check-requested') {
+    return runArenaCheckNow().then(getArenaStatus);
+  }
+
   // Archive writes are split off onto their own queue rather than joining the
   // ordered feature queue above. They need serializing among themselves (the shape
   // index does a read-then-write), but they must not sit in front of feature work:
@@ -294,4 +320,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleDestPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleDestPollAlarm failed', err));
   handleCourierReturnAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCourierReturnAlarm failed', err));
   handleCrimesAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCrimesAutoAlarm failed', err));
+  handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
 });

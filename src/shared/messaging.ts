@@ -201,6 +201,21 @@ export type ExtensionMessage =
   | { type: 'achievements-category-requested'; category: string }
   // Sent from the chip's modal when the player taps Claim on a Ready line.
   | { type: 'achievements-claim-line-requested'; lineId: string }
+  // Sent by the in-page Arena overlay on mount — same bootstrap role as
+  // 'street-intel-viewed': arms the passive "page ready" watcher's alarm the
+  // first time the player is seen on Arena, rather than running it from
+  // install for an account that never touches the page. Read-only and
+  // deliberately independent of `ArenaAutoConfig.enabled` — see that
+  // watcher's own doc in background/features/arena/runner.ts.
+  | { type: 'arena-viewed'; timestamp: number }
+  // Sent by the in-page Arena overlay on mount/refresh — read-only
+  // counterpart to 'courier-status-requested', for a surface that can't
+  // reach `storage`/`chrome.alarms` directly the way the popup does.
+  | { type: 'arena-status-requested' }
+  // Sent by the overlay's own "Check Now" button — same escape-hatch role
+  // as 'crimes-check-requested', for a schedule that's otherwise purely
+  // time-based (aligned to the page's own `unlocks_next_at`).
+  | { type: 'arena-check-requested' }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.
