@@ -209,5 +209,13 @@ export const storage = {
   getStreetRacingStatus: () => get<StreetRacingStatus | null>(STORAGE_KEYS.STREET_RACING_STATUS, null),
   setStreetRacingStatus: (v: StreetRacingStatus) => set(STORAGE_KEYS.STREET_RACING_STATUS, v),
 
+  // Player-marked "protect this vehicle" list for the Garage & Dealership
+  // overlay — a purely local concept, not anything the game itself tracks
+  // (unlike `isEquipped`, which the server already enforces). Plain array
+  // of `GarageCar.id`, empty by default; no merge-with-defaults needed,
+  // same shape as `PendingCourierReturns`.
+  getGarageDoNotTouch: () => get<number[]>(STORAGE_KEYS.GARAGE_DO_NOT_TOUCH, []),
+  setGarageDoNotTouch: (v: number[]) => set(STORAGE_KEYS.GARAGE_DO_NOT_TOUCH, v),
+
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

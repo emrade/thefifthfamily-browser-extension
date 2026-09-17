@@ -16,6 +16,7 @@ import { initMenagerieAssistant } from './features/menagerieAssistant';
 import { initStockMarketStatus } from './features/stockMarket';
 import { initStreetRacingOverlay } from './features/streetRacing/overlay';
 import { initItemMarketPriceAdvisor } from './features/itemMarket';
+import { initGarageOverlay } from './features/garage/overlay';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -139,6 +140,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.itemMarketAdvisor) {
       initItemMarketPriceAdvisor();
+    }
+    if (prefs.garageBulkOps) {
+      initGarageOverlay();
     }
   });
 }

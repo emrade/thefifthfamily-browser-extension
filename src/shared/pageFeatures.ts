@@ -60,6 +60,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description:
       'Collects Stock Market price and rumor history in the background (for a future trading feature) and shows a status overlay confirming it on the Stock Market page. Turning this off stops the background collection immediately; the overlay itself clears on the next reload.',
   },
+  {
+    id: 'garageBulkOps',
+    label: 'Garage & Dealership Bulk Tools',
+    description:
+      'A floating panel on the Garage & Dealership page for buying vehicles in bulk (shows the total cost so you can withdraw it first), stripping parts from multiple vehicles at once, deleting multiple stripped bodies, and auto-fitting spare parts into one or many empty vehicles — all confirmed (with the exact cost) before running, and all showing live progress while they run. Vehicles you mark Do Not Touch (and your active vehicle, which the game itself protects) are greyed out and skipped for stripping/deleting.',
+  },
 ] as const;
 
 export type PageFeatureId = (typeof PAGE_FEATURE_DEFINITIONS)[number]['id'];

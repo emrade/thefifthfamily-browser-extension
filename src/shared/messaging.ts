@@ -149,6 +149,50 @@ export type ExtensionMessage =
   // fires. `startedAt` (not just `durationMs`) lets the overlay compute
   // accurate remaining time even if this message arrives a little late.
   | { type: 'street-race-progress'; raceId: number; startedAt: number; durationMs: number }
+  // Sent from the in-page Garage & Dealership overlay on mount/refresh — same
+  // "live fetch+parse only background can do" exception as
+  // 'street-race-catalog-requested'. Returns a fresh `GarageCatalog` (owned
+  // vehicles + dealer stock + cash/platinum on hand) rather than anything
+  // cached, since both the Bulk Buy total and the Strip/Delete selection
+  // lists need the player's real current state before anything is confirmed.
+  | { type: 'garage-catalog-requested' }
+  // Sent when the Bulk Delete tab needs a real payout number for a vehicle
+  // before it can total up a confirm price — `bodyQuicksell` isn't on the
+  // catalog's own car list (see `GarageCarState`'s own doc for why this
+  // isn't derived instead of fetched).
+  | { type: 'garage-car-state-requested'; carId: number }
+  // Live cash-on-hand, straight from `stats.php` (via `fetchLiveStatus`) —
+  // what the Bulk Buy tab checks against its computed total both right after
+  // the player says they've withdrawn, and again immediately before the
+  // batch actually starts spending, since time (and other spending) may have
+  // passed between the two.
+  | { type: 'garage-cash-requested' }
+  // Sent by the Bulk Buy tab's confirmed batch, once per vehicle — same
+  // "one action per message, loop lives in the overlay" shape as
+  // 'street-race-run-requested', so pacing (`postAction`'s baseline gap) and
+  // per-item error handling both go through the same single-item path a
+  // manual purchase would.
+  | { type: 'garage-buy-requested'; modelId: number }
+  // Same per-item shape as 'garage-buy-requested', for the Strip Parts tab's
+  // confirmed batch. `GarageStripResult.affected` (other vehicles unequipped
+  // because a part native to this one was fitted elsewhere) is why the
+  // overlay re-fetches the whole catalog once a strip batch finishes rather
+  // than patching just the rows it touched.
+  | { type: 'garage-strip-requested'; carId: number }
+  // Same per-item shape, for the Delete Bodies tab's confirmed batch.
+  | { type: 'garage-sell-body-requested'; carId: number }
+  // Sent when the Fit Parts tab needs a fresh read of the player's whole
+  // loose-parts bin to plan an auto-fit — fetched live immediately before
+  // planning (see `background/features/garage`'s `fetchInventory` doc), not
+  // cached, since a part one plan step consumes must not be offered again
+  // to the next.
+  | { type: 'garage-inventory-requested' }
+  // Same per-item shape as 'garage-buy-requested', for the Fit Parts tab's
+  // confirmed plan — one `install` call per planned (vehicle, part) pair.
+  | { type: 'garage-install-requested'; carId: number; partId: number }
+  // Same per-item shape, for a vehicle a Fit Parts plan found to be
+  // `migrated: false` — see `GarageMigrateResult`'s own doc.
+  | { type: 'garage-migrate-requested'; carId: number }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.

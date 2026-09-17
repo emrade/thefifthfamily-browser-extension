@@ -18,6 +18,17 @@ import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initC
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
 import {
+  buyVehicle as buyGarageVehicle,
+  fetchCarState as fetchGarageCarState,
+  fetchCashOnHand as fetchGarageCashOnHand,
+  fetchCatalog as fetchGarageCatalog,
+  fetchInventory as fetchGarageInventory,
+  installPart as installGaragePart,
+  migrateVehicle as migrateGarageVehicle,
+  sellBody as sellGarageBody,
+  stripVehicle as stripGarageVehicle,
+} from './features/garage';
+import {
   getStatus as getStockTrackerStatus,
   handlePollAlarm as handleStockMarketPollAlarm,
   init as initStockMarket,
@@ -178,6 +189,59 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // so this is a genuinely slow (~20-27s) call, not an instant one.
   if (msg.type === 'street-race-run-requested') {
     return runStreetRace(msg.raceId, msg.raceName, sender.tab?.id);
+  }
+
+  // Sent by the in-page Garage & Dealership overlay on mount/refresh — see
+  // that message type's own doc in shared/messaging.ts.
+  if (msg.type === 'garage-catalog-requested') {
+    return fetchGarageCatalog();
+  }
+
+  // Sent by the Bulk Delete tab when it needs a real `bodyQuicksell` figure
+  // for a vehicle before it can total up its confirm price.
+  if (msg.type === 'garage-car-state-requested') {
+    return fetchGarageCarState(msg.carId);
+  }
+
+  // Sent by the Bulk Buy tab both right after the player says they've
+  // withdrawn and again immediately before a confirmed batch starts
+  // spending — see 'garage-cash-requested''s own doc.
+  if (msg.type === 'garage-cash-requested') {
+    return fetchGarageCashOnHand();
+  }
+
+  // One-purchase-per-message, called in a loop by the Bulk Buy tab's own
+  // confirmed batch — same shape as 'street-race-run-requested'.
+  if (msg.type === 'garage-buy-requested') {
+    return buyGarageVehicle(msg.modelId);
+  }
+
+  // Same per-item shape, for the Strip Parts tab's confirmed batch.
+  if (msg.type === 'garage-strip-requested') {
+    return stripGarageVehicle(msg.carId);
+  }
+
+  // Same per-item shape, for the Delete Bodies tab's confirmed batch.
+  if (msg.type === 'garage-sell-body-requested') {
+    return sellGarageBody(msg.carId);
+  }
+
+  // Sent by the Fit Parts tab immediately before planning an auto-fit — see
+  // that message type's own doc in shared/messaging.ts.
+  if (msg.type === 'garage-inventory-requested') {
+    return fetchGarageInventory();
+  }
+
+  // One-fit-per-message, called in a loop by the Fit Parts tab's own
+  // confirmed plan.
+  if (msg.type === 'garage-install-requested') {
+    return installGaragePart(msg.carId, msg.partId);
+  }
+
+  // Same per-item shape, for a plan step that needs a free native-parts
+  // install instead of a paid `install`.
+  if (msg.type === 'garage-migrate-requested') {
+    return migrateGarageVehicle(msg.carId);
   }
 
   // Archive writes are split off onto their own queue rather than joining the

@@ -968,3 +968,157 @@ export interface StreetRacingStatus {
   cashEarned: number;
   xpEarned: number;
 }
+
+/** One owned vehicle from `chop_shop_proto.php`'s `catalog` action — the
+ *  Garage & Dealership overlay's own list (confirmed real, 2026-09-17
+ *  archive: `GET /api/panel.php?type=chop_shop` titles itself "Garage &
+ *  Dealership"). `isEquipped` is the one vehicle the game itself already
+ *  refuses to strip or sell the body of — the live panel's own client JS
+ *  disables both buttons whenever `equipped` is true, confirmed by reading
+ *  its rendered `renderVehicle`/`bind()` — so the overlay mirrors that same
+ *  exclusion rather than relying on the server to reject it. */
+export interface GarageCar {
+  id: number;
+  carModelId: number;
+  isEquipped: boolean;
+  durability: number;
+  name: string;
+  category: string;
+  vehicleClass: string;
+  image: string;
+  chopValue: number;
+  baseSpeed: number;
+  baseHandling: number;
+  baseAccel: number;
+  bonusStr: number;
+  bonusDef: number;
+  bonusAgl: number;
+  bonusDex: number;
+  partsFitted: number;
+  modifiable: boolean;
+  complete: boolean;
+}
+
+/** One purchasable model from the same `catalog` call's `dealer` array —
+ *  `buyable: false` means the model has no native part set defined server-
+ *  side yet (confirmed real: the live panel disables its own Buy button for
+ *  exactly this case, labelled "No parts"), not merely unaffordable. */
+export interface GarageDealerListing {
+  id: number;
+  name: string;
+  category: string;
+  vehicleClass: string;
+  image: string;
+  baseSpeed: number;
+  baseHandling: number;
+  baseAccel: number;
+  bonusStr: number;
+  bonusDef: number;
+  bonusAgl: number;
+  bonusDex: number;
+  priceCash: number;
+  pricePlatinum: number;
+  modifiable: boolean;
+  buyable: boolean;
+  owned: boolean;
+}
+
+export interface GarageCatalog {
+  cars: GarageCar[];
+  dealer: GarageDealerListing[];
+  cash: number;
+  platinum: number;
+}
+
+/** The five fitted-component slots every modifiable vehicle has — confirmed
+ *  real from both `chop_shop_proto.php`'s `inventory` action (which groups
+ *  loose parts by exactly these keys) and the live panel's own client JS
+ *  (`SLOT_META`). `aerodynamics` is the wire key for what the UI labels
+ *  "Clutch" — kept as the raw key here since every API call and response
+ *  uses it verbatim; display code maps it to the label separately. */
+export type GarageSlotKey = 'engine' | 'transmission' | 'tires' | 'suspension' | 'aerodynamics';
+
+/** One loose (uninstalled) part from `inventory`'s per-slot arrays — the
+ *  same shape a fitted slot's `loadout` entry has, minus `refit_fee`/
+ *  `is_native` (fields that only make sense once a part is actually
+ *  installed somewhere) plus `fullPrice`/`quicksell` (only meaningful while
+ *  it's sitting loose). `originModel` is `null` for a part that never came
+ *  off a named vehicle body (unconfirmed whether this actually occurs in
+ *  practice — every real capture so far had one — but the field is
+ *  nullable in the response shape, so this doesn't assume it's always set). */
+export interface GaragePartEntry {
+  userPartId: number;
+  name: string;
+  topSpeed: number;
+  accel: number;
+  handling: number;
+  installFee: number;
+  fullPrice: number;
+  quicksell: number;
+  originModel: string | null;
+  locked: boolean;
+}
+
+export type GaragePartsInventory = Record<GarageSlotKey, GaragePartEntry[]>;
+
+/** Per-vehicle detail from `get_state` — fetched on demand (not part of the
+ *  catalog call) since `bodyQuicksell` is the one real number the Bulk
+ *  Delete tab needs before it can total up a confirm price, and there's no
+ *  formula worth guessing it from (confirmed real: a 1993 Karnov Uno's
+ *  `chop_value` of 1000 quicksold its body for $833, not a clean fraction of
+ *  it — see docs/reverse-engineering-formulas conventions, this is exactly
+ *  the "don't hand-wave, go get the real number" case). `migrated`/`missing`
+ *  back the Fit Parts overlay: a chassis that predates the component system
+ *  (`migrated: false`) needs a one-time free `migrate` call before any
+ *  `install` will do anything, and `missing` is the exact list of empty
+ *  slots — the catalog's own `partsFitted` count says *how many* are empty
+ *  but not *which*, which auto-fit planning needs to know before it can
+ *  pick compatible spare parts. */
+export interface GarageCarState {
+  carId: number;
+  equipped: boolean;
+  complete: boolean;
+  partsFitted: number;
+  bodyQuicksell: number;
+  migrated: boolean;
+  missing: GarageSlotKey[];
+}
+
+/** `complete` mirrors `get_state`'s own post-install value directly — lets
+ *  the Fit Parts overlay know a just-fitted vehicle is now raceable without
+ *  a second round trip. */
+export interface GarageInstallResult {
+  message: string;
+  complete: boolean;
+}
+
+/** Installs the free native part set on a pre-component-system chassis —
+ *  present in the live client JS (`write("migrate", ...)`) but never
+ *  actually triggered in either captured archive, so its response shape
+ *  beyond `{ok:true,message}` is unconfirmed. Fit Parts treats it as a
+ *  zero-cost, all-five-slots-at-once step rather than guessing at anything
+ *  more granular. */
+export interface GarageMigrateResult {
+  message: string;
+}
+
+export interface GarageBuyResult {
+  message: string;
+  userCarId: number;
+}
+
+/** `affected` is how many *other* vehicles got unequipped because a part
+ *  native to the stripped one was fitted there — confirmed real from the
+ *  live panel's own chop confirmation copy, which warns about exactly this
+ *  before the call is made. */
+export interface GarageStripResult {
+  message: string;
+  payout: number;
+  partsRemoved: number;
+  affected: number;
+}
+
+export interface GarageSellBodyResult {
+  message: string;
+  payout: number;
+}
