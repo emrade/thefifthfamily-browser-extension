@@ -654,13 +654,19 @@ function renderDeleteRow(car: GarageCar): string {
   const quote = deleteQuotes.get(car.id);
   const quoteHtml = checked ? (quote == null ? ' · loading value…' : ` · sells for ${money(quote)}`) : '';
   const stripTag = needsStrip ? '<span class="ff-gp-tag ff-gp-tag-strip-first">Strip first</span>' : '';
+  // Reflects this row's real parts_fitted count — a protected (Do Not
+  // Touch/Active) vehicle can easily still be 5/5, and previously this line
+  // said "fully stripped" unconditionally for every row regardless of that,
+  // which read as flatly wrong next to the Strip Parts tab showing the same
+  // vehicle at 5/5.
+  const partsLabel = car.partsFitted === 0 ? 'fully stripped' : `${car.partsFitted}/5 parts fitted`;
 
   return `
     <div class="ff-gp-row${protectedRow ? ' ff-gp-row-protected' : ''}" data-car-id="${car.id}">
       <input type="checkbox" class="ff-gp-row-check" data-delete-id="${car.id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
       <div class="ff-gp-row-body">
         <div class="ff-gp-row-name">${car.name} ${protectionTag(car)} ${stripTag}</div>
-        <div class="ff-gp-row-meta">${car.category} · fully stripped${quoteHtml}</div>
+        <div class="ff-gp-row-meta">${car.category} · ${partsLabel}${quoteHtml}</div>
       </div>
       ${dntButtonHtml(car)}
     </div>
