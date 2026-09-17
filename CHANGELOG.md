@@ -9,6 +9,53 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.26.0] - 2026-09-17
+
+### Added
+- Arena Auto-Attack: fully automates the Arena page loop — fights every
+  regular opponent (riskiest first, so a late loss can't wipe out a pot
+  built from earlier wins), attacks the boss only when its own real,
+  server-computed win% clears a player-set threshold (default 50%, editable),
+  banks the page, and schedules the next check for exactly when the
+  following page unlocks. A passive "page ready" notification keeps working
+  even with automation switched off, so it's useful on its own. Ships with
+  both an in-page status overlay (toggle, threshold, last page, right on the
+  Arena page) and a full settings page in the popup, kept in sync. Off by
+  default, like every automated feature in this extension.
+- Arena Boss Odds: badges the boss's card with its real win % whenever you
+  open a page yourself — the game already computes this number, it just
+  never shows it in the UI. On by default under Settings → Page Features.
+- Achievement Tracker: a small chip on 28 pages so far showing only the
+  achievement lines relevant to that page — current tier, progress to the
+  next one, and a Claim button the moment a line is ready.
+- Garage & Dealership Bulk Tools: a floating panel for buying vehicles in
+  bulk (with total cost shown up front), stripping parts from multiple
+  vehicles at once, deleting multiple stripped bodies, and auto-fitting
+  spare parts into empty vehicles — all confirmed with exact cost before
+  running, with live progress while running. Vehicles marked "Do Not Touch"
+  (and the active vehicle, protected by the game itself) are skipped.
+
+### Fixed
+- Garage bulk delete row now shows the actual number of parts fitted on a
+  protected or active vehicle instead of always labeling it "fully
+  stripped."
+- Arena Auto-Attack: a `chrome.alarms` quirk (an alarm occasionally firing
+  twice after the service worker's been dormant) could cause two overlapping
+  automation cycles to attack the same opponent twice; a concurrency guard
+  now makes a second overlapping trigger a no-op.
+- Arena Auto-Attack: a page whose last fight was a genuine loss (which
+  zeroes the pot) no longer gets treated as a systemic failure that disables
+  the whole feature — "nothing to bank" is now recognized as the expected
+  outcome it is.
+- Arena Auto-Attack: a page fully fought (including the boss) but never
+  banked could previously get skipped past into opening the next page,
+  abandoning a real unbanked pot; the runner now also checks the page's own
+  pot-banner state before ever opening the next page.
+- Arena Auto-Attack now logs each attack and the boss fight as it happens,
+  instead of only writing a result once a full page cycle finishes
+  successfully — a partial or interrupted cycle now shows what it actually
+  did rather than looking like nothing happened.
+
 ## [0.25.0] - 2026-09-15
 
 ### Added
