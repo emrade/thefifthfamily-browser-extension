@@ -3,7 +3,7 @@
 Status: **implemented.**
 
 Fully automates the Arena page loop: opens a page once its timer allows, attacks every
-regular opponent in win%-descending order, attacks the boss if (and only if) its own
+regular opponent in win%-ascending order (riskiest first), attacks the boss if (and only if) its own
 win% clears a player-set floor, banks the page, and schedules the next check for exactly
 when the following page unlocks. A separate, always-on passive watcher notifies when a
 page is ready regardless of whether automation itself is switched on — see "Notification
@@ -62,29 +62,30 @@ Confirmed real, load-bearing for the design:
 
 ## Attack order
 
-Ships attacking regular opponents in win%-descending order — the safest fight first —
-matching the player's own described habit exactly, not a computed optimum. It's worth
-recording *why* that isn't quite the same thing, in case this is ever revisited:
+Ships attacking regular opponents in win%-**ascending** order — the riskiest fight
+first. This is a correction (2026-09-17): the first version of this feature shipped
+descending order (safest first) on the mistaken belief that it matched the player's own
+described habit, despite the real page-3 capture directly above showing the opposite —
+the account's own actual manual play attacked opponent 1728 (44%, the riskiest of the
+four) *first*, not last. A real production run then hit exactly the failure this
+predicts: three wins (55%, 53%, 49%) followed by a loss on the last, riskiest fight
+(44%) wiped the entire accumulated pot, with no fight left afterward to rebuild it.
 
-Given a "fight everyone regardless" rule (which is what shipped — see "Boss threshold"
+Given the "fight everyone regardless" rule (which is what shipped — see "Boss threshold"
 below for the one exception), the running pot resets to zero on any loss but the page
-keeps going, so pot *E[final]* is order-sensitive: for two independent fights *X, Y*
-with win% *p* and bounty *b*, attacking *X* first beats attacking *Y* first exactly when
+keeps going — a loss is only permanent damage if nothing is fought after it, so the
+pot's expected final value is order-sensitive. For two independent fights *X, Y* with
+win% *p* and bounty *b*, attacking *X* first beats attacking *Y* first exactly when
 
 ```
 b_Y · p_Y · (1 − p_X)  >  b_X · p_X · (1 − p_Y)
 ```
 
-— equivalently, sort **ascending** by `b·p/(1−p)` and attack in that order, not by `p`
-alone. Win%-descending (what shipped) and this EV-optimal order agree whenever bounty
-scales with risk in the usual way (lower win% → higher bounty, which the real
-`opponent_bounties` tiers above do), but can diverge for a same-tier pair with unusual
-relative bounties. Not shipped, because the player described their own actual method
-(attack by shown chance) rather than asking for the mathematically optimal one, and this
-extension's own convention throughout (Career Auto's accuracy weights, Street Racing's
-timing) is to automate what the account owner actually does rather than a cleverer
-policy nobody asked for — see `CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS`'s own doc in
-`constants.ts` for the same reasoning applied elsewhere.
+— equivalently, sort **ascending** by `b·p/(1−p)` and attack in that order. Win%-ascending
+(what ships now) agrees with this EV-optimal order whenever bounty scales with risk in
+the usual way (lower win% → higher bounty, which the real `opponent_bounties` tiers above
+do), and can diverge only for a same-tier pair with unusual relative bounties — a gap
+that doesn't matter in practice for this account's own data.
 
 ## Boss threshold
 

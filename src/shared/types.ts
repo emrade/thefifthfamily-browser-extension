@@ -1254,6 +1254,15 @@ export interface ArenaPageResult {
   boss: ArenaBossResult | null;
   banked: number;
   seasonScore: number;
+  /** False for a page this cycle didn't finish — an attack, the boss fight,
+   *  or `bank` itself came back an unrecognized response partway through
+   *  (see runner.ts's `pause`). `opponents`/`boss` still reflect exactly
+   *  what actually happened before that point (real fights, real
+   *  win/loss), since this is written incrementally as each step
+   *  succeeds, not only once at the very end — a partial run has a real
+   *  story to tell, not just "it failed." `banked`/`seasonScore` stay 0
+   *  when `bank` itself was never reached or itself failed. */
+  complete: boolean;
 }
 
 export interface ArenaAutoStatus {

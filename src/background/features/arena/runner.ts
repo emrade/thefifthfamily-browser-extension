@@ -48,11 +48,35 @@ export function scheduleNextCheck(nextUnlockAt: number | null): void {
   chrome.alarms.create(ALARM_NAMES.ARENA_AUTO, { when });
 }
 
+// `chrome.alarms` is confirmed to occasionally fire an alarm twice for a
+// single scheduled time after the service worker's been dormant — a known
+// MV3 platform quirk `streetIntel/actionRunner.ts` already hit and guards
+// against for its own alarm. Real capture here (2026-09-17): two overlapping
+// cycles independently read the live page, one attacked an opponent the
+// other had *just* finished attacking, and the second copy of that attack
+// came back `{"ok":false,"error":"That opponent is not on a page you can
+// fight."}` — a genuine rejection, not a shape problem, but one that would
+// never happen at all with only one cycle running at a time. This guard
+// makes a second overlapping trigger (a duplicate alarm fire, or "Check Now"
+// clicked while a real cycle is already mid-flight) a no-op instead of a
+// race.
+let cycleInFlight = false;
+
+async function runGuarded(config: ArenaAutoConfig | null): Promise<void> {
+  if (cycleInFlight) return;
+  cycleInFlight = true;
+  try {
+    if (config) await runAutomationCycle(config);
+    else await runPassiveCheck();
+  } finally {
+    cycleInFlight = false;
+  }
+}
+
 export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.ARENA_AUTO) return;
   const config = await storage.getArenaAutoConfig();
-  if (config.enabled) await runAutomationCycle(config);
-  else await runPassiveCheck();
+  await runGuarded(config.enabled ? config : null);
 }
 
 /** Same "don't wait out whatever cadence this last resolved to" reasoning as
@@ -223,14 +247,37 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
       return;
     }
 
-    // Safest first — matches the player's own stated habit (attack in
-    // descending win% order shown on the page). Not an EV-optimal
-    // reordering; see docs/arena-auto-plan.md's "Attack order" section for
-    // why the two actually differ and why this ships the simpler rule the
-    // player already described using, rather than a cleverer one nobody
-    // asked for.
-    const attackOrder = [...state.opponentIds].sort((a, b) => b.winPct - a.winPct);
+    // Riskiest first — a loss zeroes the running pot, but doesn't end the
+    // page: a later win rebuilds it from zero. Fighting the riskiest
+    // opponent first means any loss happens while there's still a full page
+    // of fights left to rebuild the pot; fighting it last (an earlier,
+    // wrong default here — see the real 2026-09-17 page 3 capture in
+    // docs/arena-auto-plan.md's "Attack order" section, which shows the
+    // player's own actual manual play doing exactly this) leaves a loss with
+    // no recovery left at all.
+    const attackOrder = [...state.opponentIds].sort((a, b) => a.winPct - b.winPct);
     const opponentResults: ArenaOpponentResult[] = [];
+
+    // Written after every step that actually happens (an attack, the boss
+    // fight) rather than only once at the very end — see
+    // `ArenaPageResult.complete`'s own doc. A cycle that fails partway
+    // through still leaves behind a true record of what it actually did,
+    // instead of looking like nothing happened at all (the gap the player
+    // flagged: "it just looks to me that it failed in whatever it was
+    // trying to do").
+    const logProgress = (partial: Partial<ArenaPageResult>) =>
+      updateStatus({
+        lastPage: {
+          timestamp: Date.now(),
+          pageNumber: state.pageNumber ?? 0,
+          opponents: opponentResults,
+          boss: null,
+          banked: 0,
+          seasonScore: 0,
+          complete: false,
+          ...partial,
+        },
+      });
 
     for (const opp of attackOrder) {
       const resp = await postAction('/actions/arena_v2.php', { action: 'attack', opponent_id: opp.id, page_id: 0 });
@@ -246,6 +293,7 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
         winPctAtAttack: opp.winPct,
         bountyEarned: resp.won ? Number(resp.points_earned) || 0 : 0,
       });
+      await logProgress({ opponents: opponentResults });
     }
 
     // Re-read after finishing the regular four — the boss's own "ENGAGE
@@ -278,6 +326,7 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
               : "boss win% unknown — resumed a page this run didn't open, so the number was never seen",
         };
       }
+      await logProgress({ boss });
     }
 
     const pageNumber = state.pageNumber ?? (postFightHtml ? parseCurrentPageNumber(postFightHtml) : null);
@@ -286,7 +335,18 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
     }
 
     const bankResp = await postAction('/actions/arena_v2.php', { action: 'bank', page_number: pageNumber });
-    if (bankResp?.ok !== true) {
+    let banked = 0;
+    let seasonScore = (await storage.getArenaAutoStatus())?.lastPage?.seasonScore ?? 0;
+    if (bankResp?.ok === true) {
+      banked = Number(bankResp.banked) || 0;
+      seasonScore = Number(bankResp.season_score) || 0;
+    } else if (typeof bankResp?.error === 'string' && /empty/i.test(bankResp.error)) {
+      // Expected, not a bug: the page's own last fight was a genuine loss,
+      // which zeroes the running pot immediately (see
+      // docs/arena-auto-plan.md's "Attack order" section) — there is
+      // legitimately nothing left to bank. The page still finished; this
+      // just isn't a systemic failure worth pausing the feature over.
+    } else {
       throw new SystemicActionError(
         `Unexpected response banking an Arena page${bankResp?.error ? `: ${bankResp.error}` : ''} — the game may have changed something.`,
         'shape',
@@ -298,8 +358,9 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
       pageNumber,
       opponents: opponentResults,
       boss,
-      banked: Number(bankResp.banked) || 0,
-      seasonScore: Number(bankResp.season_score) || 0,
+      banked,
+      seasonScore,
+      complete: true,
     };
 
     // One more read for the freshly-opened next page's own unlock timer —
@@ -338,9 +399,12 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
 /** Triggered by the overlay's own "Check Now" button — same escape hatch as
  *  `crimesAuto`'s `runCheckNow`, for a schedule that's otherwise purely
  *  timer-aligned. Runs whichever branch `enabled` currently calls for,
- *  exactly like a real alarm fire would. */
+ *  exactly like a real alarm fire would. Routed through `runGuarded` too —
+ *  without it, clicking "Check Now" while a real alarm-triggered cycle is
+ *  already mid-flight is exactly the same race that caused the duplicate
+ *  attack described on `cycleInFlight`'s own doc above, just triggered by a
+ *  click instead of a double alarm fire. */
 export async function runCheckNow(): Promise<void> {
   const config = await storage.getArenaAutoConfig();
-  if (config.enabled) await runAutomationCycle(config);
-  else await runPassiveCheck();
+  await runGuarded(config.enabled ? config : null);
 }

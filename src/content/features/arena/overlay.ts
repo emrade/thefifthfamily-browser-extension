@@ -121,6 +121,7 @@ const PANEL_CSS = `
 }
 .ff-arp-row { font-size: 10.5px; color: #ccc; padding: 2px 0; line-height: 1.4; }
 .ff-arp-row--win { color: #7fd88f; }
+.ff-arp-row--error { color: #f27f7f; }
 .ff-arp-summary-time { font-size: 9px; color: #6b6455; margin-top: 8px; }
 `;
 
@@ -154,8 +155,12 @@ function renderStatus(config: ArenaAutoConfig, status: ArenaAutoStatus | null): 
   }
 
   const page = status.lastPage;
-  parts.push('<div class="ff-arp-row-head">Last Page</div>');
-  parts.push(`<div class="ff-arp-row">Page ${page.pageNumber} · banked +${page.banked} · score ${page.seasonScore}</div>`);
+  parts.push(`<div class="ff-arp-row-head">${page.complete ? 'Last Page' : 'Current Page — in progress'}</div>`);
+  if (page.complete) {
+    parts.push(`<div class="ff-arp-row">Page ${page.pageNumber} · banked +${page.banked} · score ${page.seasonScore}</div>`);
+  } else {
+    parts.push(`<div class="ff-arp-row">Page ${page.pageNumber} · fights below happened for real, not banked yet</div>`);
+  }
   for (const o of page.opponents) {
     parts.push(`<div class="ff-arp-row${o.won ? ' ff-arp-row--win' : ''}">${o.won ? '✓' : '✗'} ${o.name} (${o.winPctAtAttack}%)</div>`);
   }

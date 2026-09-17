@@ -84,7 +84,7 @@ export function ArenaAutoHome() {
           <div class="ff-toggle-row__title">Auto-Attack</div>
           <div class="ff-toggle-row__status">
             {config.enabled
-              ? `Running — attacks every opponent in win% order, then the boss if it clears ${config.bossWinPctThreshold}%, then banks.`
+              ? `Running — attacks the riskiest opponent first, then the boss if it clears ${config.bossWinPctThreshold}%, then banks.`
               : 'Off — the page-ready reminder below still works without this.'}
           </div>
         </div>
@@ -136,10 +136,19 @@ export function ArenaAutoHome() {
 
       {status?.lastPage && (
         <>
+          {!status.lastPage.complete && (
+            <div class="ff-health-alert">
+              <strong>Page {status.lastPage.pageNumber} is still in progress</strong>
+              <span class="ff-health-alert__hint">
+                Fights below happened for real — this just hasn't reached banking yet, whether it's still running or
+                stopped partway through. Check the alert above if it's stopped.
+              </span>
+            </div>
+          )}
           <div class="ff-stat-grid">
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono">{status.lastPage.pageNumber}</div>
-              <div class="ff-stat-tile__label">Last Page</div>
+              <div class="ff-stat-tile__label">{status.lastPage.complete ? 'Last Page' : 'Current Page'}</div>
             </div>
             <div class="ff-stat-tile">
               <div class="ff-stat-tile__value ff-mono" style={{ color: 'var(--ff-green)' }}>
