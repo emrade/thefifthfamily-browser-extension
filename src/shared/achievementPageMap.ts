@@ -25,8 +25,11 @@
  *   Dominance" all explicitly say "Fight Club" in their own description;
  *   "Last One Standing"/"Arena Reign" explicitly say "Arena". The remaining
  *   seven (Heavy Hitter, Hold the Line, Untouchable, Deadeye, Battle
- *   Companion, Dressed for War, Giant Killer) describe generic PvP
- *   mechanics with no mode named, so they're shown on both pages.
+ *   Companion, Dressed for War, Giant Killer) read as generic PvP mechanics
+ *   with no mode named in their own text — but the player confirmed
+ *   (2026-09-17) Arena resolves as a stat comparison and never actually
+ *   touches an opponent's health, so dodge/block/crit/damage-dealt can only
+ *   ever happen in Fight Club. All seven go there, not shared with Arena.
  * - **Pets & Vigilantes**: a clean split with no ambiguous lines — seven
  *   lines are explicitly about pets (Menagerie/Daily Care/Training
  *   Partners/etc.), five are explicitly about Vigilantes (Shard
@@ -60,8 +63,6 @@ export interface AchievementPageScope {
   lineNames: string[] | 'all';
 }
 
-const COMBAT_PVP_SHARED = ['Heavy Hitter', 'Hold the Line', 'Untouchable', 'Deadeye', 'Battle Companion', 'Dressed for War', 'Giant Killer'];
-
 export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
   {
     id: 'garage',
@@ -79,13 +80,22 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
     id: 'fightClub',
     marker: '.fc-hero',
     category: 'Combat & PvP',
-    lineNames: ['Fight Club Victor', 'Go the Distance', 'Street Dominance', ...COMBAT_PVP_SHARED],
+    // All ten Combat & PvP lines not explicitly about Arena — see the
+    // module doc's Combat & PvP note for why the seven generic-mechanic
+    // ones (Heavy Hitter onward) belong here and not on Arena too.
+    lineNames: ['Fight Club Victor', 'Go the Distance', 'Street Dominance', 'Heavy Hitter', 'Hold the Line', 'Untouchable', 'Deadeye', 'Battle Companion', 'Dressed for War', 'Giant Killer'],
   },
   {
     id: 'arena',
     marker: '.ar-page',
     category: 'Combat & PvP',
-    lineNames: ['Last One Standing', 'Arena Reign', ...COMBAT_PVP_SHARED],
+    // Arena resolves as a stat comparison, not live combat — confirmed by
+    // the player (2026-09-17): it never touches an opponent's health, so
+    // none of Fight Club's dodge/block/crit/damage-dealt mechanics can
+    // actually happen here despite their descriptions not naming a mode.
+    // Only the two lines whose own description explicitly says "Arena"
+    // belong here.
+    lineNames: ['Last One Standing', 'Arena Reign'],
   },
   {
     id: 'streetIntel',
