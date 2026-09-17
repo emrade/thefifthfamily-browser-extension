@@ -61,6 +61,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Collects Stock Market price and rumor history in the background (for a future trading feature) and shows a status overlay confirming it on the Stock Market page. Turning this off stops the background collection immediately; the overlay itself clears on the next reload.',
   },
   {
+    id: 'achievementChip',
+    label: 'Achievement Tracker',
+    description:
+      'A small icon at the top-right of the page (on 15 pages so far) showing only the achievement lines relevant to that page — current tier, progress to the next one, and a Claim button the moment a line is ready. Click it to open.',
+  },
+  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:

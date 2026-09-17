@@ -28,6 +28,7 @@ import {
   sellBody as sellGarageBody,
   stripVehicle as stripGarageVehicle,
 } from './features/garage';
+import { claimLine as claimAchievementLine, fetchCategory as fetchAchievementCategory } from './features/achievements';
 import {
   getStatus as getStockTrackerStatus,
   handlePollAlarm as handleStockMarketPollAlarm,
@@ -242,6 +243,17 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // install instead of a paid `install`.
   if (msg.type === 'garage-migrate-requested') {
     return migrateGarageVehicle(msg.carId);
+  }
+
+  // Sent by a page's Achievement chip when opened — see that message
+  // type's own doc in shared/messaging.ts.
+  if (msg.type === 'achievements-category-requested') {
+    return fetchAchievementCategory(msg.category);
+  }
+
+  // Sent from the chip's modal's Claim button.
+  if (msg.type === 'achievements-claim-line-requested') {
+    return claimAchievementLine(msg.lineId);
   }
 
   // Archive writes are split off onto their own queue rather than joining the

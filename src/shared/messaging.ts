@@ -193,6 +193,14 @@ export type ExtensionMessage =
   // Same per-item shape, for a vehicle a Fit Parts plan found to be
   // `migrated: false` — see `GarageMigrateResult`'s own doc.
   | { type: 'garage-migrate-requested'; carId: number }
+  // Sent by a page's Achievement chip when opened — same "live fetch+parse
+  // only background can do" exception as 'career-catalog-requested'.
+  // `category` is the achievement category name verbatim (e.g. "Vehicles &
+  // Chop Shop"), not a slug — see `background/features/achievements`'s
+  // `fetchCategory` doc.
+  | { type: 'achievements-category-requested'; category: string }
+  // Sent from the chip's modal when the player taps Claim on a Ready line.
+  | { type: 'achievements-claim-line-requested'; lineId: string }
   // Raw archive write. Unlike every other message here this one carries unparsed
   // bytes, because that is the point — the archive's value is in holding exactly
   // what the server sent, including from endpoints no adapter understands yet.

@@ -1122,3 +1122,82 @@ export interface GarageSellBodyResult {
   message: string;
   payout: number;
 }
+
+/** The highest tier this line has actually had claimed so far — `'unproven'`
+ *  means none yet (confirmed real: the live achievements panel's own
+ *  `eyebrow` label literally reads "Unproven" for that case, lowercase tier
+ *  names — "silver", "gold" — once one has been claimed). Distinct from
+ *  `AchievementLine.ready`, which is a *further* tier already earned but not
+ *  yet claimed — the panel's own `eyebrow` renders "Ready" for that case,
+ *  overriding whatever the last-claimed tier was. */
+export type AchievementTierLabel = 'unproven' | 'bronze' | 'silver' | 'gold' | 'crown';
+
+/** A tier crossed but not yet claimed — confirmed real (2026-09-17 archive):
+ *  "First Chop"'s `eyebrow` read "Ready" while its `.av2-claim` button paid
+ *  $1,000,000 + 25 Mafia Gold, a *different* (smaller) figure than the
+ *  $10,000,000 + 100 Gold shown in that same line's own reward preview —
+ *  that preview describes the tier *after* this one (see `AchievementLine`'s
+ *  own doc), so the ready reward has to be read from the claim button's own
+ *  text, never assumed to match the preview. */
+export interface AchievementReadyClaim {
+  lineId: string;
+  /** Already formatted by the game itself ("$1,000,000 + 25 Mafia Gold") —
+   *  kept as display text rather than parsed into cash/gold numbers since
+   *  nothing here needs to compute with it, only show it. */
+  rewardText: string;
+}
+
+/** The upcoming tier's requirement and payout — `null` only when every tier
+ *  on this line is already claimed (confirmed real: Estate's "Breaking
+ *  Ground" line, `eyebrow: "crown"`, next-text literally "All four counts
+ *  proven." instead of the usual "requirement · N / M" shape, and no reward
+ *  block at all — that specific case is `AchievementLine.allTiersComplete`,
+ *  not this type). */
+export interface AchievementNextTier {
+  /** e.g. "Own 10 unique vehicles" — the game's own plain-English copy. */
+  requirementText: string;
+  current: number;
+  target: number;
+  rewardText: string;
+}
+
+export interface AchievementLine {
+  name: string;
+  description: string;
+  /** Highest tier already claimed — see `AchievementTierLabel`'s own doc for
+   *  why this is never simply "the ready tier" or "the next tier." */
+  tier: AchievementTierLabel;
+  ready: AchievementReadyClaim | null;
+  next: AchievementNextTier | null;
+  allTiersComplete: boolean;
+}
+
+/** The category-wide bonus for maxing every line in it — confirmed real
+ *  only in its locked state so far (every capture so far showed
+ *  `locked: true`); an unlocked/claimable Capstone's markup is unconfirmed,
+ *  so nothing here assumes one beyond the fields already visible while
+ *  locked. */
+export interface AchievementCapstone {
+  name: string;
+  description: string;
+  current: number;
+  target: number;
+  rewardCash: number;
+  rewardGold: number;
+  locked: boolean;
+}
+
+export interface AchievementCategory {
+  name: string;
+  lines: AchievementLine[];
+  capstone: AchievementCapstone | null;
+}
+
+/** Response from a single-line `claim` action (as opposed to the
+ *  account-wide `claim_all`) — only ever confirmed as `{ok:true,message}` in
+ *  the live client JS (`Av2.claimLine`); no real capture of one firing
+ *  exists in either archive, unlike `claim_all`'s own confirmed 22-reward
+ *  capture, so no `cash`/`gold` fields are assumed here. */
+export interface AchievementClaimResult {
+  message: string;
+}
