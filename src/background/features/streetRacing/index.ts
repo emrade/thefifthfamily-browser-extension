@@ -141,8 +141,17 @@ export async function runRace(raceId: number, raceName: string, tabId?: number):
   }
   await sleep(delayMs);
 
+  // `can_race`'s `run_token` must be echoed back on `attempt_race` — without
+  // it the server can't validate the submitted `accuracy` and silently
+  // substitutes a neutral value (confirmed via captured traffic: submitted
+  // accuracy ignored, response's own `accuracy` came back 50 with
+  // `accuracy_adj: 0` every time this was omitted). That's invisible on any
+  // race with a 100% base chance but quietly zeroes out the accuracy bonus
+  // on tougher ones.
   const accuracy = sampleClampedNormal(STREET_RACING_ACCURACY_MEAN, STREET_RACING_ACCURACY_STDDEV, STREET_RACING_ACCURACY_MIN, STREET_RACING_ACCURACY_MAX);
-  const resp = await postAction('/actions/races_v2.php', { action: 'attempt_race', race_id: raceId, accuracy });
+  const attemptParams: Record<string, string | number> = { action: 'attempt_race', race_id: raceId, accuracy };
+  if (canRace.run_token) attemptParams.run_token = canRace.run_token;
+  const resp = await postAction('/actions/races_v2.php', attemptParams);
   if (resp.ok === false) throw new Error(resp.error || resp.msg || 'attempt_race was rejected.');
 
   const result: RaceAttemptResult = {
