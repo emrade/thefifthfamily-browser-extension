@@ -510,6 +510,14 @@ export interface CrimesAutoStatus {
 export interface CareerCatalogEntry {
   careerId: number;
   name: string;
+  /** Which of the game's own career-page tabs this job is filed under
+   *  ("Iron River Syndicate", "Society for Balance & Prosperity", etc.) —
+   *  read from the real `cv2-fam-name` section header, not inferred. A job
+   *  the account has already worked also appears in a synthetic "Recent"
+   *  tab (see `parseCareersCatalog`'s own doc) — `family` is always the
+   *  real tab name, never `"Recent"`, once that job's real tab has also
+   *  been seen in the same fetch. */
+  family: string;
   energyCost: number;
   otEnergyCost: number | null;
   otAvailable: boolean;

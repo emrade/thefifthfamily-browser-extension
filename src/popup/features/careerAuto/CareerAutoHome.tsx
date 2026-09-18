@@ -34,6 +34,11 @@ export function CareerAutoHome() {
   const [catalog, setCatalog] = useState<CareerCatalogEntry[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  // Player's own ask: the game's own careers page groups 100 jobs across 5
+  // families (`CareerCatalogEntry.family`, read from `cv2-fam-name` — see
+  // `careersPanelParser.ts`), and the flat list here had no way to search or
+  // filter by that, making a specific job hard to spot among all of them.
+  const [jobQuery, setJobQuery] = useState('');
   const [now, setNow] = useState(Date.now());
   // Read from the real `chrome.alarms` entry, not re-derived — this is what
   // covers the gap before any shift has ever run (config just enabled, still
@@ -107,6 +112,26 @@ export function CareerAutoHome() {
   // way up until the next shift actually runs and overwrites it.
   const shiftsToday = status?.shiftsTodayDate === localDateKey() ? status.shiftsToday : 0;
   const cashToday = status?.shiftsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
+
+  // Search + group by family instead of one 100-job flat list.
+  const query = jobQuery.trim().toLowerCase();
+  const filteredCatalog = query ? catalog.filter((c) => c.name.toLowerCase().includes(query)) : catalog;
+
+  // Keeps the currently-selected job visible (and correctly shown as
+  // selected) even when an in-progress search excludes it — otherwise typing
+  // a query that hides the already-running job would make the <select> show
+  // nothing selected, which reads as if the job had been cleared when it
+  // hasn't.
+  const selectedEntry = config?.careerId != null ? catalog.find((c) => c.careerId === config!.careerId) : undefined;
+  const selectedHidden = !!selectedEntry && !filteredCatalog.some((c) => c.careerId === selectedEntry.careerId);
+
+  const groupedByFamily = new Map<string, CareerCatalogEntry[]>();
+  for (const c of filteredCatalog) {
+    const group = groupedByFamily.get(c.family);
+    if (group) group.push(c);
+    else groupedByFamily.set(c.family, [c]);
+  }
+  const families = [...groupedByFamily.keys()].sort();
 
   async function saveConfig(next: CareerAutoConfig) {
     setConfig(next);
@@ -200,8 +225,16 @@ export function CareerAutoHome() {
           Only jobs unlocked at your current level are listed. Overtime is used automatically once you have enough
           energy — that option only exists once a job reaches rank 2.
         </div>
-        <select
+        <input
           class="ff-select ff-field__control"
+          type="text"
+          placeholder="Search jobs…"
+          style={{ marginBottom: '8px' }}
+          value={jobQuery}
+          onInput={(e) => setJobQuery((e.target as HTMLInputElement).value)}
+        />
+        <select
+          class="ff-select"
           value={config.careerId != null ? String(config.careerId) : ''}
           disabled={catalogLoading}
           onChange={(e) => selectJob(Number((e.target as HTMLSelectElement).value))}
@@ -209,12 +242,27 @@ export function CareerAutoHome() {
           <option value="" disabled>
             {catalogLoading ? 'Loading jobs…' : 'Select a job'}
           </option>
-          {catalog.map((c) => (
-            <option key={c.careerId} value={String(c.careerId)}>
-              {c.name} ({c.energyCost}E{c.otAvailable ? ` / OT ${c.otEnergyCost}E` : ''})
+          {selectedHidden && selectedEntry && (
+            <option value={String(selectedEntry.careerId)}>
+              {selectedEntry.name} ({selectedEntry.energyCost}E
+              {selectedEntry.otAvailable ? ` / OT ${selectedEntry.otEnergyCost}E` : ''}) — currently selected
             </option>
+          )}
+          {families.map((family) => (
+            <optgroup label={family} key={family}>
+              {groupedByFamily.get(family)!.map((c) => (
+                <option key={c.careerId} value={String(c.careerId)}>
+                  {c.name} ({c.energyCost}E{c.otAvailable ? ` / OT ${c.otEnergyCost}E` : ''})
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
+        {query && filteredCatalog.length === 0 && (
+          <div class="ff-field__hint" style={{ marginTop: '6px' }}>
+            No jobs match "{jobQuery}".
+          </div>
+        )}
       </div>
 
       {catalogError && <div class="ff-health-alert__hint">{catalogError}</div>}
