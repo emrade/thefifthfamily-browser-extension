@@ -51,6 +51,56 @@ Stock Market unlocked):
 
 ---
 
+## Checkpoint: 2026-09-18 — still not enough, keep waiting
+
+Re-ran the same analysis against a fresh `exportAllData.ts` dump
+(`fifth-family-data-2026-09-18T11-56-24-215Z.json`: 75 `stockRumors` rows, 9,768
+`stockPrices` rows), 21 days after the tracker shipped (2026-08-28). Only exact
+`generatedHour`/`expiresHour` price matches were counted (some older rumors predate
+the tracked price range — hour 616 onward — and were excluded rather than
+approximated with a nearest-hour fallback, to avoid quietly injecting error into the
+comparison the way an early draft of this check did).
+
+| | At launch (this doc's original numbers) | Now |
+|---|---|---|
+| Resolved rumors | 54 | 69 |
+| Directional, exact price-matched | 13 | 23 |
+| Direction accuracy | 12/13 (92%) | 23/23 (100%) |
+| Cleared the 4.17% fee floor | 2/13 (15%) | 4/23 (17%) |
+
+**Conclusion unchanged: direction-calling is excellent, magnitude still mostly isn't
+enough to profit, and per-segment sample sizes are still too thin to act on.** 21
+days added roughly one resolved rumor every 1–2 days across all 8 stocks combined —
+at that rate, any single stock/severity segment is going to stay in single digits
+for a long while yet.
+
+By symbol (directional, exact-matched only):
+
+| Symbol | n | Cleared fee floor | Avg gain on correct calls |
+|---|---|---|---|
+| KITO | 6 | 2 | 3.2% |
+| IRMC | 4 | 1 | 1.8% |
+| VTW | 4 | 1 | 3.3% |
+| HTG | 2 | 0 | 0.9% |
+| LFS | 3 | 0 | 0.7% |
+| BSEC | 1 | 0 | 0.7% |
+| CANI | 1 | 0 | 2.5% |
+| VKBR | 2 | 0 | 0.5% |
+
+KITO (Biotech) remains the standout, same as the original check, now on double the
+sample. One new single-sample outlier worth watching, not yet acting on: a `VTW`
+rumor with **`severity: Major`** (`Street Whisper` quality) moved **11.6%** — the
+largest move in the whole dataset, and the only `Major`-severity sample seen so far
+(n=1). If `Major` severity keeps showing outsized moves as more resolve, that could
+end up being the first segment with a real edge — but one sample proves nothing.
+
+**Next checkpoint:** re-run this same query (see the export process below) after
+another meaningful stretch has passed — a few more months, not weeks, given the
+~1-rumor-every-1-to-2-days accumulation rate — and specifically watch whether
+`Major`-severity samples grow past n=1.
+
+---
+
 ## What data we're collecting, and why
 
 Two permanent tables (no retention sweep — unlike the raw HTTP archive, which
