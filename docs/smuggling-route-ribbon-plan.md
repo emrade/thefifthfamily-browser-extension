@@ -1,8 +1,27 @@
 # Smuggling route ribbon — scoping notes
 
-Status: **not ready to implement — one confirmation short.** The game added a UI
-element that looks like it makes courier-watch's destination probe obsolete, but
-only ~6 minutes of post-rollout traffic exists so far, all showing the same single
+Status: **on hold — likely superseded by a cleaner signal, not confirmed yet.**
+The game has since added `v2_launch`/`v2_offload_all` (see
+`docs/smuggling-bulk-actions-plan.md`) — a bulk-send/bulk-collect layer whose
+own "Send Every Courier" block carries a plain on/off class
+(`sv2-lo`/`sv2-lo off`) plus a real explanatory message when it's off,
+**confirmed in-game copy**: *"Both routes open from Arms District this hour
+are still locked to you. They rotate hourly — check back."* That single class
+check answers this doc's whole "is anything open for me right now" question
+more directly than either the ribbon or the old draft-probe — no cross-
+referencing account level against the ribbon's per-district chips, no
+draft/cancel round-trip. It doesn't say *which* destination is open, only
+whether one is — the ribbon (or the `v2_launch` picker's own destination list)
+is still the answer to that half, if a rebuild ends up needing it. Don't build
+against this doc until that's weighed against the bulk-actions plan's own open
+questions; don't delete this doc either — the ribbon is still live, unchanged,
+and still relevant for *which* destination, even if the *whether* question
+moves to the `sv2-lo` check instead.
+
+Below this line is the original scoping, kept as-is: **not ready to implement —
+one confirmation short even on its own terms.** The game added a UI element
+that looks like it makes courier-watch's destination probe obsolete, but only
+~6 minutes of post-rollout traffic exists so far, all showing the same single
 open district. This doc exists so the idea doesn't have to be re-derived from
 scratch once a fuller capture is available — see "What's still needed" before
 building anything from it.
