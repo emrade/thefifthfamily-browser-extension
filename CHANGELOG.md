@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.26.2] - 2026-09-18
+
+### Fixed
+- Arena Auto-Attack (and its passive "page ready" reminder) no longer treats
+  today's 6-page allotment being fully used as "a page is ready." Previously,
+  once the game's own daily cap was hit, a missing "next page" countdown was
+  read the same as "timer expired, ready to open" — which, on the automation
+  side, called `open_next_page` in a state the real game UI provides no
+  button for at all (confirmed from a real `{ok:false,"error":"No more pages
+  today."}` rejection), then treated that rejection as an unrecognized
+  response and hard-stopped Auto-Attack, requiring a manual re-enable the
+  next day. The passive reminder had the same bug, firing a false "page
+  ready" notification. Now detected directly from the game's own "final
+  summons of the day" banner, so nothing is sent at all once it shows.
+
+### Added
+- The Arena overlay now has its own "Notify: page ready" toggle, synced live
+  with the same setting under Settings → Notifications — no need to leave
+  the Arena page to change it.
+
 ## [0.26.1] - 2026-09-18
 
 ### Fixed
