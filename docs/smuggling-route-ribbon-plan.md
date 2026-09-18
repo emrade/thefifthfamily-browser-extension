@@ -68,6 +68,16 @@ Per-chip signal, by class modifier + `sv2-rib-meta` text:
 | Below level requirement | `is-lock` | `Lv {n}` (with a lock icon) |
 | Not currently open | *(none)* | `No route now` |
 
+**Trap: `→ {n} min` is a static travel duration, not a countdown.** Watched the
+same chip (The Strip) across a 5-minute span of real captures: its meta text held
+at a constant "→ 13 min" the entire time, while the ribbon header's own
+`"Routes rotate in Xm"` ticked down live over the same span (55m → 52m → 51m →
+50m). The minutes on the chip are the same figure as the draft-based panel's
+"Base" travel time to that district (confirmed via the same cross-check below,
+13 min in both) — "how long a courier takes to get there if sent now," not "time
+left on this open window." The header's rotate-countdown is the one that tracks
+when the current open/locked state expires.
+
 **Trap: `--ribC` / the `title` attribute is market price tier, not route
 availability.** Each chip also carries a color and a `title="{District} — market
 {fair|good|hot}"`. That's the black-market pricing state for that district,
