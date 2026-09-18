@@ -77,6 +77,48 @@ those frozen stats come from. Informative for a player wondering why their numbe
 what they are, but doesn't change any decision on its own — `fighting_stats` already
 sums all of it.
 
+## What Agility and Dexterity actually do — the game explains it, on the Gym page
+
+The Arena page itself never says which stat drives which combat roll — only the round
+log's raw `dodge_chance`/`crit_chance`/`block_chance` numbers (above). **The Iron Fist
+Gym page (`panel.php?type=gym`) does explain it directly**, in its own copy, with a
+full tier table. Confirmed from a real captured `type=gym` response:
+
+One stat, one roll, each with its own 12-tier progression (stat total → chance):
+
+| Stat | Combat roll | T1 | T2 | T3 | T4 | ... | T12 |
+|---|---|---|---|---|---|---|---|
+| Defence | **Block** | 0 → 0% | 364 → 5% | 800 → 10% | 1,334 → 15% | ... | 44,000 → 55% |
+| Agility | **Dodge** | 0 → 0% | 455 → 5% | 1,000 → 10% | 1,667 → 15% | ... | 55,000 → 55% |
+| Dexterity | **Critical** | 0 → 0% | 318 → 5% | 700 → 10% | 1,167 → 15% | ... | 38,500 → 55% |
+
+The page renders this table (all 12 tiers) but keeps it collapsed behind a toggle by
+default — it's real server-sent copy, not something this extension infers.
+
+Two more effects are layered on top of Agility/Dexterity specifically, each in its own
+callout box on the same page:
+
+- **First-Strike (Agility)** — *"Higher agility than your opponent grants up to 30%
+  chance for a free pre-round jab."*
+- **Critical Damage (Dexterity)** — *"Base critical 1.3x. +0.10x per 100 dex over
+  opponent (max 2.5x)."*
+
+Strength does two things of its own, shown alongside these (not Agility/Dexterity, but
+relevant to the same "what does each stat do" question):
+
+- **DEF Penetration** — `STR ÷ 1000`, capped at 25% (Family/Bloodline cap-breakers raise
+  it) — strips that share off the target's DEF *before* damage reduction is applied.
+- **DEF Efficiency** — a separate multiplier on whatever DEF survives penetration, not
+  stat-derived (Career V2 ranks, Bloodline, Estate, FRS) — pays off most against
+  high-STR opponents specifically because it applies after they've already penetrated.
+
+**Not yet reverse-engineered: the interpolation between tiers.** The account measured
+here sat at 563 Defence (between T2's 364→5% and T3's 800→10%) and the page showed 8%
+Block live — not a hard step at the tier boundary, so *some* smooth function connects
+consecutive tiers rather than a flat step function. The exact formula is unconfirmed;
+`win_pct` already being a complete, server-computed answer (see above) is the reason
+this hasn't been chased further.
+
 ---
 
 # Smuggling Mechanics — Measured
