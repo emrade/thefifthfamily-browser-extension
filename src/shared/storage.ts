@@ -26,15 +26,14 @@ import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from '.
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
 
 // No job selected yet — the popup's job picker is what actually populates
-// careerId/careerName/energyCost/otEnergyCost/otAvailable, from a live
-// CareerCatalogEntry, the first time the player picks one.
+// careerId/careerName/energyCost/otEnergyCost, from a live CareerCatalogEntry,
+// the first time the player picks one.
 const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
   enabled: false,
   careerId: null,
   careerName: '',
   energyCost: 0,
   otEnergyCost: null,
-  otAvailable: false,
   accuracyWeights: CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
 };
 

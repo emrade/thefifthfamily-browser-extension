@@ -170,19 +170,27 @@ async function runIfEligibleOnce(): Promise<void> {
     return;
   }
 
-  // `config.otAvailable` is captured once at job-selection time from the
-  // catalog panel, and (until fixed 2026-08-27) was wrong regardless of
-  // timing: it read a cost/reward preview row that renders on every job's
-  // card whether or not Overtime is actually unlocked, so a rank-1 job could
-  // still send `overtime=1` and get rejected with "Overtime unlocks at Rank
-  // 2." Re-confirming live off this cycle's own panel fetch — the same one
-  // just used for the cooldown cross-check above — catches that instead of
-  // trusting anything captured earlier. Skipped (defaults to no OT) if the
-  // panel fetch above failed, same conservative call as everywhere else here
-  // treats a missing live read.
+  // Re-confirmed live off this cycle's own panel fetch — the same one just
+  // used for the cooldown cross-check above — rather than trusting anything
+  // captured at job-selection time. `cv2-ot-btn` (what this reads) simply
+  // doesn't exist in the markup below rank 2, so this alone already reads
+  // `false` correctly for a job that hasn't unlocked OT yet — no separate
+  // "is OT available at all" flag needed on top of it. Skipped (defaults to
+  // no OT) if the panel fetch above failed, same conservative call as
+  // everywhere else here treats a missing live read.
+  //
+  // This used to also require `config.otAvailable` (a flag frozen at
+  // job-selection time) to be true. Unlike the cost fields alongside it,
+  // whether OT is unlocked genuinely changes over a job's life — the moment
+  // it reaches rank 2 — so a value captured before that point stayed `false`
+  // forever and silently vetoed OT no matter what this live check said.
+  // Confirmed real (2026-09-19): 80+ automated shifts on a rank-well-past-2
+  // job, energy well over the OT cost on many of them, zero ever ran
+  // Overtime — this live check alone was correct in every one of those same
+  // cycles, per a direct archive check of the account's own panel fetches.
   const rankAllowsOvertime = panelHtml !== null && isCareerOvertimeUnlocked(panelHtml, config.careerId);
 
-  const overtime = config.otAvailable && config.otEnergyCost != null && rankAllowsOvertime && status.energy >= config.otEnergyCost;
+  const overtime = config.otEnergyCost != null && rankAllowsOvertime && status.energy >= config.otEnergyCost;
   const canRunNormal = status.energy >= config.energyCost;
   if (!overtime && !canRunNormal) {
     scheduleNextCheck(null); // not enough energy yet — energy regenerates on its own, so just check again later

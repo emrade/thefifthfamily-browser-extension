@@ -536,17 +536,27 @@ export interface CareerAccuracyWeight {
 }
 
 /** User-configured — read/written directly by the popup, same as
- *  `NotificationPreferences`/`PageFeaturePreferences`. `energyCost`/`otEnergyCost`/
- *  `otAvailable` are captured once at job-selection time from a `CareerCatalogEntry`
- *  rather than re-fetched on every run, since a job's energy cost is not expected
- *  to change — the popup's "Refresh job list" action re-syncs it if ever needed. */
+ *  `NotificationPreferences`/`PageFeaturePreferences`. `energyCost`/`otEnergyCost`
+ *  are captured once at job-selection time from a `CareerCatalogEntry` rather than
+ *  re-fetched on every run, since a job's energy cost is not expected to change —
+ *  the popup's "Refresh job list" action re-syncs it if ever needed.
+ *
+ *  Deliberately **no** `otAvailable` field here, unlike `CareerCatalogEntry` — it
+ *  used to exist and be ANDed into `runner.ts`'s overtime decision alongside the
+ *  live per-cycle `isCareerOvertimeUnlocked` check. Unlike the costs above,
+ *  whether OT is unlocked genuinely does change (the moment a job reaches rank
+ *  2) and this account's own automation ran that whole way through, so a value
+ *  frozen from job-selection time — before rank 2, for any job picked early —
+ *  silently vetoed OT forever no matter what the live check said. Confirmed
+ *  real (2026-09-19): 80+ automated shifts, energy well over the OT cost on
+ *  many of them, zero ever ran Overtime; manual play used it freely the whole
+ *  time. The live check alone is now authoritative. */
 export interface CareerAutoConfig {
   enabled: boolean;
   careerId: number | null;
   careerName: string;
   energyCost: number;
   otEnergyCost: number | null;
-  otAvailable: boolean;
   accuracyWeights: CareerAccuracyWeight[];
 }
 

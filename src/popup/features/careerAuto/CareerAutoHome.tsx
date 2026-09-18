@@ -161,7 +161,6 @@ export function CareerAutoHome() {
       careerName: entry.name,
       energyCost: entry.energyCost,
       otEnergyCost: entry.otEnergyCost,
-      otAvailable: entry.otAvailable,
     });
     // The tracked cooldown belongs to whichever job was previously selected —
     // switching jobs is always allowed, including mid-countdown, since that's

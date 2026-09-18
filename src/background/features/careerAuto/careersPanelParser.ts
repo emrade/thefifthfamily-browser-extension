@@ -161,10 +161,13 @@ export function parseCareerCooldownSeconds(responseText: string): number | null 
  * Live per-cycle check for whether Overtime is actually clickable for one
  * specific career right now — reads the same `panel.php?type=careers` fetch
  * `runner.ts` already makes every cycle for `parseCareerCooldownSeconds`'s
- * cooldown cross-check, rather than trusting `CareerAutoConfig.otAvailable`,
- * which is only ever captured once at job-selection time (see that field's
- * doc comment in `shared/types.ts`, and `parseCareersCatalog`'s note above on
- * why its own `otAvailable` read was wrong until 2026-08-27).
+ * cooldown cross-check. This is the *only* source `runner.ts` trusts for
+ * whether OT is unlocked — see `CareerAutoConfig`'s own doc comment in
+ * `shared/types.ts` for why a value captured once at job-selection time
+ * (a field that used to exist, `otAvailable`) got removed rather than kept
+ * alongside this: it goes stale the moment a job reaches rank 2 after
+ * selection, and that staleness silently vetoed OT forever, confirmed real
+ * against this account's own archive (2026-09-19).
  *
  * Correctly reads `false` for a job currently on the shared "on break"
  * cooldown, since neither button renders at all then (see the cooldown case
