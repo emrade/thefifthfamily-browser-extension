@@ -3,6 +3,8 @@ import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { sendMessage } from '@/shared/messaging';
+import { STORAGE_KEYS } from '@/shared/constants';
+import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@/shared/notifications';
 import type { ArenaAutoConfig, ArenaAutoStatus, ArenaStatusResponse } from '@/shared/types';
 
 /**
@@ -14,6 +16,17 @@ import type { ArenaAutoConfig, ArenaAutoStatus, ArenaStatusResponse } from '@/sh
  * courierPanel.ts's own three toggles already take) rather than a message
  * round-trip, while status itself still has to be message-based, since this
  * runs on the game's own origin and can't read `chrome.alarms` directly.
+ *
+ * Also carries the `arenaPageUnlocked` notification toggle — player's own
+ * ask: Settings toggles it too, but this panel is what they're already
+ * looking at, so duplicating the one that matters here beats making them
+ * tab away. Reads/writes the exact same `NotificationPreferences` storage key
+ * Settings does (`storage.ts`'s `getNotificationPreferences`/
+ * `setNotificationPreferences`), and a `chrome.storage.onChanged` listener
+ * keeps this panel's checkboxes live if the value changes from Settings
+ * while this panel happens to be open — same pattern
+ * `PetCouriersHome.tsx` uses to reflect a courier toggle changed from its
+ * own in-page panel, just in the other direction.
  */
 
 const CONTAINER_ID = 'ff-arena-panel';
@@ -139,6 +152,10 @@ function formatCountdown(nextAt: number, now: number): string {
 function renderStatus(config: ArenaAutoConfig, status: ArenaAutoStatus | null): string {
   const parts: string[] = [];
 
+  if (status?.dayComplete) {
+    parts.push('<div class="ff-arp-row">Today’s 6 Arena pages are done — resets with the game’s own daily reset.</div>');
+  }
+
   const nextAt = status?.nextUnlockAt ?? null;
   if (nextAt !== null) {
     const label = config.enabled ? 'Next page' : 'Next reminder check';
@@ -188,6 +205,7 @@ async function refresh() {
   } catch (err) {
     console.error(LOG_PREFIX, 'arena panel status refresh failed', err);
   }
+  await refreshNotifToggles();
 }
 
 async function handleCheckNow() {
@@ -242,6 +260,13 @@ function buildPanel(): HTMLDivElement {
         <div class="ff-arp-field-label">Boss win% threshold</div>
         <input class="ff-arp-field-input ff-arp-threshold-input" type="number" min="0" max="100">
       </div>
+      <label class="ff-arp-toggle-row">
+        <div class="ff-arp-toggle-row__text">
+          <div class="ff-arp-toggle-row__title">Notify: page ready</div>
+          <div class="ff-arp-toggle-row__status">A new Arena page is ready to open — repeats until you open it</div>
+        </div>
+        <input class="ff-arp-toggle ff-arp-notif-toggle" type="checkbox" data-notif-id="arenaPageUnlocked">
+      </label>
       <button class="ff-arp-check" type="button">Check Now</button>
       <div class="ff-arp-status"><div class="ff-arp-row">Loading…</div></div>
     </div>
@@ -270,7 +295,31 @@ function buildPanel(): HTMLDivElement {
       .catch((err) => console.error(LOG_PREFIX, 'arena panel threshold write failed', err));
   });
 
+  el.querySelectorAll<HTMLInputElement>('.ff-arp-notif-toggle').forEach((notifToggle) => {
+    const id = notifToggle.dataset.notifId as keyof NotificationPreferences;
+    notifToggle.addEventListener('change', () => {
+      storage
+        .getNotificationPreferences()
+        .then((prefs) => storage.setNotificationPreferences({ ...prefs, [id]: notifToggle.checked }))
+        .catch((err) => console.error(LOG_PREFIX, 'arena panel notification toggle write failed', err));
+    });
+  });
+
   return el;
+}
+
+/** Syncs the two notification checkboxes straight from storage — split out
+ *  from `refresh()` (which round-trips to the background for the rest of
+ *  the panel) since this half only ever needs a local read, and the
+ *  `chrome.storage.onChanged` listener below reuses it to reflect a change
+ *  made from Settings without waiting on the slower path. */
+async function refreshNotifToggles() {
+  if (!panelEl) return;
+  const prefs = await storage.getNotificationPreferences();
+  panelEl.querySelectorAll<HTMLInputElement>('.ff-arp-notif-toggle').forEach((notifToggle) => {
+    const id = notifToggle.dataset.notifId as keyof NotificationPreferences;
+    notifToggle.checked = prefs[id] ?? DEFAULT_NOTIFICATION_PREFERENCES[id];
+  });
 }
 
 function updateVisibility() {
@@ -299,4 +348,14 @@ export function initArenaOverlay(): void {
   refreshTimer = setInterval(() => {
     if (expanded) void refresh();
   }, 15_000);
+
+  // Live-reflects a notification toggle changed from Settings instead —
+  // both surfaces read the same storage key, same `chrome.storage.onChanged`
+  // pattern `PetCouriersHome.tsx` uses for its own courier toggle, just
+  // watching the other direction (Settings → this panel rather than
+  // in-page panel → popup).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(STORAGE_KEYS.NOTIFICATION_PREFERENCES in changes)) return;
+    void refreshNotifToggles();
+  });
 }

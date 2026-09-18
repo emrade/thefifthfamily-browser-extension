@@ -1277,6 +1277,13 @@ export interface ArenaAutoStatus {
   pausedAt: number | null;
   pagesRun: number;
   totalBanked: number;
+  /** True once the game's own "final summons of the day" banner has been
+   *  seen — today's 6 Arena pages are fully used. See
+   *  `arenaPanelParser.ts`'s `parseIsDayComplete` for the real markup this
+   *  is read from. Not an error state (`pausedReason` stays `null` for it) —
+   *  purely informational, so the overlay can show "done for today" instead
+   *  of an empty countdown. */
+  dayComplete: boolean;
 }
 
 /** Read-only counterpart to `CourierStatus` — a surface that can't reach

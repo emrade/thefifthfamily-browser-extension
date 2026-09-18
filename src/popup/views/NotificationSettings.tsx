@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
+import { STORAGE_KEYS } from '@/shared/constants';
 import { NOTIFICATION_DEFINITIONS, DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@/shared/notifications';
 
 export function NotificationSettings() {
@@ -11,6 +12,16 @@ export function NotificationSettings() {
       setPrefs(v);
       setLoaded(true);
     });
+
+    // Live-reflects a toggle changed from the Arena in-page panel instead —
+    // both surfaces read the same storage key, same `chrome.storage.onChanged`
+    // pattern `PetCouriersHome.tsx` uses for its own courier toggle.
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'local' || !(STORAGE_KEYS.NOTIFICATION_PREFERENCES in changes)) return;
+      setPrefs({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...changes[STORAGE_KEYS.NOTIFICATION_PREFERENCES].newValue });
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
   async function toggle(id: keyof NotificationPreferences) {

@@ -100,6 +100,26 @@ export function parseCurrentPageNumber(html: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/** Whether today's Arena allotment (6 pages) is fully used. Confirmed real
+ *  (2026-09-18): a fully-fought, fully-banked page 6 renders
+ *  `<div class="ar-day-complete">...The final summons of the day. Make it
+ *  count.</div>` in place of the "Next Page Unlocks In" countdown every
+ *  other page transition carries — checked specifically, and `id="ar-timer"`
+ *  is genuinely absent on that page, not just expired.
+ *
+ *  This has to be checked as its own signal rather than inferred from
+ *  `parseArenaTimerEnd` returning `null` — that also happens on the very
+ *  first Arena page ever opened on an account, before any timer has existed
+ *  at all, which is a completely different situation. Distinguishing them
+ *  matters for more than correctness: the real client's own UI renders no
+ *  button and no countdown once this banner shows, so calling
+ *  `open_next_page` anyway sends a request shape a real click sequence could
+ *  never produce in that state — not just a wasted call, a request with no
+ *  legitimate manual-play equivalent to point to. */
+export function parseIsDayComplete(html: string): boolean {
+  return html.includes('class="ar-day-complete"');
+}
+
 /** Whether the current page has a real, unbanked pot right now — the page's
  *  own pot summary renders as either `ar-pot-banner ar-pot-active` (a live
  *  "Bank N" button, confirmed real) or `ar-pot-banner ar-pot-banked` ("Page

@@ -5,7 +5,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
-import { parseArenaTimerEnd, parseBossEnginePageId, parseCurrentPageNumber, parseIsPotActive, parseOpenOpponents, unwrapArenaPanelHtml } from './arenaPanelParser';
+import { parseArenaTimerEnd, parseBossEnginePageId, parseCurrentPageNumber, parseIsDayComplete, parseIsPotActive, parseOpenOpponents, unwrapArenaPanelHtml } from './arenaPanelParser';
 import type { ArenaAutoConfig, ArenaAutoStatus, ArenaBossResult, ArenaOpponentResult, ArenaPageResult } from '@/shared/types';
 
 const FEATURE_KEY = 'arena';
@@ -98,6 +98,7 @@ async function updateStatus(patch: Partial<ArenaAutoStatus>): Promise<ArenaAutoS
     pausedAt: current?.pausedAt ?? null,
     pagesRun: current?.pagesRun ?? 0,
     totalBanked: current?.totalBanked ?? 0,
+    dayComplete: current?.dayComplete ?? false,
     ...patch,
   };
   await storage.setArenaAutoStatus(next);
@@ -136,10 +137,21 @@ async function runPassiveCheck(): Promise<void> {
   recordParseSuccess(FEATURE_KEY);
 
   const timerEnd = parseArenaTimerEnd(html);
-  await updateStatus({ nextUnlockAt: timerEnd });
+  const dayComplete = parseIsDayComplete(html);
+  await updateStatus({ nextUnlockAt: dayComplete ? null : timerEnd, dayComplete });
 
   if (timerEnd !== null && timerEnd > Date.now()) {
     scheduleNextCheck(timerEnd);
+    return;
+  }
+
+  // Today's 6 pages are fully used — nothing is actually ready, so don't
+  // claim it is. See `parseIsDayComplete`'s doc: a missing timer alone
+  // doesn't mean "ready", and this is the same false-positive the
+  // automation path had to stop making, just surfacing as a wrong
+  // notification here instead of an unsafe request.
+  if (dayComplete) {
+    scheduleNextCheck(null);
     return;
   }
 
@@ -168,6 +180,10 @@ interface OpenPageState {
    *  cycle didn't open itself) can never recover it. `null` here means
    *  "unknown", not "boss doesn't exist". */
   bossWinPct: number | null;
+  /** True when `parseIsDayComplete` found the banner — nothing was opened,
+   *  and nothing should be. See that function's own doc for why this can't
+   *  just be inferred from a missing timer. */
+  dayComplete: boolean;
 }
 
 /** Figures out what's actually on the current page right now, whether this
@@ -193,13 +209,25 @@ async function resolveOpenPage(): Promise<{ state: OpenPageState; html: string }
     // this path (see the field's own doc); a resumed page whose boss is
     // already unlocked skips the boss step entirely below rather than
     // guessing at a number.
-    return { state: { pageNumber, opponentIds, bossWinPct: null }, html };
+    return { state: { pageNumber, opponentIds, bossWinPct: null, dayComplete: false }, html };
   }
 
   const timerEnd = parseArenaTimerEnd(html);
   if (timerEnd !== null && timerEnd > Date.now()) {
     // Nothing open, and not due yet — the caller schedules off this timer.
-    return { state: { pageNumber: null, opponentIds: [], bossWinPct: null }, html };
+    return { state: { pageNumber: null, opponentIds: [], bossWinPct: null, dayComplete: false }, html };
+  }
+
+  // No timer running. Before treating that as "ready", check whether it's
+  // actually "nothing left today" — see `parseIsDayComplete`'s doc for why
+  // this can't be inferred from the missing timer alone, and why calling
+  // `open_next_page` in that state specifically needs to not happen (real
+  // capture 2026-09-18: it did, and came back a well-formed
+  // `{ok:false,error:"No more pages today."}` — an ordinary, expected
+  // rejection, not a sign anything broke, but sent from a state the real
+  // client's own UI provides no way to reach).
+  if (parseIsDayComplete(html)) {
+    return { state: { pageNumber, opponentIds: [], bossWinPct: null, dayComplete: true }, html };
   }
 
   // Genuinely ready — open it.
@@ -220,6 +248,7 @@ async function resolveOpenPage(): Promise<{ state: OpenPageState; html: string }
       pageNumber: Number(openResp.new_page.page_number) || null,
       opponentIds: parseOpenOpponents(freshHtml),
       bossWinPct: typeof openResp.new_page.boss_data?.win_pct === 'number' ? openResp.new_page.boss_data.win_pct : null,
+      dayComplete: false,
     },
   };
 }
@@ -241,6 +270,25 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
     recordParseSuccess(FEATURE_KEY);
 
     const { state } = resolved;
+
+    // Written every cycle, not just when true, so a stale `true` from
+    // earlier today can't survive into tomorrow once the game's own timer
+    // starts running again — the alternative (only writing it on the
+    // `true` branch) would leave the overlay claiming "done for today"
+    // after a new day's first page is already open.
+    await updateStatus({ dayComplete: state.dayComplete });
+
+    // Today's 6 pages are fully used — `resolveOpenPage` never called
+    // `open_next_page` at all (see its own doc for why not). Not an error:
+    // no pause, no disable, no notification — just recheck later on the
+    // normal passive cadence, same as any other "nothing to do right now."
+    // `nextUnlockAt` is explicitly cleared rather than left stale, since
+    // there genuinely is no timer running to report.
+    if (state.dayComplete) {
+      await updateStatus({ nextUnlockAt: null });
+      scheduleNextCheck(null);
+      return;
+    }
 
     // Nothing open and not yet due — this is `resolveOpenPage`'s
     // "not due yet" branch. Re-read the timer from its own returned html
