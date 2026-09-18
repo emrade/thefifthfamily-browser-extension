@@ -2,9 +2,13 @@
 
 Rules recovered from real captured `forge_v2.php` traffic, not a guide. Confirmed
 against `fifth-family-archive-2026-09-18T12-57-58-719Z.ndjson.gz` (54 real `attempt`
-calls in one forging session, ranks 0→5 across 6 items, one item pushed to rank 6) and
-`fifth-family-archive-2026-09-18T12-32-37-522Z.ndjson.gz` (panel snapshots covering the
-button state for ~150 distinct items/ranks). Re-derivable the same way as
+calls in one forging session — every item that was worked on topped out at rank 5;
+none was actually pushed to +6) and `fifth-family-archive-2026-09-18T12-32-37-522Z.ndjson.gz`
+(panel snapshots covering the button state for ~150 distinct items/ranks). The +6 row in
+the table below is real, server-sent data too — the panel shows an item's *next* rank
+cost/success before you click it, so once 4 items sat at +5 their (unattempted) +6
+pricing was visible — but it's unattempted, not a completed roll. Re-derivable the same
+way as
 `docs/game-mechanics.md`'s other sections: pull a Forge-page selection export after any
 future forging session and re-run the same extraction.
 
@@ -67,12 +71,14 @@ exact same multiplier relative to their own rank-1 cost, to the dollar:
 | →+5 | 5.0x | 55% | 2g |
 | →+6 | 7.5x | 40% | 3g |
 
-**Ranks 7–10 were never reached in this session** — nothing here pushed past +6, so
-those multipliers/success rates are unconfirmed. Given the trend (success dropping
-faster, cost multiplier accelerating rather than leveling off) there's no reason to
-expect it gets friendlier; extrapolating a specific number would be a guess, not a
-measurement, so none is given here. Re-check this table if a future session pushes
-further.
+**The +6 row is real but unattempted** — 4 items sat at +5 by session's end and the
+panel showed their next-rank button (cost/success/gold), but nothing in this session
+actually rolled a +5→+6 attempt, so it's confirmed pricing, not a confirmed outcome.
+**Ranks 7–10 have no data at all**, not even button state — nothing reached +6 to
+reveal what +7 would cost. Given the trend (success dropping faster, cost multiplier
+accelerating rather than leveling off) there's no reason to expect it gets friendlier;
+extrapolating a specific number would be a guess, not a measurement, so none is given
+here. Re-check this table if a future session pushes further.
 
 ### Expected total cost, accounting for retries on failure
 
