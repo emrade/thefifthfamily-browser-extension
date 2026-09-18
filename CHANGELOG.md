@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.27.0] - 2026-09-18
+
+### Added
+- Career Auto's job picker now groups all 100 jobs by the game's own family
+  tabs (Iron River Syndicate, Society for Balance & Prosperity, Kito-gumi,
+  Viola, Volkskaya) and adds a search box to filter by name — previously a
+  single flat list with no way to narrow it down.
+
+### Fixed
+- Career Auto no longer fires a shift while the account-wide "on break"
+  cooldown is still active. The live cross-check meant to catch exactly
+  this (added to stop shifts firing off stale tracked state) had a regex
+  that never actually matched the real cooldown button — a clock icon sits
+  between the button tag and the countdown span that the pattern didn't
+  account for — so it silently returned "no cooldown" 100% of the time
+  since the day it shipped. Confirmed against a real archive: 0/103 matches
+  before the fix, 103/103 after. This is what let toggling Auto-Run on, or
+  switching jobs, fire an immediate attempt mid-cooldown instead of waiting
+  for it to clear.
+
 ## [0.26.2] - 2026-09-18
 
 ### Fixed
