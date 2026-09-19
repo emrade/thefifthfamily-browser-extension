@@ -163,20 +163,35 @@ account-wide — replaces the old per-shipment offload+sell loop entirely.
 (`dailyProfitCapRemaining` in `SmugglingV2Snapshot`) — not a new mechanic, the
 same cap just applied in bulk.
 
-## Two smaller, unconfirmed additions
+## Two smaller additions — CONFIRMED, and both belong to the *old* draft flow, not the new bulk one
 
-Found their `onclick` signatures via a broad regex sweep of the archive but
-didn't get a clean enough capture to know their full purpose — flagged here so
-they're not lost, not because they're understood yet:
+Found their bare `onclick` signatures via a first regex sweep and left them
+unconfirmed; went back into the same archive and pulled the actual
+surrounding markup rather than asking for a fresh capture — both are
+resolved now.
 
-- `Game.smugV2Reserve(itemId, qty, itemName)` — real args seen:
-  `71196,273,'Hidden Compartments'`. Possibly reserving stash toward a
-  specific item ahead of a launch. **Needs a real capture with surrounding
-  context to confirm.**
-- `Game.smugV2Unload(userPetId, itemId, qty, itemName)` — real args seen:
-  `67432,22,8,'Encrypted Weapons Schematics'`. Possibly pulling one item back
-  off a pet's manifest before departure (the inverse of `v2_load`). **Same
-  caveat — unconfirmed.**
+- **`Game.smugV2Reserve(inventoryInstanceId, boosterCatalogId, boosterName)`**
+  — e.g. `smugV2Reserve(65975,273,'Hidden Compartments')`. Sits in the
+  single-shipment draft screen's **"Boosters · one per effect family"**
+  section, next to a `"Profit"` row reading `"none held"` — this is the
+  button that applies a held booster consumable (Hidden Compartments =
+  the Capacity-family booster) to the shipment currently being drafted. Not
+  a `qty` in the second argument — `273` showed up identical across every
+  real "Hidden Compartments" click captured, so that's the booster's own
+  catalog id; the first number is the specific held copy's inventory id.
+- **`Game.smugV2Unload(userPetId, itemId, qty, itemName)`** — e.g.
+  `smugV2Unload(65989,22,33,'Encrypted Weapons Schematics')`. Original guess
+  was right: sits directly on one manifest line
+  (`"Encrypted Weapons Schematics ×33 · Kito-gumi · paid $759,000..."`,
+  `"33 / 33"` manifest count shown full above it) as an **"Unload"** button —
+  removes that whole line from the draft before departure. Exact inverse of
+  `v2_load`, in the same old single-shipment screen.
+
+Neither is part of the new `v2_launch`/`v2_offload_all` bulk flow — both are
+previously-undocumented pieces of the pre-existing manual draft screen that
+this archive happened to also capture. Worth a mention in
+`docs/smuggling-v2-plan.md` at some point (the Boosters section especially —
+a whole mechanic with no doc coverage yet), but out of scope for this one.
 
 Also present but purely UI state, not game actions: `smugV2Filter(this, bool)`,
 `smugV2ShowAll(this)` — filter/expand toggles on the fleet or black-market
@@ -209,41 +224,65 @@ trusted from an earlier point in the cycle.
 
 ## Design requirement, decided now — not something to still figure out
 
-**Never let a locked-destination `v2_launch` be reachable at all.** The real
-UI disables the locked slot outright — no `onclick`, can't be tapped — so a
-real player structurally cannot submit `v2_launch` against it, ever. Any
-future automation has to match that exactly: re-read the live open/locked
-state immediately before calling `v2_launch` (same discipline as Career
-Auto's live cooldown cross-check), so a stale earlier read can never actually
-reach the network as a request the real client couldn't have sent. This is
-not a "handle the rejection gracefully" case — it's a "the request must never
-be constructed in the first place" one, for the same account-safety reason
-already raised for Arena's day-complete state. Decided now, not deferred,
-specifically so it can't get skipped once an implementation is actually being
-written.
+**Never call either bulk action in a state where the real UI doesn't offer
+the button for it.** Confirmed for both:
+
+- **`v2_launch` against a locked destination slot** — the real UI disables
+  it outright, no `onclick`, can't be tapped.
+- **`v2_offload_all`** — confirmed from the archive, not just a screenshot:
+  the whole `<button class="sv2-collect-all" onclick="Game.smugV2OffloadAll(N)">`
+  is **entirely absent from the markup**, not merely disabled, whenever
+  fewer than 2 deliveries have arrived. Checked 57 real instances of the
+  button across this archive — `N` always matched the live ready-delivery
+  count exactly, and it never appeared once below 2. With exactly 1 arrived,
+  the panel only shows that single delivery's own individual claim chip, no
+  bulk button at all — matches the player's own screenshots exactly (one
+  showing the "Send Every Courier" block itself in that same kind of
+  entirely-absent-button state when nothing is idle).
+
+In both cases, a real player has **no way to trigger the call at all** in
+that state — this isn't "the server would probably reject it," it's "there
+is no legitimate path to ever construct this request." Any future automation
+has to match that exactly: re-read the live state immediately before calling
+either action (same discipline as Career Auto's live cooldown cross-check),
+so a stale earlier read can never reach the network as a request the real
+client couldn't have sent. Not a "handle the rejection gracefully" case for
+either action — a "the request must never be constructed in the first place"
+one, same account-safety reason already raised for Arena's day-complete
+state. Decided now, not deferred, so it can't get skipped once an
+implementation is actually being written.
 
 The existing pause-and-notify pattern (Career Auto, Arena, Street Intel,
 Crimes Auto all disable themselves and wait for a manual look on a genuinely
 unrecognized response — player's own confirmation this has been working
 well) stays the backstop for anything else unexpected. This rule isn't
 replacing that; it's narrowing what "unexpected" ever has to cover by keeping
-this one specific, foreseeable case from reaching the network in the first
+these two specific, foreseeable cases from reaching the network in the first
 place.
 
 ## What's still needed before any redesign
 
-1. **A genuine rejection case for `v2_offload_all`** — nothing pending to
-   collect, none captured yet. (`v2_launch`'s own rejection shape — cash —
-   is now confirmed above.)
-2. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
-   surrounding UI (what section they're in, what triggers them) rather than
-   just the bare `onclick` signature.
+Nothing left open as of this pass — every question originally listed here
+got resolved from the same archive data already in hand, not from a fresh
+capture:
 
-**Not actually open, corrected from an earlier draft of this doc:** whether
-`item_id` is constrained to the player's current district. The underlying
-buy mechanic hasn't changed — player's own confirmation: still 3 items per
-district, tied to physically standing there, still buy the priciest of the
-3. The picker only offering 3 choices (the exact 3 for this account's home
-district, $15,000/$19,000/$23,000) reflects that same long-standing rule, not
-a new one worth re-verifying. `v2_launch` just gives that same choice a
-"pick one" step instead of a separate `buy` call per pet.
+- `v2_launch`'s insufficient-cash shape — confirmed hard rejection, above.
+- Whether either bulk action can be called in a state its own button
+  wouldn't exist for — confirmed no, for both, in the design-requirement
+  section above.
+- `smugV2Reserve`/`smugV2Unload` — confirmed above, both old-flow, not
+  new-flow.
+- Whether `item_id` is constrained to the player's current district —
+  corrected: this was never really open, the underlying buy mechanic hasn't
+  changed (player's own confirmation: still 3 items per district, tied to
+  physically standing there, still buy the priciest of the 3). The picker
+  only offering 3 choices (the exact 3 for this account's home district,
+  $15,000/$19,000/$23,000) reflects that same long-standing rule, not a new
+  one worth re-verifying. `v2_launch` just gives that same choice a
+  "pick one" step instead of a separate `buy` call per pet.
+
+Only remaining real gap: a genuine rejection case for `v2_offload_all`
+itself (empty roster aside — nothing pending to collect at all — was never
+actually tested against the server, only inferred from the button's own
+absence). Low priority; the "won't even construct the call" design rule
+already covers the case that matters for safety.
