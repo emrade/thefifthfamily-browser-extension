@@ -48,18 +48,32 @@ real copy: *"All 5 idle animals out in one press · cargo bought for you."*
 
 1. **What are they carrying** — pick exactly one item from up to 3 offered
    (`sv2-lo-item`, `onclick="Game.smugV2LaunchPick(this, true)"` — the `true`
-   makes this a single-select radio group).
+   makes this a single-select radio group). **Confirmed from a real
+   screenshot, not just the request shape**: picking a different item
+   live-recalculates the total cost shown before you even send — 141 units
+   at Military Munitions' $15,000 ea priced the batch at $2,115,000 (exact:
+   141 × 15,000); switching the same 141 units to Encrypted Weapons'
+   $23,000 ea repriced it to $3,243,000 (exact: 141 × 23,000). Plain
+   unit-price × total-units, client-side, before `v2_launch` is ever called.
 2. **Where are they going** — pick exactly one destination (`sv2-lo-dest`,
-   same `LaunchPick(this, true)` radio pattern). **Only 2 destinations were
-   listed** on the account checked: Downtown (open, selectable) and The
-   Underground (`disabled`, "Boss not beaten"). Several other districts this
-   account has level-unlocked (The Strip, The Docks, Industrial District)
-   were **not shown at all** — not even as disabled. The picker appears to
-   only surface "currently open by rotation" + "locked, for upsell," silently
-   omitting "level-unlocked but not open this hour." **Unconfirmed** whether
-   that holds across other rotation windows, or whether `v2_launch` would
-   even accept a destination that isn't currently open if submitted directly
-   (never attempted in the archive).
+   same `LaunchPick(this, true)` radio pattern). **Corrected from an earlier
+   draft of this doc, which read the "only 2 destinations shown" fact wrong.**
+   It isn't the picker filtering "currently open" + "locked, for upsell" out
+   of the full 10-district roster — it's simpler than that: **the picker
+   always shows exactly the two destinations that rotate open each hour**,
+   full stop, regardless of whether either is actually usable by this
+   account. One is whichever district is actually open this hour; the other
+   is that hour's *other* rotating slot, shown locked with its real reason
+   if this account can't use it yet — confirmed on two separate real
+   screenshots, one showing Diamond District "Needs level 121" as the locked
+   half, a different capture earlier showing The Underground "Boss not
+   beaten" as the locked half, both alongside Downtown as the open half.
+   Player's own confirmation: *"as usual, there are always 2 options for
+   destination but there is only one open to me, the other one available
+   this shift is level locked."* Districts not in this hour's rotating pair
+   at all (The Strip, The Docks, Industrial District, etc.) simply aren't
+   part of the picker that hour — nothing to do with this account's own
+   unlock status.
 3. **Who is going** — every idle pet pre-selected, tap one to drop it
    (`sv2-lo-pet`, `onclick="Game.smugV2LaunchPick(this, false)"` — `false`
    makes this a multi-select toggle, not a radio).
@@ -67,6 +81,24 @@ real copy: *"All 5 idle animals out in one press · cargo bought for you."*
 Final button: `<button class="sv2-lo-go" onclick="Game.smugV2Launch(this)">
 Send N Couriers</button>` — reads all the selected state straight off the DOM
 and fires the one `v2_launch` call.
+
+### Insufficient cash doesn't block the send — it's a graceful partial, per the UI's own copy
+
+**From a real screenshot, not yet cross-checked against an actual submitted
+`v2_launch` response** (the account owner hadn't sent this particular batch
+when it was captured) — worth flagging that distinction, but the UI's own
+live copy is specific enough to record: with 11 couriers needing $3,243,000
+total and insufficient cash on hand, the panel shows *"Not enough cash — the
+last couriers will be left behind"* in red, **while the Send button stays
+enabled**, not greyed out. That reads as "send whatever you can afford, drop
+the rest" rather than an all-or-nothing rejection — consistent with
+`v2_launch`'s own `max_spend` parameter existing as a cap in the first place
+(see the confirmed request shape above: `buy=1&max_spend=1403000` bought
+`61` of the `61` units requested that time, i.e. it capped at what
+`max_spend` allowed rather than failing outright). Still need a real
+captured response from a batch that actually got left short to confirm the
+exact shape (does `sent` come back lower than the roster size? does
+`units_bought` differ from a requested total?).
 
 ### A clean, single on/off signal — this answers one of the open questions above
 
@@ -146,34 +178,60 @@ grid, no server call behind them.
 `docs/smuggling-route-ribbon-plan.md` was scoped around replacing
 `courierWatch.ts`'s draft-then-cancel destination probe with a read of the
 `sv2-rib` ribbon instead. That ribbon is still present and unchanged in this
-archive, so nothing there is *broken* — but if a future courier automation
-gets rebuilt around `v2_launch` (one call, whatever destination the picker
-currently offers), the whole "how do we cheaply detect which destination is
-open" question the ribbon plan exists to answer may become moot: the picker
-UI already appears to only offer the currently-open destination, meaning
-`v2_launch` might not need a separate open-destination probe at all — reading
-its own available-destinations list (however that's exposed, likely inline
-in the panel fetch already used) could replace both the old probe *and* the
-ribbon-reading plan in one step.
+archive, so nothing there is *broken* — but a future courier automation
+rebuilt around `v2_launch` may not need either the ribbon *or* the old probe
+for the question that actually matters operationally: **"is there anything I
+can send to right now."** That's answered directly by the `sv2-lo`/`sv2-lo
+off` class (see above) with no cross-referencing needed — the picker itself
+already shows both of the hour's rotating destinations regardless of whether
+either is usable, and disables the block entirely when neither is.
+Identifying *which specific district* is open (rather than just whether one
+is) would still need either the ribbon or the picker's own open-slot label —
+that half of the ribbon plan's original purpose isn't resolved by this
+finding.
 
-**Not deleting that doc** — this is a real possibility, not a confirmed one
-yet (see the open question above about whether the picker's destination list
-is authoritative or just a UI convenience). Revisit both docs together once
-there's enough real `v2_launch` traffic to know whether a separate
-open-destination signal is still needed at all.
+**Not deleting that doc** — the ribbon is still live, unchanged, and still the
+better source if a rebuild ever needs "which district," not just "is
+anything open." Revisit both docs together whenever a `v2_launch` rebuild is
+actually scoped — and see the design requirement just below for a hard rule
+that applies either way: whichever source ends up answering "which
+destination," it must be re-read live immediately before sending, never
+trusted from an earlier point in the cycle.
+
+## Design requirement, decided now — not something to still figure out
+
+**Never let a locked-destination `v2_launch` be reachable at all.** The real
+UI disables the locked slot outright — no `onclick`, can't be tapped — so a
+real player structurally cannot submit `v2_launch` against it, ever. Any
+future automation has to match that exactly: re-read the live open/locked
+state immediately before calling `v2_launch` (same discipline as Career
+Auto's live cooldown cross-check), so a stale earlier read can never actually
+reach the network as a request the real client couldn't have sent. This is
+not a "handle the rejection gracefully" case — it's a "the request must never
+be constructed in the first place" one, for the same account-safety reason
+already raised for Arena's day-complete state. Decided now, not deferred,
+specifically so it can't get skipped once an implementation is actually being
+written.
+
+The existing pause-and-notify pattern (Career Auto, Arena, Street Intel,
+Crimes Auto all disable themselves and wait for a manual look on a genuinely
+unrecognized response — player's own confirmation this has been working
+well) stays the backstop for anything else unexpected. This rule isn't
+replacing that; it's narrowing what "unexpected" ever has to cover by keeping
+this one specific, foreseeable case from reaching the network in the first
+place.
 
 ## What's still needed before any redesign
 
-1. **Multiple `v2_launch` calls across different rotation windows** — to
-   confirm whether the destination picker always mirrors the ribbon's
-   `is-lane` state exactly, or can diverge.
-2. **A `v2_launch` attempted with a destination that isn't currently open** —
-   to see whether the server rejects it (and with what message) or the UI
-   simply never allows submitting one.
-3. **A rejection case for either action** — insufficient cash for
-   `max_spend`, an empty roster, nothing pending to offload — none captured
-   yet, so error handling can't be designed against real shapes.
-4. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
+1. **A real submitted `v2_launch` response for the insufficient-cash case** —
+   the UI's own "last couriers will be left behind" copy plus the Send
+   button staying enabled strongly suggests a graceful partial fill rather
+   than an outright rejection, but no actual captured response confirms the
+   shape yet (whether `sent` comes back lower than the roster size, whether
+   `units_bought` reads below what was requested, etc.).
+2. **A genuine rejection case for either action** — an empty roster, nothing
+   pending to offload — none captured yet.
+3. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
    surrounding UI (what section they're in, what triggers them) rather than
    just the bare `onclick` signature.
 
