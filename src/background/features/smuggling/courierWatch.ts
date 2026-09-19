@@ -99,16 +99,20 @@ export function scheduleHourlyDestCheck(): void {
  *  special reaction — detection keeps running on its own schedule either way
  *  (as long as `watchEnabled` stays on), so there's nothing to reschedule.
  *
- *  The auto-offload branch exists because `SMUGGLING_COURIER_RETURN` only
- *  stays armed while a pet is still in flight — `recordFleetReturns` clears
- *  it outright once nothing is `'moving'` (see its own doc). A pet that
- *  lands while auto-offload is off drops out of that alarm entirely: nothing
- *  is left to notice it later, so flipping the toggle back on wouldn't do
- *  anything on its own. Confirmed real (2026-08-30): dispatch enabled first,
- *  a pet landed before offload got turned on, and it just sat there
- *  `ready-to-offload` until the player happened to re-toggle offload — which,
- *  before this fix, only appeared to help because of an unrelated cycle
- *  (another pet's own dispatch/return) sweeping it up in passing.
+ *  The auto-offload branch exists because, with auto-offload off,
+ *  `SMUGGLING_COURIER_RETURN` only stays armed while a pet is still in
+ *  flight — `recordFleetReturns` clears it outright once nothing is
+ *  `'moving'` and nothing ready needs collecting (see its own doc, which
+ *  now also covers the case where auto-offload *is* on but a landed pet has
+ *  no in-flight pet left to piggyback an alarm off of). A pet that lands
+ *  while auto-offload is off still drops out of that alarm entirely once
+ *  nothing else is inbound: nothing is left to notice it later, so flipping
+ *  the toggle back on wouldn't do anything on its own without this branch.
+ *  Confirmed real (2026-08-30): dispatch enabled first, a pet landed before
+ *  offload got turned on, and it just sat there `ready-to-offload` until the
+ *  player happened to re-toggle offload — which, before this fix, only
+ *  appeared to help because of an unrelated cycle (another pet's own
+ *  dispatch/return) sweeping it up in passing.
  *  `handleCourierReturnAlarm` reads the fleet fresh from `fetchPanel()`
  *  itself rather than off the (already-empty) pending-returns list, so firing
  *  it here picks up an already-landed pet correctly.
@@ -335,6 +339,16 @@ async function handleBatchStop(summary: CourierRunSummary, alarmName: string): P
  * overwrite the one alarm" pattern as `travelNotifier.ts`'s `PendingTravel`.
  * Called after every `fetchPanel()` this module makes, so the return alarm
  * always reflects the latest known fleet state.
+ *
+ * Also accounts for a pet that's already landed and sitting
+ * `ready-to-offload` — it has no arrival of its own to schedule off of, so
+ * without this the alarm would only re-fire whenever some *other*,
+ * still-inbound pet happens to land, however far off that is. Confirmed
+ * real: a pet sat ready-to-offload for 3.5 minutes because the next inbound
+ * pet's own ETA was that far away, with nothing scheduled to check sooner
+ * just because cargo was already waiting to be collected. Only overrides the
+ * schedule when auto-offload is actually on — with it off, checking sooner
+ * would just be a wasted fetch with nothing able to act on what it finds.
  */
 export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
   const now = Date.now();
@@ -344,12 +358,20 @@ export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
 
   await storage.setPendingCourierReturns(pending);
 
-  if (pending.length === 0) {
+  const config = await storage.getCourierAutoConfig();
+  const hasUncollectedCargo = config.autoOffloadEnabled && fleet.some((f) => f.status === 'ready-to-offload');
+
+  if (pending.length === 0 && !hasUncollectedCargo) {
     chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
     return;
   }
-  const earliest = Math.min(...pending.map((p) => p.arrivesAt));
-  chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
+
+  const earliestMoving = pending.length > 0 ? Math.min(...pending.map((p) => p.arrivesAt)) : Infinity;
+  // Already-landed cargo waiting to be collected always wins over whatever
+  // else is still inbound — collecting it now is strictly better than
+  // waiting for an unrelated pet's own arrival to happen to trigger it.
+  const nextCheck = hasUncollectedCargo ? Math.min(earliestMoving, now) : earliestMoving;
+  chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: nextCheck + COURIER_RETURN_BUFFER_MS });
 }
 
 /** Sends idle pets (or notifies) once `launchAvailability` confirms a
