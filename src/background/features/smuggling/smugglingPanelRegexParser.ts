@@ -330,7 +330,24 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
   const window = html.slice(idx, idx + 2000);
 
   if (isOff) {
-    const whyMatch = window.match(/sv2-lo-why[^>]*>([^<]+)</);
+    // CONFIRMED BUG, fixed here: the real markup is `<div class="sv2-lo-why">
+    // <i class="fa-solid fa-circle-info"></i><span>No idle couriers...</span>
+    // </div>` — an icon sits between the div's own opening tag and the actual
+    // message text inside a nested `<span>`. The previous version of this
+    // regex (`sv2-lo-why[^>]*>([^<]+)<`) assumed the text came immediately
+    // after the div opened, so it always matched zero characters before
+    // hitting the icon's own `<` and fell back to `reasonKind: 'unknown'` —
+    // every single time, for every "off" reason, never just this one. Since
+    // `'unknown'` is deliberately the one case `courierWatch.ts` never writes
+    // state for, this silently froze the whole destination watch from
+    // whenever it last got a real container-shape hit. Confirmed by running
+    // this parser directly against real captured panel bodies from the
+    // account's own archive: every "off" read came back 'unknown' even where
+    // the raw HTML plainly said "No idle couriers...". The DOM-based twin in
+    // `smugglingPanelAdapter.ts` never had this bug — `Element.textContent`
+    // reads through the icon automatically, which is exactly why this only
+    // ever showed up in background-triggered checks, not in-page ones.
+    const whyMatch = window.match(/sv2-lo-why[^>]*>[\s\S]*?<span>([^<]+)<\/span>/);
     const reasonText = whyMatch ? whyMatch[1].trim() : 'the bulk-send block is off, with no explanatory text found';
     return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
   }
