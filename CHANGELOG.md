@@ -9,6 +9,46 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.28.0] - 2026-09-19
+
+### Added
+- Pet Courier dispatch and offload now use the game's own new bulk actions
+  (`v2_launch` for sending idle couriers, `v2_offload_all` for collecting
+  arrived deliveries) instead of one request per pet or per shipment — a
+  batch of idle couriers now dispatches in a single call instead of a
+  per-pet draft→buy→load→depart sequence, and 2+ landed deliveries collect
+  in one call instead of one at a time. The old per-shipment offload flow is
+  kept only for the one case the bulk button doesn't cover: exactly one
+  arrived delivery.
+- The background destination-rotation watch no longer drafts and cancels a
+  real shipment just to see whether a destination is open. It reads the same
+  live "Send Every Courier" availability signal the bulk-send button itself
+  is gated on, directly off the panel — no side effects, and a check now
+  costs nothing extra since it reuses a fetch the watch was already making.
+
+### Fixed
+- The old destination-probe method (draft a shipment, read it, cancel it)
+  was a real source of false "locked" verdicts: a stuck draft it created
+  itself could get mistaken for a genuinely locked destination and cache
+  that wrong answer for the rest of the hour. Reading the panel's own live
+  availability signal instead removes this failure mode entirely.
+- Auto-dispatch now re-reads live panel state immediately before sending,
+  instead of acting on a snapshot that could have gone stale during an
+  intervening funds check or bank withdrawal — closes a window where a
+  destination rotating locked mid-run could otherwise reach the network as
+  a request the real game UI would never offer.
+- Restored recovery from a rare but confirmed real race where a second,
+  concurrent browser session sweeps cash to the bank between this account's
+  own withdrawal and its dispatch call — retries once with a fresh top-up
+  instead of failing the whole run.
+- Career Auto no longer silently vetoes Overtime for the rest of a job's
+  automated run once it reaches Rank 2. Overtime eligibility was captured
+  once at job-selection time and never rechecked, so any job picked before
+  hitting Rank 2 could never use Overtime afterward even with energy well
+  over its cost — confirmed real: 80+ automated shifts, zero ever ran
+  Overtime, while manual play used it freely. Overtime eligibility is now
+  read live every cycle.
+
 ## [0.27.0] - 2026-09-18
 
 ### Added
