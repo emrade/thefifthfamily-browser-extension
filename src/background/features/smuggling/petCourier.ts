@@ -37,6 +37,20 @@ function emitProgress(event: CourierProgressEvent): void {
 const DAILY_CAP_STOP_THRESHOLD = 1000;
 
 /**
+ * `v2_launch` silently caps at 10 pet ids per call — confirmed post-ship,
+ * not something either archive available while building this feature ever
+ * happened to exercise (every sample topped out at 9 pets). See
+ * docs/smuggling-bulk-actions-plan.md's "CONFIRMED post-ship" section: four
+ * real calls, two sessions, every 11-pet attempt lost the 11th (last in the
+ * submitted list) with no error — `ok:true`, `sent:10`, nothing to detect
+ * except `sent` not matching `user_pet_ids.length`. 10 has succeeded fully
+ * every time it's been tried; 11 never has, regardless of cash. Above this
+ * many idle pets, `executeCourierBatch` issues multiple `v2_launch` calls in
+ * the same run instead of one.
+ */
+const LAUNCH_BATCH_SIZE = 10;
+
+/**
  * Deliberately matches the *live client's* actual URL, not a hardcoded guess —
  * confirmed 2026-08-19 that the game dropped `smug_tab=proto` from normal use
  * entirely; the bare URL now returns the full dashboard directly (see
@@ -545,85 +559,109 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       }
     }
 
-    try {
-      // Re-read live state immediately before sending — the funds check and
-      // (possibly) the withdrawal just above each made a real network call,
-      // so the `availability` captured earlier could be stale by the time
-      // execution actually gets here. Same discipline as Career Auto's live
-      // cooldown cross-check, and the exact rule
-      // docs/smuggling-bulk-actions-plan.md's design-requirement section
-      // spells out: a stale earlier read must never reach the network as a
-      // `v2_launch` call the real client couldn't have sent (e.g. a
-      // destination that rotated locked in the few seconds this took).
-      const recheck = await fetchPanel();
-      if (!recheck) {
-        pushError('could not re-read the smuggling panel immediately before launch');
-        summary.stoppedReason = 'shape-changed';
-        return summary;
-      }
-      const liveAvailability = recheck.launchAvailability;
-      if (!liveAvailability.available) {
-        switch (liveAvailability.reasonKind) {
-          case 'no-idle-pets':
-            summary.stoppedReason = 'no-idle-pets';
-            break;
-          case 'destination-locked':
-            summary.stoppedReason = 'no-destination-available';
-            break;
-          case 'stuck-draft':
-          case 'unknown':
-          default:
-            pushError(liveAvailability.reasonText);
-            summary.stoppedReason = 'shape-changed';
+    // `v2_launch` caps at 10 pet ids per call — see `LAUNCH_BATCH_SIZE`'s own
+    // doc and docs/smuggling-bulk-actions-plan.md's "CONFIRMED post-ship"
+    // section. `included` can be any size, so it's split here into chunks
+    // of at most that many, each sent as its own `v2_launch` call.
+    const chunks: (typeof included)[] = [];
+    for (let i = 0; i < included.length; i += LAUNCH_BATCH_SIZE) {
+      chunks.push(included.slice(i, i + LAUNCH_BATCH_SIZE));
+    }
+
+    for (const chunk of chunks) {
+      const chunkCost = chunk.reduce((sum, pet) => sum + pet.capacity * item.price, 0);
+
+      try {
+        // Re-read live state immediately before *every* chunk, not just the
+        // first — sending an earlier chunk changes which pets are still
+        // idle, and (right at the top of the hour) the destination itself
+        // could rotate locked between chunks. Same discipline as Career
+        // Auto's live cooldown cross-check, and the exact rule
+        // docs/smuggling-bulk-actions-plan.md's design-requirement section
+        // spells out: a stale earlier read must never reach the network as a
+        // `v2_launch` call the real client couldn't have sent.
+        const recheck = await fetchPanel();
+        if (!recheck) {
+          pushError('could not re-read the smuggling panel immediately before launch');
+          summary.stoppedReason = 'shape-changed';
+          break;
         }
-        return summary;
-      }
+        const liveAvailability = recheck.launchAvailability;
+        if (!liveAvailability.available) {
+          switch (liveAvailability.reasonKind) {
+            case 'no-idle-pets':
+              summary.stoppedReason = 'no-idle-pets';
+              break;
+            case 'destination-locked':
+              summary.stoppedReason = 'no-destination-available';
+              break;
+            case 'stuck-draft':
+            case 'unknown':
+            default:
+              pushError(liveAvailability.reasonText);
+              summary.stoppedReason = 'shape-changed';
+          }
+          break;
+        }
 
-      let launch = await runLaunch(included, item, liveAvailability.destination, runningCost);
+        let launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);
 
-      // Confirmed real (2026-08-29, the old per-pet buy loop's own incident):
-      // a second, independent browser session logged into the same account
-      // can sweep cash-on-hand to the bank (e.g. Street Intel's own
-      // `depositCashOnHand` cleanup) in the moments between this batch's
-      // withdrawal and this call, zeroing out the exact cash `max_spend` was
-      // just sized against. Nothing here can see or coordinate with that
-      // other session, so the only real fix is reacting live to whatever
-      // cash actually turns out to be there: one top-up withdrawal, then one
-      // retry of this exact call — the same recovery the old buy loop used,
-      // ported to the one call that replaced it.
-      if (!launch?.ok && typeof launch?.error === 'string' && /ran out of cash for more cargo/i.test(launch.error)) {
-        const fundsNow = await fetchCashAndDistrict();
-        if (fundsNow && fundsNow.cash < runningCost && fundsNow.bank > 0) {
-          const topUp = Math.min(fundsNow.bank, runningCost - fundsNow.cash);
-          const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
-          if (withdraw?.ok) {
-            summary.cashWithdrawn += topUp;
-            launch = await runLaunch(included, item, liveAvailability.destination, runningCost);
+        // Confirmed real (2026-08-29, the old per-pet buy loop's own incident):
+        // a second, independent browser session logged into the same account
+        // can sweep cash-on-hand to the bank (e.g. Street Intel's own
+        // `depositCashOnHand` cleanup) between this chunk's own withdrawal
+        // and this call, zeroing out the exact cash this chunk's `max_spend`
+        // was just sized against. Nothing here can see or coordinate with
+        // that other session, so the only real fix is reacting live to
+        // whatever cash actually turns out to be there: one top-up
+        // withdrawal, then one retry of this exact call — the same recovery
+        // the old buy loop used, ported to the calls that replaced it.
+        if (!launch?.ok && typeof launch?.error === 'string' && /ran out of cash for more cargo/i.test(launch.error)) {
+          const fundsNow = await fetchCashAndDistrict();
+          if (fundsNow && fundsNow.cash < chunkCost && fundsNow.bank > 0) {
+            const topUp = Math.min(fundsNow.bank, chunkCost - fundsNow.cash);
+            const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
+            if (withdraw?.ok) {
+              summary.cashWithdrawn += topUp;
+              launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);
+            }
           }
         }
-      }
 
-      if (launch?.ok) {
-        summary.launched = {
-          petCount: Number(launch.sent) || included.length,
-          unitsSent: Number(launch.units_sent) || 0,
-          unitsBought: Number(launch.units_bought) || 0,
-          cashSpent: Number(launch.cash_spent) || 0,
-          item: item.name,
-          destination: typeof launch.destination === 'string' ? launch.destination : liveAvailability.destination.name,
-        };
-      } else {
-        pushError(`launch failed: ${launch?.error ?? 'unknown error'}`);
+        if (launch?.ok) {
+          // Accumulated across chunks rather than overwritten, so the
+          // summary reflects the whole run even when it took more than one
+          // `v2_launch` call to dispatch everyone.
+          const soFar = summary.launched;
+          summary.launched = {
+            petCount: (soFar?.petCount ?? 0) + (Number(launch.sent) || chunk.length),
+            unitsSent: (soFar?.unitsSent ?? 0) + (Number(launch.units_sent) || 0),
+            unitsBought: (soFar?.unitsBought ?? 0) + (Number(launch.units_bought) || 0),
+            cashSpent: (soFar?.cashSpent ?? 0) + (Number(launch.cash_spent) || 0),
+            item: item.name,
+            destination: typeof launch.destination === 'string' ? launch.destination : liveAvailability.destination.name,
+          };
+        } else {
+          // Not the cash case — `chunkCost` (this call's own `max_spend`) is
+          // sized from the same affordability check above, so the confirmed
+          // "Ran out of cash for more cargo" rejection shouldn't happen
+          // here. Whatever chunks already succeeded stay recorded in
+          // `summary.launched`; this just stops the remaining chunks rather
+          // than retrying blindly against an unrecognized rejection.
+          pushError(`launch failed for a batch of ${chunk.length}: ${launch?.error ?? 'unknown error'}`);
+          summary.stoppedReason = 'shape-changed';
+          break;
+        }
+      } catch (err) {
+        if (err instanceof SystemicActionError) {
+          pushError(err.message);
+          summary.stoppedReason = classifyStop(err);
+          return summary;
+        }
+        pushError(`launch failed for a batch of ${chunk.length}: ${String(err)}`);
         summary.stoppedReason = 'shape-changed';
+        break;
       }
-    } catch (err) {
-      if (err instanceof SystemicActionError) {
-        pushError(err.message);
-        summary.stoppedReason = classifyStop(err);
-        return summary;
-      }
-      pushError(`launch failed: ${String(err)}`);
-      summary.stoppedReason = 'shape-changed';
     }
 
     return summary;

@@ -1,12 +1,13 @@
 # Smuggling bulk actions (`v2_launch` / `v2_offload_all`) — scoping notes
 
-Status: **draft — scoping only, nothing in this doc is implemented yet.** The
-player is still manually testing the new UI in-game; this exists to capture what
-the archive already confirms about it, from real captured traffic, so a future
-overhaul starts from facts instead of re-deriving them from scratch. Sections
-marked `CONFIRMED` come from `fifth-family-archive-2026-09-18T23-32-12-299Z.ndjson.gz`.
-Everything else is flagged as unconfirmed — only one real call of each new
-action exists in the archive so far.
+Status: **implemented and shipped (v0.28.0)** — see `petCourier.ts`'s
+`runLaunch`/`runOffloadAll` and `courierWatch.ts`'s live-panel destination
+check. Originally scoping notes only, written while the player was still
+manually testing the new UI; kept as a living record afterward, since real
+post-ship traffic keeps surfacing things the pre-ship archive never happened
+to capture (see "CONFIRMED post-ship" below). Sections marked `CONFIRMED`
+come from `fifth-family-archive-2026-09-18T23-32-12-299Z.ndjson.gz` unless a
+different archive filename is cited inline.
 
 See `docs/smuggling-v2-plan.md` for the pet-courier system this sits inside, and
 `docs/smuggling-route-ribbon-plan.md` for the destination-detection work this may
@@ -51,6 +52,58 @@ action=v2_launch&user_pet_ids=2581,19919,1997,1984,1996&item_id=22&destination_c
 Replaces what used to be a draft→buy→load→depart sequence repeated once per
 pet. One item, one destination, one cash cap, applied to every pet in
 `user_pet_ids` at once — the server buys the cargo itself (`buy=1`).
+
+### CONFIRMED post-ship: `v2_launch` caps at 10 couriers per call, regardless of cash
+
+Found after this feature shipped, once the account had more than 10 pets
+idle at once for the first time — nothing in the scoping above caught this
+because every archive sample available at design time topped out at 9 pets
+in one call. Confirmed from
+`fifth-family-archive-2026-09-19T18-18-08-723Z.ndjson.gz`, four real
+`v2_launch` calls spanning two separate sessions (one the account owner's
+own manual testing from before this feature existed, one this extension's
+own first real run):
+
+```
+11 pet ids, cash short of the full cost
+→ {"ok":false,"error":"Ran out of cash for more cargo."}
+
+11 pet ids, cash short of even the accepted 10's cost
+→ {"ok":true,"sent":10,"units_sent":137,"units_bought":129,"cash_spent":2967000,...}
+   (137 = full capacity of the first 10 pet ids in the list; only $2,967,000
+   of the needed $3,151,000 was on hand, so it also ran out mid-purchase —
+   a separate, previously-unseen "bought as much as it could afford, still
+   ok:true" behavior, distinct from the hard-rejection case above)
+
+11 pet ids, cash sized exactly for all 11 ($3,243,000)
+→ {"ok":true,"sent":10,"units_sent":137,"units_bought":137,"cash_spent":3151000,...}
+   (the 11th pet id — smallest capacity, last in the submitted list — is
+   simply dropped; the $92,000 its cargo would have cost is never spent,
+   and the response gives no signal that anything was left out beyond
+   sent=10 not matching the 11 ids submitted)
+
+10 pet ids, cash comfortably more than needed
+→ {"ok":true,"sent":10,"units_sent":137,"units_bought":137,"cash_spent":3151000,...}
+   (clean, full success — 10 is fine)
+```
+
+Every 11-pet attempt across both sessions hit the identical ceiling: the
+first 10 pet ids in the submitted list are accepted, the 11th is silently
+dropped, and the response still comes back `ok:true` — no error, no
+`was_capped`-style flag, nothing to detect except `sent` not matching
+`user_pet_ids.length`. 10 pets in one call has succeeded fully multiple
+times across both sessions; 11 has never once gone through in full,
+regardless of how much cash was available — ruling out a cash-sizing
+mistake as the explanation (the third example above had the exact right
+amount of cash for all 11 and still lost one).
+
+**Implication for automation:** `runLaunch` must never submit more than 10
+`user_pet_ids` in one call. More than 10 idle pets needs multiple `v2_launch`
+calls in the same cycle, chunked at 10 — and, per the design requirement
+below, each chunk after the first needs its own live `launchAvailability`
+re-check immediately before it fires, not just the first, since sending one
+chunk changes which pets are still idle and (at the top of the hour) the
+destination itself could rotate between chunks.
 
 ### The UI behind it
 
@@ -353,9 +406,11 @@ non-issue in practice.
 
 ## What's still needed before any redesign
 
-Nothing left open as of this pass — every question originally listed here
-got resolved from the same archive data already in hand, not from a fresh
-capture:
+Nothing left open as of the original scoping pass — every question listed
+here got resolved from the archive data in hand at the time, not from a
+fresh capture. One thing *has* surfaced since, from real post-ship traffic
+rather than scoping: the 10-courier-per-call cap documented above. Chunking
+`runLaunch` at 10 is the follow-up this leaves open.
 
 - `v2_launch`'s insufficient-cash shape — confirmed hard rejection, above.
 - Whether either bulk action can be called in a state its own button
