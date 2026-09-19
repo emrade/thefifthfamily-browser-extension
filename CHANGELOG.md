@@ -9,6 +9,27 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.29.0] - 2026-09-19
+
+### Added
+- Pet Courier's status display now shows which destination is open this
+  hour independently of whether any pets are idle. Previously that
+  information only ever came from the "Send Every Courier" block, which
+  goes silent about the destination entirely once no pets are idle — so a
+  busy fleet always read as "no idle pets" with no way to tell whether a
+  route was open at all. It's now read separately off the "Where You Can
+  Send" ribbon (present on every check, regardless of idle-pet count) and
+  shown as its own "Route" line, next to a separate "Dispatch" line for
+  whether `v2_launch` can actually fire right now — two different
+  questions that used to be shown as one.
+
+### Changed
+- Renamed the internal `'skipped-no-idle-pets'` status to `'no-idle-pets'`.
+  The old name was a leftover from the pre-rewrite design that genuinely
+  skipped checking when it had no idle pet to draft with; the current
+  design always checks the live panel every cycle, so nothing is ever
+  actually skipped anymore.
+
 ## [0.28.2] - 2026-09-19
 
 ### Fixed
