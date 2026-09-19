@@ -543,6 +543,27 @@ async function runIfEligibleOnce(): Promise<void> {
       scouted: 1,
     });
 
+    // Two confirmed real ordinary rejections, not shape problems, checked
+    // before the general "unrecognized" fallback below: "Cooldown active..."
+    // (the account's own live cooldown bar is ground truth over our tracked
+    // `nextEligibleAt` — see this file's own note above — so a stale tracked
+    // value can occasionally let a cycle fire into a cooldown that's still
+    // running; this is the exact rejection the `cycleInFlight` guard's own
+    // doc comment above describes from the 2026-08-26 double-fire incident)
+    // and "This opportunity has expired." (confirmed real, 2026-09-19: the
+    // gap between scouting a candidate and actually attempting it is
+    // occasionally enough for its own window to close first). Both are the
+    // game's normal error-reporting channel, not evidence of anything
+    // broken, so this treats them as an ordinary miss — log the cycle's own
+    // scouted candidates same as the "nothing cleared the bar" case above,
+    // and retry on the normal fallback cadence — rather than pausing.
+    if (attemptResp?.ok === false && typeof attemptResp.msg === 'string' && /cooldown active|opportunity has expired/i.test(attemptResp.msg)) {
+      console.error(LOG_PREFIX, `street intel attempt rejected — ${attemptResp.msg}`);
+      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now() });
+      scheduleNextCheck(null);
+      return;
+    }
+
     // Same conservative posture as everywhere else: anything other than a
     // clean `ok:true` with a real cooldown is unrecognized shape, not an
     // ordinary rejection to shrug off — a `disaster` outcome (real jail time)
