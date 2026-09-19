@@ -228,17 +228,26 @@ trusted from an earlier point in the cycle.
 the button for it.** Confirmed for both:
 
 - **`v2_launch` against a locked destination slot** — the real UI disables
-  it outright, no `onclick`, can't be tapped.
+  it outright, no `onclick`, can't be tapped. Its own idle-pet threshold is
+  low, though — confirmed across all three archives pulled for this doc: the
+  bulk picker (`<div class="sv2-lo">`, no `off`) enables with as few as **1**
+  idle pet, not 2. Don't assume the two actions share a threshold — they
+  don't (see next point).
 - **`v2_offload_all`** — confirmed from the archive, not just a screenshot:
   the whole `<button class="sv2-collect-all" onclick="Game.smugV2OffloadAll(N)">`
   is **entirely absent from the markup**, not merely disabled, whenever
-  fewer than 2 deliveries have arrived. Checked 57 real instances of the
+  fewer than **2** deliveries have arrived. Checked 57 real instances of the
   button across this archive — `N` always matched the live ready-delivery
   count exactly, and it never appeared once below 2. With exactly 1 arrived,
-  the panel only shows that single delivery's own individual claim chip, no
-  bulk button at all — matches the player's own screenshots exactly (one
-  showing the "Send Every Courier" block itself in that same kind of
-  entirely-absent-button state when nothing is idle).
+  the panel doesn't just hide the bulk button — it shows the old
+  single-shipment card in its place instead, with its own already-known
+  actions: `Game.smugV2OffloadPartial(shipmentId, qty)` ("Offload Some") and
+  `Game.smugV2Offload(shipmentId, qty, qty)` ("Offload"), both already
+  implemented in `petCourier.ts`. So this isn't only "don't call
+  `v2_offload_all` below 2" — it's "below 2, use the existing single-shipment
+  offload flow instead, exactly matching what a real player sees." Any
+  automation built around the bulk actions still needs the old per-shipment
+  path kept alongside it for this case, not dropped in favor of the new one.
 
 In both cases, a real player has **no way to trigger the call at all** in
 that state — this isn't "the server would probably reject it," it's "there
