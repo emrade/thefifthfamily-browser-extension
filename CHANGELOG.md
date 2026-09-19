@@ -9,6 +9,21 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.28.1] - 2026-09-19
+
+### Fixed
+- Pet Courier's bulk dispatch (`v2_launch`) now sends idle couriers in
+  batches of at most 10. Confirmed real (from the account's own request
+  archive, both the account owner's own manual game-UI testing and this
+  extension's automated dispatch): the game silently caps a single
+  `v2_launch` call at 10 couriers — an 11th pet id in the same request is
+  dropped with no error and no signal beyond the response's `sent` count not
+  matching how many were submitted, regardless of how much cash is
+  available. More than 10 idle pets now dispatch as multiple `v2_launch`
+  calls in the same run, each re-checking the live panel immediately before
+  it fires (so a mid-run destination rotation can't slip through), with the
+  run summary reporting the combined total across every batch.
+
 ## [0.28.0] - 2026-09-19
 
 ### Added
