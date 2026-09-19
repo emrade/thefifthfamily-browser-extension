@@ -1,10 +1,11 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
+import { STORAGE_KEYS } from '@/shared/constants';
 import { STOP_REASON_LABEL, describeItems, describeLaunched, describeOffloadedBatch, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/shared/types';
+import type { CourierAutoConfig, CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/shared/types';
 
 /**
  * A floating panel on the live Smuggling page — collapsed to a small badge by
@@ -491,6 +492,27 @@ function buildPanel(): HTMLDivElement {
         applyWatchGate(config.watchEnabled);
       })
       .catch((err) => console.error(LOG_PREFIX, 'courier panel auto config read failed', err));
+
+    // Keeps these checkboxes honest when `CourierAutoConfig` changes for a
+    // reason that didn't originate from a click in *this* panel instance —
+    // the popup's own toggles, another tab's copy of this same panel, or
+    // (the case that actually surfaced this) `courierWatch.ts`'s own
+    // `disableAutoWatch()` flipping everything off in the background after
+    // an unrecognized rejection. Confirmed real: without this, a
+    // background-triggered disable left every switch here still showing ON
+    // — correctly reflected everywhere else (the status text below, and the
+    // popup, which already had this same listener) but silently wrong here.
+    // Same `chrome.storage.onChanged` pattern the popup's `PetCouriersHome`
+    // already uses, just updating checkboxes instead of React state.
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
+      const next = changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue as CourierAutoConfig | undefined;
+      if (!next) return;
+      watchToggle.checked = next.watchEnabled;
+      offloadToggle.checked = next.autoOffloadEnabled;
+      dispatchToggle.checked = next.autoDispatchEnabled;
+      applyWatchGate(next.watchEnabled);
+    });
 
     watchToggle.addEventListener('change', () => {
       storage
