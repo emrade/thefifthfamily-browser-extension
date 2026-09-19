@@ -442,23 +442,18 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     }
     const idlePets = roster.filter((p) => !activeNames.has(p.name) && !p.draftBlockedReason);
 
-    if (idlePets.length === 0) {
-      summary.stoppedReason = 'no-idle-pets';
-      return summary;
-    }
-
-    const item = pickItem(snapshot.blackMarket);
-    if (!item) {
-      pushError('nothing buyable in the current district');
-      return summary;
-    }
-
     // Never construct `v2_launch` in a state the real UI wouldn't offer the
     // button for — see docs/smuggling-bulk-actions-plan.md's design
     // requirement. `launchAvailability` is read live off this same fetch
     // (re-fetched above if the offload step or the stuck-draft cleanup ran),
-    // not inferred from `idlePets.length` — the class check on the panel is
-    // the authoritative signal for whether the button exists at all.
+    // and checked *before* `idlePets.length` below — the class check on the
+    // panel is the authoritative signal for whether the button exists at
+    // all, and the locally-cached roster diff (`idlePets`, from `getRoster()`)
+    // can lag it: the roster only gets a fresh write when a fetch happens to
+    // show the full crew (zero active shipments), so it can still read empty
+    // for a beat after a pet actually becomes draftable server-side. Checking
+    // `availability` first means a real "no idle pets" verdict always comes
+    // from the server's own signal, never from a stale local cache.
     const availability = snapshot.launchAvailability;
     if (!availability.available) {
       switch (availability.reasonKind) {
@@ -478,6 +473,23 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           pushError(availability.reasonText);
           summary.stoppedReason = 'shape-changed';
       }
+      return summary;
+    }
+
+    if (idlePets.length === 0) {
+      // The server just confirmed a courier is available, but the local
+      // roster cache disagrees — a desync worth surfacing on its own rather
+      // than quietly filed under the routine "no idle pets" case above
+      // (which this contradicts, since `availability.available` already
+      // ruled that out from the server's own point of view).
+      pushError('the panel reports an idle courier available, but the local pet roster shows none — the roster cache may be stale');
+      summary.stoppedReason = 'shape-changed';
+      return summary;
+    }
+
+    const item = pickItem(snapshot.blackMarket);
+    if (!item) {
+      pushError('nothing buyable in the current district');
       return summary;
     }
 
@@ -534,7 +546,63 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     }
 
     try {
-      const launch = await runLaunch(included, item, availability.destination, runningCost);
+      // Re-read live state immediately before sending — the funds check and
+      // (possibly) the withdrawal just above each made a real network call,
+      // so the `availability` captured earlier could be stale by the time
+      // execution actually gets here. Same discipline as Career Auto's live
+      // cooldown cross-check, and the exact rule
+      // docs/smuggling-bulk-actions-plan.md's design-requirement section
+      // spells out: a stale earlier read must never reach the network as a
+      // `v2_launch` call the real client couldn't have sent (e.g. a
+      // destination that rotated locked in the few seconds this took).
+      const recheck = await fetchPanel();
+      if (!recheck) {
+        pushError('could not re-read the smuggling panel immediately before launch');
+        summary.stoppedReason = 'shape-changed';
+        return summary;
+      }
+      const liveAvailability = recheck.launchAvailability;
+      if (!liveAvailability.available) {
+        switch (liveAvailability.reasonKind) {
+          case 'no-idle-pets':
+            summary.stoppedReason = 'no-idle-pets';
+            break;
+          case 'destination-locked':
+            summary.stoppedReason = 'no-destination-available';
+            break;
+          case 'stuck-draft':
+          case 'unknown':
+          default:
+            pushError(liveAvailability.reasonText);
+            summary.stoppedReason = 'shape-changed';
+        }
+        return summary;
+      }
+
+      let launch = await runLaunch(included, item, liveAvailability.destination, runningCost);
+
+      // Confirmed real (2026-08-29, the old per-pet buy loop's own incident):
+      // a second, independent browser session logged into the same account
+      // can sweep cash-on-hand to the bank (e.g. Street Intel's own
+      // `depositCashOnHand` cleanup) in the moments between this batch's
+      // withdrawal and this call, zeroing out the exact cash `max_spend` was
+      // just sized against. Nothing here can see or coordinate with that
+      // other session, so the only real fix is reacting live to whatever
+      // cash actually turns out to be there: one top-up withdrawal, then one
+      // retry of this exact call — the same recovery the old buy loop used,
+      // ported to the one call that replaced it.
+      if (!launch?.ok && typeof launch?.error === 'string' && /ran out of cash for more cargo/i.test(launch.error)) {
+        const fundsNow = await fetchCashAndDistrict();
+        if (fundsNow && fundsNow.cash < runningCost && fundsNow.bank > 0) {
+          const topUp = Math.min(fundsNow.bank, runningCost - fundsNow.cash);
+          const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
+          if (withdraw?.ok) {
+            summary.cashWithdrawn += topUp;
+            launch = await runLaunch(included, item, liveAvailability.destination, runningCost);
+          }
+        }
+      }
+
       if (launch?.ok) {
         summary.launched = {
           petCount: Number(launch.sent) || included.length,
@@ -542,14 +610,9 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           unitsBought: Number(launch.units_bought) || 0,
           cashSpent: Number(launch.cash_spent) || 0,
           item: item.name,
-          destination: typeof launch.destination === 'string' ? launch.destination : availability.destination.name,
+          destination: typeof launch.destination === 'string' ? launch.destination : liveAvailability.destination.name,
         };
       } else {
-        // Not the cash case — `runningCost` (this call's own `max_spend`) is
-        // sized from the same affordability check just above, so the
-        // confirmed "Ran out of cash for more cargo" rejection shouldn't
-        // happen here. An unexpected rejection is treated the same as any
-        // other unrecognized outcome from this call.
         pushError(`launch failed: ${launch?.error ?? 'unknown error'}`);
         summary.stoppedReason = 'shape-changed';
       }

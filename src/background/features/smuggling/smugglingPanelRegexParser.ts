@@ -335,13 +335,22 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
     return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
   }
 
-  const destIdx = window.indexOf('sv2-lo-dest on');
-  if (destIdx === -1) {
+  // Matches the whole opening tag and requires both class tokens present
+  // anywhere in its `class="..."` value, order-independent — a plain
+  // `indexOf('sv2-lo-dest on')` (an earlier version of this) only matched
+  // that exact literal order and would silently miss the button (falling
+  // through to `reasonKind: 'unknown'`, blocking dispatch) if the game ever
+  // rendered the classes the other way around or with another class
+  // interleaved, e.g. `class="on sv2-lo-dest"`. Mirrors how
+  // `smugglingPanelAdapter.ts`'s DOM twin already matches this
+  // order-independently via `.sv2-lo-dest.on`, a plain class selector.
+  const destTagMatch = window.match(/<[a-z][^>]*\bclass="(?=[^"]*\bsv2-lo-dest\b)(?=[^"]*\bon\b)[^"]*"[^>]*>/i);
+  if (!destTagMatch) {
     return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
   }
-  const destChunk = window.slice(destIdx, destIdx + 300);
-  const cityMatch = destChunk.match(/data-city="(\d+)"/);
-  const nameMatch = destChunk.match(/data-name="([^"]+)"/);
+  const destTag = destTagMatch[0];
+  const cityMatch = destTag.match(/data-city="(\d+)"/);
+  const nameMatch = destTag.match(/data-name="([^"]+)"/);
   if (!cityMatch || !nameMatch) {
     return { available: false, reasonKind: 'unknown', reasonText: 'the open destination button is missing its data-city/data-name attributes' };
   }

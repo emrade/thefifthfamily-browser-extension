@@ -480,7 +480,13 @@ async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: str
   await storage.setCourierWatchState({ destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now(), lastProbeResult: 'open' });
 
   const idlePets = await getIdlePets(snapshot.fleet);
-  return actOnOpenDestination(idlePets.length, availability.destination.name, alarmName, !alreadyAnnouncedThisHour);
+  // `availability.available` already guarantees at least one idle courier
+  // server-side — if the local roster cache disagrees (the same staleness
+  // `getIdlePets`'s own doc comment above describes), floor the displayed
+  // count at 1 rather than showing a contradictory "0 pets ready to send" in
+  // the notification or badge for a destination just confirmed open.
+  const idleCount = Math.max(idlePets.length, 1);
+  return actOnOpenDestination(idleCount, availability.destination.name, alarmName, !alreadyAnnouncedThisHour);
 }
 
 export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
