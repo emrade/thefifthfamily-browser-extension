@@ -280,6 +280,54 @@ replacing that; it's narrowing what "unexpected" ever has to cover by keeping
 these two specific, foreseeable cases from reaching the network in the first
 place.
 
+## The shape a rebuild would likely take — sketch only, not scoped or decided
+
+"Additive" describes what the *game* changed (nothing removed, buy just
+moved tabs) — it doesn't mean our own automation would stay the same shape.
+The new actions cover most of what the old per-pet loop did manually, in one
+call instead of N, so a rebuild would touch real structure, not just swap a
+function call.
+
+**Background (`petCourier.ts` / `courierWatch.ts`):**
+
+- **The per-pet dispatch loop mostly disappears.** `runCourierBatch()`
+  today drafts, buys, loads, and departs one pet at a time. A rebuild
+  replaces nearly all of that with a single `v2_launch` per cycle: gather
+  eligible idle pets, pick an item, pick the destination, fire once. The old
+  per-pet loop only survives for the cases already confirmed the bulk button
+  doesn't cover (none of which are "many idle pets" — they're the documented
+  edge cases above).
+- **Destination detection gets cheaper.** `courierWatch.ts` currently drafts
+  a shipment and cancels it just to see whether a destination is open — the
+  whole reason `docs/smuggling-route-ribbon-plan.md` exists. The `sv2-lo`/
+  `sv2-lo off` signal on the same panel fetch answers "can I send right now"
+  directly, no draft/cancel needed.
+- **Offload gets the same treatment**, with the confirmed 2-vs-1 split:
+  `v2_offload_all` at 2+ arrived, the existing single-shipment
+  `v2_offload`/`v2_offload_partial` for exactly 1, nothing at 0.
+- **One genuinely new piece of logic: cash management.** The old flow bought
+  small amounts per pet as it went. `v2_launch` wants a `max_spend` up
+  front, which — per the account owner's own workflow — means checking cash
+  on hand and withdrawing from the bank first if it's short. Nothing in the
+  current automation does this today.
+
+**UI (`courierPanel.ts` overlay + `PetCouriersHome.tsx` popup):** mostly
+simplification. Status display currently tracks per-pet draft/load/depart
+progress across a multi-step batch; that collapses to one summary line per
+cycle ("sent N couriers to X, bought Y units for $Z"), since there's one
+call to report on instead of a sequence. The enable/disable toggle stays the
+same shape.
+
+**One real tradeoff to decide deliberately, not default into:** `v2_launch`
+picks a single item and a single destination for the *entire* batch. The old
+per-pet flow could in principle match each pet to whatever was most
+profitable for its own capacity/origin — a rebuild trades that per-pet
+optimization for speed and simplicity. The account owner's own manual habit
+("we usually buy the expensive one") suggests this may cost nothing in
+practice, but the old automation never actually did per-pet optimization
+either way, so this is a real behavior question to settle when a rebuild is
+actually scoped, not an assumption to bake in now.
+
 ## What's still needed before any redesign
 
 Nothing left open as of this pass — every question originally listed here
