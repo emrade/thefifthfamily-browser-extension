@@ -34,6 +34,18 @@ export function describeItems(items: { item: string; qty: number }[]): string {
   return items.map((i) => `${i.qty}× ${i.item}`).join(', ');
 }
 
+/** One line for a `v2_launch` bulk-dispatch result — the `sent`-list
+ *  counterpart for `CourierRunSummary.launched`, see its own doc comment. */
+export function describeLaunched(launched: NonNullable<CourierRunSummary['launched']>): string {
+  return `${launched.petCount} courier${launched.petCount === 1 ? '' : 's'} → ${launched.destination} — ${launched.unitsBought} units bought for ${formatCourierMoney(launched.cashSpent)}`;
+}
+
+/** One line for a `v2_offload_all` bulk-collect result — the `offloaded`-list
+ *  counterpart for `CourierRunSummary.offloadedBatch`, see its own doc comment. */
+export function describeOffloadedBatch(batch: NonNullable<CourierRunSummary['offloadedBatch']>): string {
+  return `Collected ${batch.runsCollected} deliveries — ${batch.unitsSold} units for ${formatCourierMoney(batch.cashReceived)} (${formatCourierMoney(batch.netProfit)} profit)`;
+}
+
 export const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedReason']>, string> = {
   'daily-cap-reached': "Today's profit cap is reached — resumes after the midnight reset.",
   'insufficient-funds': 'Not enough cash + bank to load even one pet.',

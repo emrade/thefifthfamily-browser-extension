@@ -4,9 +4,9 @@ import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
-import { SystemicActionError, depositCashOnHand, postAction, sleep } from '../../gameAction';
+import { SystemicActionError, depositCashOnHand, postAction } from '../../gameAction';
 import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
-import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
  * Set for the duration of one run, to the tab that asked for it — see
@@ -110,6 +110,43 @@ export function pickDestination(destinations: DestinationOption[]): DestinationO
   return open.reduce((best, d) => (d.courierMinutes < best.courierMinutes ? d : best));
 }
 
+/**
+ * POSTs `v2_launch` — sends every included idle pet in one call, with the
+ * server buying the cargo inline (`buy=1`). Replaces what used to be a
+ * draft→buy→load→depart sequence repeated once per pet — see
+ * docs/smuggling-bulk-actions-plan.md's confirmed request shape. Only ever
+ * called from `executeCourierBatch`, after that caller has already confirmed
+ * `snapshot.launchAvailability.available` on the live fetch — this function
+ * itself does no gating.
+ *
+ * `user_pet_ids` is comma-joined, not sent as repeated params — confirmed
+ * from the real capture that `postAction`'s plain string params URL-encode
+ * commas correctly, matching the real request byte-for-byte.
+ */
+async function runLaunch(pets: PetRosterEntry[], item: BlackMarketItem, destination: { cityId: number; name: string }, maxSpend: number): Promise<any> {
+  return postAction('/actions/smuggling.php', {
+    action: 'v2_launch',
+    user_pet_ids: pets.map((p) => p.userPetId).join(','),
+    item_id: item.itemId,
+    destination_city_id: destination.cityId,
+    buy: 1,
+    max_spend: maxSpend,
+  });
+}
+
+/**
+ * POSTs `v2_offload_all` — sweeps every already-landed, unbanked delivery
+ * account-wide in one call, no parameters beyond auth. Only ever called from
+ * `offloadWhatIsReady` once it's confirmed `snapshot.offloadAllCount` is
+ * non-null on the live fetch (2+ ready deliveries — the real button's own
+ * confirmed threshold), so `count` isn't part of the request itself; it's
+ * accepted here only so the caller's own gating condition stays visible at
+ * the call site rather than implicit.
+ */
+async function runOffloadAll(count: number): Promise<any> {
+  return postAction('/actions/smuggling.php', { action: 'v2_offload_all' });
+}
+
 /** Maps a `SystemicActionError` to the batch's own `stoppedReason` vocabulary.
  *  `'status-blocked'` (jailed/hospitalized/travelling right now) is kept
  *  distinct from `'shape-changed'` — see gameAction.ts's `SystemicActionError`
@@ -124,12 +161,13 @@ function classifyStop(err: SystemicActionError): CourierRunSummary['stoppedReaso
 }
 
 /**
- * Offloads every fleet entry that's arrived — shared between the full batch run
- * and the standalone offload-only action (see `runOffloadBatch`), since collecting
- * arrived shipments is identical work either way. Returns a stop reason if a
- * systemic error hit partway through; ordinary per-shipment rejections are pushed
- * as errors and don't stop the loop, since one pet's cargo failing to sell doesn't
- * mean the next one's will too.
+ * Offloads every fleet entry that's arrived, one `v2_offload` per shipment —
+ * the single-shipment fallback `offloadWhatIsReady` below routes to whenever
+ * `v2_offload_all` isn't offered (0 or 1 ready deliveries; see that
+ * function's own doc). Returns a stop reason if a systemic error hit
+ * partway through; ordinary per-shipment rejections are pushed as errors and
+ * don't stop the loop, since one pet's cargo failing to sell doesn't mean
+ * the next one's will too.
  */
 async function offloadReady(
   fleet: FleetEntry[],
@@ -153,6 +191,52 @@ async function offloadReady(
     }
   }
   return null;
+}
+
+/**
+ * Offloads whatever's landed — shared between the full batch run and the
+ * standalone offload-only action (see `runOffloadBatch`), since collecting
+ * arrived shipments is identical work either way regardless of which
+ * action triggered it. Routes to the bulk `v2_offload_all` call whenever the
+ * real UI would offer that button (`snapshot.offloadAllCount !== null` — 2+
+ * ready deliveries, confirmed from the archive), falling through to the
+ * existing per-shipment `offloadReady` loop otherwise, which already handles
+ * 0 or 1 ready shipments correctly. Never calls `v2_offload_all` below that
+ * threshold — there is no legitimate path to construct that request below
+ * it (see docs/smuggling-bulk-actions-plan.md's design-requirement section),
+ * so this doesn't try.
+ */
+async function offloadWhatIsReady(
+  snapshot: SmugglingV2Snapshot,
+  pushOffloaded: (entry: CourierRunSummary['offloaded'][number]) => void,
+  pushError: (message: string) => void,
+  summary: CourierRunSummary,
+): Promise<CourierRunSummary['stoppedReason']> {
+  if (snapshot.offloadAllCount === null) {
+    return offloadReady(snapshot.fleet, pushOffloaded, pushError);
+  }
+
+  try {
+    const resp = await runOffloadAll(snapshot.offloadAllCount);
+    if (resp?.ok) {
+      summary.offloadedBatch = {
+        runsCollected: Number(resp.runs_collected) || 0,
+        unitsSold: Number(resp.units_sold) || 0,
+        cashReceived: Number(resp.cash_received) || 0,
+        netProfit: Number(resp.net_profit) || 0,
+      };
+    } else {
+      pushError(`offload-all failed: ${resp?.error ?? 'unknown error'}`);
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof SystemicActionError) {
+      pushError(err.message);
+      return classifyStop(err);
+    }
+    pushError(`offload-all failed: ${String(err)}`);
+    return null;
+  }
 }
 
 /**
@@ -227,6 +311,8 @@ async function executeOffloadBatch(): Promise<CourierRunSummary> {
     offloaded: [],
     sent: [],
     skipped: [],
+    launched: null,
+    offloadedBatch: null,
     cashWithdrawn: 0,
     cashDeposited: 0,
     stoppedReason: null,
@@ -249,7 +335,7 @@ async function executeOffloadBatch(): Promise<CourierRunSummary> {
       return summary;
     }
 
-    const stopReason = await offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    const stopReason = await offloadWhatIsReady(snapshot, pushOffloaded, pushError, summary);
     if (stopReason) summary.stoppedReason = stopReason;
     return summary;
   } catch (err) {
@@ -270,6 +356,8 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     offloaded: [],
     sent: [],
     skipped: [],
+    launched: null,
+    offloadedBatch: null,
     cashWithdrawn: 0,
     cashDeposited: 0,
     stoppedReason: null,
@@ -287,10 +375,6 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
   const pushOffloaded = (entry: CourierRunSummary['offloaded'][number]) => {
     summary.offloaded.push(entry);
     emitProgress({ kind: 'offloaded', ...entry });
-  };
-  const pushSent = (entry: CourierRunSummary['sent'][number]) => {
-    summary.sent.push(entry);
-    emitProgress({ kind: 'sent', ...entry });
   };
   const pushSkipped = (entry: CourierRunSummary['skipped'][number]) => {
     summary.skipped.push(entry);
@@ -311,18 +395,6 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // rather than surfacing later as "nothing buyable" (which reads as routine).
     if (snapshot.blackMarket.length === 0) {
       pushError('the black-market grid parsed empty — the panel markup may have changed shape');
-      summary.stoppedReason = 'shape-changed';
-      return summary;
-    }
-
-    // "Hidden Cargo" is the account-wide stash cap — buying without knowing it
-    // means buying blind into a limit that's routinely smaller than a single
-    // pet's own capacity (George's 30 vs. a 21-slot stash, confirmed on this
-    // account). Same treatment as the black-market check above: this monitor is
-    // always present on a real capture, so a missing one means the markup
-    // changed, not that the account genuinely has no cargo stat.
-    if (!snapshot.hiddenCargo) {
-      pushError('the Hidden Cargo monitor parsed empty — the panel markup may have changed shape');
       summary.stoppedReason = 'shape-changed';
       return summary;
     }
@@ -348,13 +420,13 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // Free up pets and realize the previous run's profit before spending anything
     // new — also means the daily-cap check right after reflects today's true
     // remaining headroom.
-    const offloadStop = await offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    const offloadStop = await offloadWhatIsReady(snapshot, pushOffloaded, pushError, summary);
     if (offloadStop) {
       summary.stoppedReason = offloadStop;
       return summary;
     }
 
-    if (summary.offloaded.length > 0) {
+    if (summary.offloaded.length > 0 || summary.offloadedBatch) {
       const fresh = await fetchPanel();
       if (fresh) snapshot = fresh;
     }
@@ -388,6 +460,34 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     const item = pickItem(snapshot.blackMarket);
     if (!item) {
       pushError('nothing buyable in the current district');
+      return summary;
+    }
+
+    // Never construct `v2_launch` in a state the real UI wouldn't offer the
+    // button for — see docs/smuggling-bulk-actions-plan.md's design
+    // requirement. `launchAvailability` is read live off this same fetch
+    // (re-fetched above if the offload step or the stuck-draft cleanup ran),
+    // not inferred from `idlePets.length` — the class check on the panel is
+    // the authoritative signal for whether the button exists at all.
+    const availability = snapshot.launchAvailability;
+    if (!availability.available) {
+      switch (availability.reasonKind) {
+        case 'no-idle-pets':
+          summary.stoppedReason = 'no-idle-pets';
+          break;
+        case 'destination-locked':
+          summary.stoppedReason = 'no-destination-available';
+          break;
+        case 'stuck-draft':
+        case 'unknown':
+        default:
+          // A stuck draft here means the cleanup step above either didn't
+          // clear it or something re-created one between then and this read
+          // — worth surfacing as a real error rather than the routine
+          // no-idle/no-destination cases just above.
+          pushError(availability.reasonText);
+          summary.stoppedReason = 'shape-changed';
+      }
       return summary;
     }
 
@@ -443,215 +543,42 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       }
     }
 
-    // Learned once, from the first pet's draft — the destination pair is
-    // account-wide, not per-shipment, and won't rotate mid-batch (see the doc's
-    // confirmed 60-minute rotation).
-    let destination: DestinationOption | null = null;
-
-    // `snapshot` may have been reassigned since the hiddenCargo check above (the
-    // stuck-draft cleanup and offload passes both refetch it) — re-validated here
-    // against whichever fetch is actually current, rather than trusting the
-    // earlier check still describes this snapshot.
-    if (!snapshot.hiddenCargo) {
-      pushError('the Hidden Cargo monitor parsed empty on the latest fetch — the panel markup may have changed shape');
-      summary.stoppedReason = 'shape-changed';
-      return summary;
-    }
-    // Tracked locally rather than re-fetched before every buy — a `buy` fills
-    // this and a `v2_load` frees it right back up, both confirmed from real
-    // captures, so the running total stays accurate without paying a network
-    // round trip per chunk. Shared across every pet in this batch, not reset per
-    // pet, because the stash itself is account-wide, not per-pet.
-    let stashUsed = snapshot.hiddenCargo.current;
-    const stashMax = snapshot.hiddenCargo.max;
-
-    // Whatever's already sitting in the stash from before this run started — a
-    // previous failed attempt (a buy that succeeded but a later step didn't,
-    // confirmed to happen: it's exactly how the stash ended up full enough to
-    // block every pet in the run right before this fix) or just leftover from
-    // manual play. Drained into whichever pet processes first, ahead of any new
-    // buying, rather than left to sit there blocking the whole stash indefinitely.
-    // A shipment carrying a mix of items is normal — confirmed from a real
-    // `v2_offload` response with two different `lines[]` entries.
-    const leftoverStash = new Map(snapshot.blackMarket.filter((i) => i.stash > 0).map((i) => [i.itemId, { name: i.name, qty: i.stash }]));
-
-    for (const pet of included) {
-      // Tracked outside the try block so the `catch` below can clean up a draft
-      // that got this far before something later failed — the game only allows
-      // one shipment "being loaded" at a time (confirmed the hard way: leaving one
-      // stranded here blocked every pet queued after it with "You already have a
-      // delivery being loaded."). `shipmentId` stays null until `v2_draft`
-      // actually succeeds, so there's nothing to cancel if it never got that far.
-      let shipmentId: number | null = null;
-      emitProgress({ kind: 'drafting', petName: pet.name });
-      try {
-        const draft = await postAction('/actions/smuggling.php', { action: 'v2_draft', user_pet_id: pet.userPetId });
-        if (!draft?.ok) {
-          pushError(`draft failed for ${pet.name}: ${draft?.error ?? 'unknown error'}`);
-          continue;
-        }
-        shipmentId = Number(draft.shipment_id);
-
-        if (!destination) {
-          // Resolved once, right after the *first* pet's draft succeeds — before
-          // any drain/buy/load spending happens, not after. Confirmed from a real
-          // capture (George's manual draft, before any load) that the destination
-          // picker is already populated the instant a draft opens, with nothing
-          // loaded yet — so there's no reason to buy and load a pet's cargo first
-          // to find out the destinations are locked/unresolvable and the whole
-          // batch has to stop anyway. One retry with a short pause covers the
-          // unlikely case this account's own timing differs from that capture's.
-          for (let attempt = 0; attempt < 2 && !destination; attempt++) {
-            if (attempt > 0) await sleep(1500);
-            const afterDraft = await fetchPanel();
-            destination = afterDraft ? pickDestination(afterDraft.destinations) : null;
-          }
-          if (!destination) {
-            // The destination pair is account-wide, not per-pet — every pet still
-            // queued behind this one would see the exact same two (still-locked)
-            // cells, so retrying per pet would just cancel each one in turn while
-            // repeating an already-known answer. Stopping here once, instead of
-            // once per remaining pet, was confirmed necessary the first time this
-            // ran: it produced the identical "no destination" outcome for every
-            // pet after the first, just discovered the slow way.
-            pushError(`no open destination available for ${pet.name} — the two open this hour are locked or unresolvable for every pet, not just this one`);
-            await cancelShipment(shipmentId, pet.name, pushError);
-            summary.stoppedReason = 'no-destination-available';
-            return summary;
-          }
-        }
-
-        let qty = 0;
-        const loadedItems = new Map<string, number>(); // item name -> qty, merges if the same item shows up from both draining and buying
-
-        // Drain existing stash first — a straight transfer (stash → manifest, no
-        // purchase involved), so it only costs pet capacity, never stash room.
-        for (const [itemId, entry] of leftoverStash) {
-          if (qty >= pet.capacity || entry.qty <= 0) continue;
-          const loadQty = Math.min(pet.capacity - qty, entry.qty);
-          const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: itemId, qty: loadQty });
-          if (!load?.ok) {
-            pushError(`load (from existing stash) failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
-            continue; // this one item didn't work — still worth trying the rest of the stash, and then buying fresh
-          }
-          stashUsed -= loadQty;
-          entry.qty -= loadQty;
-          qty += loadQty;
-          loadedItems.set(entry.name, (loadedItems.get(entry.name) ?? 0) + loadQty);
-        }
-
-        // A pet's own capacity routinely exceeds the shared stash cap (George's 30
-        // vs. a 21-slot stash, confirmed on this account) — buying it in one shot,
-        // an earlier version of this loop, fails outright rather than partially,
-        // every time the pet's capacity alone is bigger than the stash. Cycling
-        // buy→load in stash-sized chunks is the same flow the UI itself uses (see
-        // docs/smuggling-v2-plan.md's confirmed action table).
-        while (qty < pet.capacity) {
-          const remainingNeeded = pet.capacity - qty;
-          const availableRoom = stashMax - stashUsed;
-          if (availableRoom <= 0) {
-            // Not an error by itself — a still-nonzero `qty` means the drain step
-            // above (or an earlier round this same pet) already loaded something
-            // worth departing with; only truly a dead end if nothing was ever
-            // loaded at all (handled just below).
-            break;
-          }
-
-          const buyQty = Math.min(remainingNeeded, availableRoom);
-          let buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
-
-          // Confirmed real (2026-08-29, cross-checked against both browsers'
-          // request archives): the account was logged into two entirely separate
-          // browsers at once (this batch running in one, Street Intel's
-          // auto-runner running in the other), and Street Intel's own "sweep
-          // leftover cash so it can't be mugged" cleanup (`depositCashOnHand`)
-          // fired mid-batch — `action=deposit&amount=ALL` zeroed out the shared
-          // account-wide cash-on-hand this batch's own withdrawal above had
-          // already sized and set aside, moments before this buy. Not a pricing
-          // effect; the item's price was flat throughout (confirmed from
-          // `cargo_basis` on each successful load). Nothing in this browser can
-          // see or coordinate with a second, independent browser instance of the
-          // same account, so the only real fix is reacting live to whatever cash
-          // actually turns out to be there: a top-up withdrawal at whatever
-          // amount the rejection itself just quoted, then one retry of this
-          // exact call. Not attempted for any other rejection (cargo-full,
-          // wrong-district, etc.) — those aren't a funds problem, so a
-          // withdrawal wouldn't fix them.
-          const insufficientFundsMatch = !buy?.ok && typeof buy?.error === 'string' ? buy.error.match(/Need \$?([\d,]+) for one/i) : null;
-          if (insufficientFundsMatch) {
-            const neededTotal = Number(insufficientFundsMatch[1].replace(/,/g, '')) * buyQty;
-            const funds = await fetchCashAndDistrict();
-            if (funds && neededTotal > funds.cash && funds.bank > 0) {
-              const topUp = Math.min(funds.bank, neededTotal - funds.cash);
-              const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
-              if (withdraw?.ok) {
-                summary.cashWithdrawn += topUp;
-                buy = await postAction('/actions/smuggling.php', { action: 'buy', item_id: item.itemId, qty: buyQty });
-              }
-            }
-          }
-
-          if (!buy?.ok) {
-            pushError(`buy failed for ${pet.name}: ${buy?.error ?? 'unknown error'}`);
-            break;
-          }
-          const boughtQty = Number(buy.qty ?? buy.qty_requested ?? buyQty);
-          stashUsed += boughtQty;
-
-          const load = await postAction('/actions/smuggling.php', { action: 'v2_load', shipment_id: shipmentId, item_id: item.itemId, qty: boughtQty });
-          if (!load?.ok) {
-            // Bought but not loaded — still genuinely sitting in the stash, so
-            // `stashUsed` stays incremented rather than being rolled back here.
-            pushError(`load failed for ${pet.name}: ${load?.error ?? 'unknown error'}`);
-            break;
-          }
-          stashUsed -= boughtQty; // moved from stash onto this pet's manifest, freeing the room back up
-          qty += boughtQty;
-          loadedItems.set(item.name, (loadedItems.get(item.name) ?? 0) + boughtQty);
-        }
-
-        if (qty === 0) {
-          pushError(`could not load anything for ${pet.name}`);
-          await cancelShipment(shipmentId, pet.name, pushError);
-          continue;
-        }
-
-        const districtRow = await db.districts.where('name').equals(destination.district).first();
-        if (!districtRow) {
-          pushError(`unknown district "${destination.district}" — not in the local district table yet`);
-          await cancelShipment(shipmentId, pet.name, pushError);
-          continue;
-        }
-
-        const depart = await postAction('/actions/smuggling.php', { action: 'v2_depart', shipment_id: shipmentId, destination_city_id: districtRow.id });
-        if (!depart?.ok) {
-          pushError(`depart failed for ${pet.name}: ${depart?.error ?? 'unknown error'}`);
-          await cancelShipment(shipmentId, pet.name, pushError);
-          continue;
-        }
-
-        pushSent({
-          petName: pet.name,
-          items: [...loadedItems].map(([name, itemQty]) => ({ item: name, qty: itemQty })),
-          destination: destination.district,
-        });
-      } catch (err) {
-        if (err instanceof SystemicActionError) {
-          pushError(err.message);
-          summary.stoppedReason = classifyStop(err);
-          return summary;
-        }
-        if (shipmentId !== null) await cancelShipment(shipmentId, pet.name, pushError);
-        pushError(`run failed for ${pet.name}: ${String(err)}`);
+    try {
+      const launch = await runLaunch(included, item, availability.destination, runningCost);
+      if (launch?.ok) {
+        summary.launched = {
+          petCount: Number(launch.sent) || included.length,
+          unitsSent: Number(launch.units_sent) || 0,
+          unitsBought: Number(launch.units_bought) || 0,
+          cashSpent: Number(launch.cash_spent) || 0,
+          item: item.name,
+          destination: typeof launch.destination === 'string' ? launch.destination : availability.destination.name,
+        };
+      } else {
+        // Not the cash case — `runningCost` (this call's own `max_spend`) is
+        // sized from the same affordability check just above, so the
+        // confirmed "Ran out of cash for more cargo" rejection shouldn't
+        // happen here. An unexpected rejection is treated the same as any
+        // other unrecognized outcome from this call.
+        pushError(`launch failed: ${launch?.error ?? 'unknown error'}`);
+        summary.stoppedReason = 'shape-changed';
       }
+    } catch (err) {
+      if (err instanceof SystemicActionError) {
+        pushError(err.message);
+        summary.stoppedReason = classifyStop(err);
+        return summary;
+      }
+      pushError(`launch failed: ${String(err)}`);
+      summary.stoppedReason = 'shape-changed';
     }
 
     return summary;
   } catch (err) {
-    // Catches anything thrown outside the per-pet loop's own handling — notably
-    // the startup stuck-draft cleanup, which isn't wrapped individually since a
-    // `SystemicActionError` there is exactly as real a stop-everything signal as
-    // one from inside the loop.
+    // Catches anything thrown outside the try blocks above — notably the
+    // startup stuck-draft cleanup, which isn't wrapped individually since a
+    // `SystemicActionError` there is exactly as real a stop-everything signal
+    // as one from anywhere else in this function.
     if (err instanceof SystemicActionError) {
       pushError(err.message);
       summary.stoppedReason = classifyStop(err);

@@ -4,6 +4,7 @@ import type {
   BlackMarketItem,
   DestinationOption,
   FleetEntry,
+  LaunchAvailability,
   PetRosterEntry,
   SmugglingV2Snapshot,
 } from '@/shared/types';
@@ -35,6 +36,8 @@ export function parseSmugglingV2Panel(responseText: string): SmugglingV2Snapshot
     assignedCourier: parseAssignedCourier(doc),
     dailyProfitCapRemaining: parseDailyCapRemaining(doc),
     hiddenCargo: parseHiddenCargo(doc),
+    launchAvailability: parseLaunchAvailability(doc),
+    offloadAllCount: parseOffloadAllCount(doc),
   };
 }
 
@@ -274,4 +277,45 @@ function parseHiddenCargo(doc: Document): { current: number; max: number } | nul
   }
 
   return null;
+}
+
+/** DOM twin of smugglingPanelRegexParser.ts's `classifyLaunchUnavailableReason` —
+ *  see its own doc for the three confirmed reasons this matches against. */
+function classifyLaunchUnavailableReason(text: string): 'stuck-draft' | 'no-idle-pets' | 'destination-locked' | 'unknown' {
+  if (/no idle couriers/i.test(text)) return 'no-idle-pets';
+  if (/delivery open and being loaded/i.test(text)) return 'stuck-draft';
+  if (/locked to you/i.test(text) || /rotate hourly/i.test(text)) return 'destination-locked';
+  return 'unknown';
+}
+
+/** DOM twin of smugglingPanelRegexParser.ts's `parseLaunchAvailability` — see
+ *  its own doc comment and docs/smuggling-bulk-actions-plan.md for what this
+ *  reads and why an unrecognized shape falls back to `available: false`. */
+function parseLaunchAvailability(doc: Document): LaunchAvailability {
+  const block = doc.querySelector('.sv2-lo');
+  if (!block) {
+    return { available: false, reasonKind: 'unknown', reasonText: 'the "Send Every Courier" block was not found on the panel' };
+  }
+
+  if (block.classList.contains('off')) {
+    const reasonText = textOf(block.querySelector('.sv2-lo-why')) || 'the bulk-send block is off, with no explanatory text found';
+    return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
+  }
+
+  const destBtn = block.querySelector('.sv2-lo-dest.on');
+  const cityId = destBtn?.getAttribute('data-city');
+  const name = destBtn?.getAttribute('data-name');
+  if (!cityId || !name) {
+    return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
+  }
+
+  return { available: true, destination: { cityId: Number(cityId), name } };
+}
+
+/** DOM twin of smugglingPanelRegexParser.ts's `parseOffloadAllCount`. */
+function parseOffloadAllCount(doc: Document): number | null {
+  const btn = Array.from(doc.querySelectorAll('button')).find((b) => b.getAttribute('onclick')?.includes('smugV2OffloadAll'));
+  const args = btn ? onclickArgs(btn, 'Game\\.smugV2OffloadAll') : null;
+  const count = args ? Number(args[0]) : NaN;
+  return Number.isFinite(count) ? count : null;
 }

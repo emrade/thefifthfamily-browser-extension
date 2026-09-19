@@ -262,6 +262,38 @@ export interface DestinationOption {
   stateBadge: string | null;
 }
 
+/**
+ * Whether the "Send Every Courier" bulk-launch block (`v2_launch`) is
+ * currently offered by the live UI — see
+ * docs/smuggling-bulk-actions-plan.md's "clean single on/off signal" section.
+ * Read directly off the block's own `sv2-lo`/`sv2-lo off` container class,
+ * not inferred from destinations/idle-pet counts computed separately, so it
+ * can never disagree with what a real player would see the button do — the
+ * account-safety rule the whole doc is built around ("never construct
+ * `v2_launch` in a state the real UI wouldn't offer the button for").
+ */
+export type LaunchAvailability =
+  | {
+      available: true;
+      /** The one destination the bulk picker offers open this hour — read
+       *  off the `sv2-lo-dest on` button's own `data-city`/`data-name`
+       *  attributes (confirmed real: `data-city="1" data-name="Downtown"`).
+       *  Not the same source as `DestinationOption` (that only exists once a
+       *  shipment draft is open) — this comes straight off the bulk block. */
+      destination: { cityId: number; name: string };
+    }
+  | {
+      available: false;
+      /** Classified from the block's own `sv2-lo-why` text. `'unknown'`
+       *  (with the raw text kept in `reasonText`) covers anything that
+       *  doesn't match one of the three confirmed messages, so a fourth
+       *  message the game adds later degrades to "don't act, surface the
+       *  real text" instead of being silently misclassified as one of the
+       *  three known reasons. */
+      reasonKind: 'stuck-draft' | 'no-idle-pets' | 'destination-locked' | 'unknown';
+      reasonText: string;
+    };
+
 /** The currently-open shipment's assigned pet, when a draft exists — capacity/speed
  *  here are that specific pet's stats, confirming (and feeding) the persisted
  *  PetRosterEntry for whichever pet this is. */
@@ -294,6 +326,16 @@ export interface SmugglingV2Snapshot {
    * itself isn't present.
    */
   hiddenCargo: { current: number; max: number } | null;
+  /** See `LaunchAvailability`'s own doc — the single "can I send everyone
+   *  idle right now" signal `v2_launch` automation gates on. */
+  launchAvailability: LaunchAvailability;
+  /** The `Game.smugV2OffloadAll(N)` argument when the bulk "Collect All"
+   *  button exists on this fetch, `null` otherwise. Confirmed real: the
+   *  button is entirely absent from the markup (not merely disabled) below
+   *  2 ready deliveries — see docs/smuggling-bulk-actions-plan.md's
+   *  design-requirement section. `N` always matches the live ready-delivery
+   *  count exactly (57 real instances checked). */
+  offloadAllCount: number | null;
 }
 
 /** What one click of "Run" actually did — shown in the in-page floating panel and
@@ -306,6 +348,18 @@ export interface CourierRunSummary {
   // freshly bought this run.
   sent: { petName: string; items: { item: string; qty: number }[]; destination: string }[];
   skipped: { petName: string; reason: string }[];
+  /** What one `v2_launch` call actually did — the bulk-dispatch counterpart
+   *  to `sent`, populated instead of it whenever `launchAvailability` allows
+   *  the bulk block (see docs/smuggling-bulk-actions-plan.md). `sent` stays
+   *  in this type only for the old per-pet loop, which no longer runs
+   *  (`v2_launch`'s own 1-idle-pet threshold covers every case it used to). */
+  launched: { petCount: number; unitsSent: number; unitsBought: number; cashSpent: number; item: string; destination: string } | null;
+  /** What one `v2_offload_all` call actually did — the bulk-offload
+   *  counterpart to `offloaded`, populated instead of it whenever
+   *  `offloadAllCount` is non-null (2+ ready deliveries). `offloaded` stays
+   *  populated by the surviving single-shipment fallback for exactly 1
+   *  ready delivery — the one case the bulk button doesn't cover. */
+  offloadedBatch: { runsCollected: number; unitsSold: number; cashReceived: number; netProfit: number } | null;
   cashWithdrawn: number;
   /** Whatever cash-on-hand got swept into the bank at the end of this run, so it's
    *  not sitting exposed (the player's own worry: "so i don't get mugged and loose

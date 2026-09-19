@@ -1,7 +1,7 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeItems, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeItems, describeLaunched, describeOffloadedBatch, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/shared/types';
@@ -181,9 +181,17 @@ function renderSummary(run: CourierRunSummary | null): string {
   if (run.stoppedReason) {
     parts.push(`<div class="ff-cp-alert">${STOP_REASON_LABEL[run.stoppedReason]}</div>`);
   }
+  if (run.offloadedBatch) {
+    parts.push('<div class="ff-cp-row-head">Offloaded</div>');
+    parts.push(`<div class="ff-cp-row">${describeOffloadedBatch(run.offloadedBatch)}</div>`);
+  }
   if (run.offloaded.length > 0) {
     parts.push('<div class="ff-cp-row-head">Offloaded</div>');
     parts.push(...run.offloaded.map((o) => `<div class="ff-cp-row">${o.petName} — ${formatCourierMoney(o.profit)}</div>`));
+  }
+  if (run.launched) {
+    parts.push('<div class="ff-cp-row-head">Sent</div>');
+    parts.push(`<div class="ff-cp-row">${describeLaunched(run.launched)}</div>`);
   }
   if (run.sent.length > 0) {
     parts.push('<div class="ff-cp-row-head">Sent</div>');
@@ -203,7 +211,15 @@ function renderSummary(run: CourierRunSummary | null): string {
     parts.push('<div class="ff-cp-row-head">Errors</div>');
     parts.push(...run.errors.map((e) => `<div class="ff-cp-row ff-cp-row--error">${e}</div>`));
   }
-  if (run.offloaded.length === 0 && run.sent.length === 0 && run.cashDeposited === 0 && !run.stoppedReason && run.errors.length === 0) {
+  if (
+    run.offloaded.length === 0 &&
+    run.sent.length === 0 &&
+    !run.launched &&
+    !run.offloadedBatch &&
+    run.cashDeposited === 0 &&
+    !run.stoppedReason &&
+    run.errors.length === 0
+  ) {
     parts.push('<div class="ff-cp-row">Nothing to do.</div>');
   }
 

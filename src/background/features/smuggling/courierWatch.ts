@@ -413,17 +413,25 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
     // `refresh()` on the progress stream's `finished` event — sees data
     // that's actually current. The caller's own trailing fetch afterward is
     // now redundant for this path but harmless (a plain GET).
-    if (summary.sent.length > 0) {
+    // `v2_launch` (petCourier.ts's `executeCourierBatch`) populates
+    // `summary.launched` instead of the old per-pet `summary.sent` — the old
+    // per-pet draft→buy→load→depart loop that used to populate `sent` no
+    // longer runs at all (see docs/smuggling-bulk-actions-plan.md). Added
+    // alongside `sent` rather than replacing it, since `sent` stays in the
+    // type in case anything ever populates it again.
+    const dispatchedCount = summary.sent.length + (summary.launched?.petCount ?? 0);
+
+    if (dispatchedCount > 0) {
       const fresh = await fetchPanel();
       if (fresh) await recordFleetReturns(fresh.fleet);
     }
 
-    if (summary.sent.length > 0 && announceIfDispatched) {
+    if (dispatchedCount > 0 && announceIfDispatched) {
       await notify('courierAutoDispatched', {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
         title: 'Pet couriers auto-dispatched',
-        message: `Sent ${summary.sent.length} pet${summary.sent.length === 1 ? '' : 's'} to ${districtName ?? 'the open destination'}.`,
+        message: `Sent ${dispatchedCount} pet${dispatchedCount === 1 ? '' : 's'} to ${districtName ?? 'the open destination'}.`,
       });
     }
     await updateBadge(0);

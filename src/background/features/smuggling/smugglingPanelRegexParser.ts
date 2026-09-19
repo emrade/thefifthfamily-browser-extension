@@ -4,6 +4,7 @@ import type {
   BlackMarketItem,
   DestinationOption,
   FleetEntry,
+  LaunchAvailability,
   PetRosterEntry,
   SmugglingV2Snapshot,
 } from '@/shared/types';
@@ -32,6 +33,8 @@ export function parseSmugglingV2PanelRegex(responseText: string): SmugglingV2Sna
     assignedCourier: parseAssignedCourier(html),
     dailyProfitCapRemaining: parseDailyCapRemaining(html),
     hiddenCargo: parseHiddenCargo(html),
+    launchAvailability: parseLaunchAvailability(html),
+    offloadAllCount: parseOffloadAllCount(html),
   };
 }
 
@@ -283,4 +286,73 @@ function parseHiddenCargo(html: string): { current: number; max: number } | null
   }
 
   return null;
+}
+
+/** Classifies the `sv2-lo-why` text against the three confirmed reasons the
+ *  "Send Every Courier" block can be off for — see
+ *  docs/smuggling-bulk-actions-plan.md's "clean single on/off signal"
+ *  section for the exact three real messages this matches loosely against
+ *  (loosely, not verbatim — the destination-locked one names the player's
+ *  own home district, which varies by account). `'unknown'` for anything
+ *  that doesn't match, so a fourth message added later degrades to
+ *  "don't act, surface the real text" rather than being silently folded
+ *  into one of the three known reasons. */
+function classifyLaunchUnavailableReason(text: string): 'stuck-draft' | 'no-idle-pets' | 'destination-locked' | 'unknown' {
+  if (/no idle couriers/i.test(text)) return 'no-idle-pets';
+  if (/delivery open and being loaded/i.test(text)) return 'stuck-draft';
+  if (/locked to you/i.test(text) || /rotate hourly/i.test(text)) return 'destination-locked';
+  return 'unknown';
+}
+
+/** Reads the "Send Every Courier" bulk-launch block's own single on/off
+ *  signal — see docs/smuggling-bulk-actions-plan.md's "clean single on/off
+ *  signal" section. Bounded windows past the container's opening tag, same
+ *  defensive sizing as `parseHiddenCargo`/`parseDailyCapRemaining` — there's
+ *  no confirmed closing boundary to anchor on instead. Falls back to
+ *  `{available: false, reasonKind: 'unknown', ...}` for anything that
+ *  doesn't parse as expected, since that's the one shape that guarantees
+ *  `petCourier.ts` never constructs a `v2_launch` call from data it isn't
+ *  sure about — see the design requirement this exists to satisfy. */
+function parseLaunchAvailability(html: string): LaunchAvailability {
+  // Anchored to the exact class value (`sv2-lo` or `sv2-lo off`, nothing
+  // else) rather than a plain `indexOf('class="sv2-lo')` — the block's own
+  // nested elements (`sv2-lo-item`, `sv2-lo-dest`, `sv2-lo-pet`, `sv2-lo-go`,
+  // `sv2-lo-why`) all share that same literal prefix, and a looser match
+  // would find whichever of those happens to appear first in some other
+  // panel state instead of the container itself.
+  const containerMatch = html.match(/class="sv2-lo( off)?"/);
+  if (!containerMatch) {
+    return { available: false, reasonKind: 'unknown', reasonText: 'the "Send Every Courier" block was not found on the panel' };
+  }
+
+  const idx = containerMatch.index!;
+  const isOff = containerMatch[1] !== undefined;
+  const window = html.slice(idx, idx + 2000);
+
+  if (isOff) {
+    const whyMatch = window.match(/sv2-lo-why[^>]*>([^<]+)</);
+    const reasonText = whyMatch ? whyMatch[1].trim() : 'the bulk-send block is off, with no explanatory text found';
+    return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
+  }
+
+  const destIdx = window.indexOf('sv2-lo-dest on');
+  if (destIdx === -1) {
+    return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
+  }
+  const destChunk = window.slice(destIdx, destIdx + 300);
+  const cityMatch = destChunk.match(/data-city="(\d+)"/);
+  const nameMatch = destChunk.match(/data-name="([^"]+)"/);
+  if (!cityMatch || !nameMatch) {
+    return { available: false, reasonKind: 'unknown', reasonText: 'the open destination button is missing its data-city/data-name attributes' };
+  }
+
+  return { available: true, destination: { cityId: Number(cityMatch[1]), name: nameMatch[1] } };
+}
+
+/** The `Game.smugV2OffloadAll(N)` argument, when that button exists — see
+ *  `SmugglingV2Snapshot.offloadAllCount`'s own doc for the confirmed 2+
+ *  threshold. */
+function parseOffloadAllCount(html: string): number | null {
+  const match = html.match(/Game\.smugV2OffloadAll\((\d+)\)/);
+  return match ? Number(match[1]) : null;
 }

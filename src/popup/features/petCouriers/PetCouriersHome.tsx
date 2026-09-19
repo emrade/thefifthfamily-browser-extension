@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeItems, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeItems, describeLaunched, describeOffloadedBatch, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import type { CourierAutoConfig, CourierStatus } from '@/shared/types';
 
 /** Answers the same "even when it is active i have no idea what it is doing"
@@ -174,6 +174,7 @@ export function PetCouriersHome() {
         <>
           <div class="ff-fc-captured">{new Date(lastRun.timestamp).toLocaleString()}</div>
           {lastRun.stoppedReason && <div class="ff-health-alert__hint">{STOP_REASON_LABEL[lastRun.stoppedReason]}</div>}
+          {lastRun.offloadedBatch && <div class="ff-auto-row">{describeOffloadedBatch(lastRun.offloadedBatch)}</div>}
           {lastRun.offloaded.length > 0 && (
             <div class="ff-stat-grid">
               {lastRun.offloaded.map((o) => (
@@ -186,6 +187,7 @@ export function PetCouriersHome() {
               ))}
             </div>
           )}
+          {lastRun.launched && <div class="ff-auto-row">{describeLaunched(lastRun.launched)}</div>}
           {lastRun.sent.length > 0 &&
             lastRun.sent.map((s) => (
               <div class="ff-auto-row" key={s.petName}>
