@@ -318,15 +318,38 @@ cycle ("sent N couriers to X, bought Y units for $Z"), since there's one
 call to report on instead of a sequence. The enable/disable toggle stays the
 same shape.
 
-**One real tradeoff to decide deliberately, not default into:** `v2_launch`
-picks a single item and a single destination for the *entire* batch. The old
-per-pet flow could in principle match each pet to whatever was most
-profitable for its own capacity/origin — a rebuild trades that per-pet
-optimization for speed and simplicity. The account owner's own manual habit
-("we usually buy the expensive one") suggests this may cost nothing in
-practice, but the old automation never actually did per-pet optimization
-either way, so this is a real behavior question to settle when a rebuild is
-actually scoped, not an assumption to bake in now.
+**"Buy the priciest item" is a sound, grounded choice — confirmed, not just a
+habit.** `v2_launch` picks a single item for the *entire* batch, same as the
+existing automation's own `pickItem()` (`petCourier.ts:97`) always has: the
+highest-priced buyable item. No comment explains it in the code, but the
+reasoning behind it checks out:
+
+- **The fact behind it predates the code, confirmed from `docs/smuggling-v2-plan.md`**
+  — written the same period `pickItem()` was added (2026-08-19), already
+  quoting the panel's own copy: *"Hand-Carry Markets... Not couriers · they
+  pay a flat ×1.20"* — the exact same fixed-margin fact the account owner
+  quoted from today's UI. Sell price is always buy price × 1.20, so profit
+  *per unit* scales with item price. Pet capacity caps *units carried*, not
+  cash spent — so under a fixed-capacity trip, buying the priciest item
+  maximizes total profit. That's the correct conclusion from that fact, not
+  a coincidence — the plan doc's own "cheapest maximizes units per
+  withdrawal" line wasn't a competing conclusion the code ignored, it was
+  explicitly one of *"two design questions worth deciding before writing any
+  of this"* (the doc's own framing) — an option weighed, not a decision
+  overridden.
+
+**Not actually a design question — corrected from an earlier draft of this
+doc, which overthought it.** The archive's `"Ran out of cash for more
+cargo"` rejection looked like it might mean the account genuinely couldn't
+afford the batch. It didn't: bank balance at the time was **$674,499,968**;
+the batch needed $3,243,000, well under 1% of it. What actually happened was
+pure sequencing — `v2_launch` was called before withdrawing, got rejected,
+the account owner withdrew, then it succeeded. There's no real affordability
+problem to design around here, and no tradeoff to weigh: an automated
+version just needs to withdraw what the batch will cost *before* calling
+`v2_launch`, the same order the account owner already uses by hand. With a
+bank balance in the hundreds of millions, that alone makes the rejection a
+non-issue in practice.
 
 ## What's still needed before any redesign
 
