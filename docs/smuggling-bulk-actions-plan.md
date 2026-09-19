@@ -176,5 +176,12 @@ open-destination signal is still needed at all.
 4. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
    surrounding UI (what section they're in, what triggers them) rather than
    just the bare `onclick` signature.
-5. **Whether `item_id` is constrained** to what the destination's district
-   actually trades, or accepted unconstrained by the server.
+
+**Not actually open, corrected from an earlier draft of this doc:** whether
+`item_id` is constrained to the player's current district. The underlying
+buy mechanic hasn't changed — player's own confirmation: still 3 items per
+district, tied to physically standing there, still buy the priciest of the
+3. The picker only offering 3 choices (the exact 3 for this account's home
+district, $15,000/$19,000/$23,000) reflects that same long-standing rule, not
+a new one worth re-verifying. `v2_launch` just gives that same choice a
+"pick one" step instead of a separate `buy` call per pet.
