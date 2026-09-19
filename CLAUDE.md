@@ -41,6 +41,53 @@ attempted in that window had a 100% base win chance, so the missing bonus
 never changed a result — see
 [[feedback_imitate_full_request_shape]] in memory for the full account.
 
+## Guarding background automation against concurrent triggers
+
+Any background feature that spends an in-game resource (cash, a cooldown, an
+attempt, a courier dispatch) and can be triggered from more than one place —
+two separate alarms, or an alarm plus a manual "Run"/"Check Now" button, or a
+config-toggle's own "check immediately" reschedule — needs a module-level
+re-entrancy guard so only one cycle can ever be mid-flight at a time:
+
+```ts
+let cycleInFlight = false;
+async function runGuarded(...): Promise<...> {
+  if (cycleInFlight) return; // or return a "skipped" result if the caller needs one
+  cycleInFlight = true;
+  try {
+    await actualCycle(...);
+  } finally {
+    cycleInFlight = false;
+  }
+}
+```
+
+Route **every** entry point for that feature (each alarm handler, any manual
+trigger, any config-change-driven immediate check) through the same guarded
+function — see `arena/runner.ts`'s `runGuarded`, `streetIntel/actionRunner.ts`
+or `crimesAuto/runner.ts`'s `cycleInFlight`, or `smuggling/petCourier.ts`'s
+`activeRun` (a `Promise`-based variant, for when a caller needs the actual
+result rather than just a skip) for the exact shape already in the codebase.
+Add this from the start on any new background automation or new trigger —
+don't wait for it to actually race in production first.
+
+Without it, two triggers landing within milliseconds of each other both read
+the same live game state and both act on it — the *second* call gets a real,
+legitimate rejection from the server (a cooldown the first call just
+consumed, a pet the first call just dispatched, an opponent the first call
+just fought) that's indistinguishable from a genuine unrecognized-response
+shape problem, and can trip that feature's own auto-pause/auto-disable safety
+net over something that was never actually broken. Confirmed real,
+independently, in three separate features before this was recognized as a
+class of bug: Arena Auto-Attack, Street Intel Auto, and Pet Courier (whose
+incident also cascaded into `disableAutoWatch()` firing, plus exposed that
+the in-page toggle UI had no `chrome.storage.onChanged` listener and kept
+showing everything ON after the background silently turned it off) — see
+[[feedback_guard_concurrent_background_triggers]] in memory for the full
+account. Any UI surface showing a background feature's own toggle state
+needs that same `onChanged` listener for the same reason: a
+background-triggered change won't otherwise ever be reflected there.
+
 ## General
 
 - Run `npm run build` after code changes, not just a type-check — see
