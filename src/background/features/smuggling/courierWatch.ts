@@ -243,6 +243,7 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
     lastProbeResult: watchState.lastProbeResult,
     nextDestCheckAt: destAlarm?.scheduledTime ?? null,
     pendingReturns: [...pendingReturns].sort((a, b) => a.arrivesAt - b.arrivesAt).map((p) => ({ petName: p.petName, arrivesAt: p.arrivesAt })),
+    openRoute: watchState.openRoute,
   };
 }
 
@@ -448,6 +449,16 @@ async function actOnOpenDestination(idleCount: number, districtName: string, ala
  * `launchAvailability` would otherwise report unavailable indefinitely once
  * one exists.
  *
+ * Also records `snapshot.openRoute` unconditionally, before any of the
+ * idle-pet-dependent branching below — unlike `launchAvailability`, the
+ * ribbon reveals which destination is open this hour on *every* fetch
+ * regardless of idle-pet count, so it doesn't belong gated behind the same
+ * branches. This is what actually answers "which destination is open" for
+ * the status display; `destinationOpenUntil`/`lastProbeResult` below answer
+ * a narrower, idle-pet-dependent question — "can `v2_launch` fire right
+ * now" — and drive real dispatch/notification decisions, so their meaning
+ * is left alone rather than folded into the same field.
+ *
  * A same-hour `'open'` verdict is still tracked (`lastCheckedAt`/
  * `lastProbeResult` in `CourierWatchState`) — not to skip the read itself
  * (that costs nothing extra now; the caller already fetched this panel for
@@ -457,6 +468,8 @@ async function actOnOpenDestination(idleCount: number, districtName: string, ala
  * stop immediately (a dispatch's own error was already handled).
  */
 async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: string, retriedStuckDraft = false): Promise<boolean> {
+  await storage.setCourierWatchState({ ...(await storage.getCourierWatchState()), openRoute: snapshot.openRoute });
+
   const availability = snapshot.launchAvailability;
 
   if (!availability.available && availability.reasonKind === 'stuck-draft' && !retriedStuckDraft) {
@@ -477,9 +490,9 @@ async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: str
   if (!availability.available) {
     const watchState = await storage.getCourierWatchState();
     if (availability.reasonKind === 'no-idle-pets') {
-      await storage.setCourierWatchState({ ...watchState, lastCheckedAt: Date.now(), lastProbeResult: 'skipped-no-idle-pets' });
+      await storage.setCourierWatchState({ ...watchState, lastCheckedAt: Date.now(), lastProbeResult: 'no-idle-pets' });
     } else if (availability.reasonKind === 'destination-locked') {
-      await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
+      await storage.setCourierWatchState({ ...watchState, destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
     } else {
       // Either the cleanup above didn't resolve a stuck draft, or the reason
       // is `'unknown'` (an unrecognized `sv2-lo-why` message — see
@@ -499,7 +512,7 @@ async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: str
 
   const watchState = await storage.getCourierWatchState();
   const alreadyAnnouncedThisHour = watchState.lastProbeResult === 'open' && watchState.lastCheckedAt >= currentHourStart();
-  await storage.setCourierWatchState({ destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now(), lastProbeResult: 'open' });
+  await storage.setCourierWatchState({ ...watchState, destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now(), lastProbeResult: 'open' });
 
   const idlePets = await getIdlePets(snapshot.fleet);
   // `availability.available` already guarantees at least one idle courier

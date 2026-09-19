@@ -294,6 +294,30 @@ export type LaunchAvailability =
       reasonText: string;
     };
 
+/**
+ * The single route the "Where You Can Send" ribbon (`sv2-rib`) marks as open
+ * this hour (`sv2-rib-chip is-lane`) — present on *every* panel fetch,
+ * independent of idle-pet count, unlike `LaunchAvailability` (which only
+ * reveals a destination when at least one pet is idle; with zero idle pets
+ * the "Send Every Courier" block just says "No idle couriers" and tells you
+ * nothing about the destination). Confirmed real: a fetch with zero idle
+ * pets and `launchAvailability.available: false` still had the ribbon
+ * showing "The Docks" marked `is-lane`. `null` only when no chip carries
+ * that class at all (the ribbon wasn't found, or genuinely nothing is open
+ * this hour) — never because idle pets happened to be zero.
+ */
+export interface OpenRoute {
+  district: string;
+  /** True when this hour's open route is also one this account hasn't
+   *  reached the level for yet — the same account-level lock
+   *  `LaunchAvailability`'s `'destination-locked'` reason describes, read
+   *  here independently via the ribbon's own `is-lock` class instead. */
+  locked: boolean;
+  /** The ribbon's own lock-reason text (e.g. "Lv 121"), `null` when `locked`
+   *  is false. */
+  lockReason: string | null;
+}
+
 /** The currently-open shipment's assigned pet, when a draft exists — capacity/speed
  *  here are that specific pet's stats, confirming (and feeding) the persisted
  *  PetRosterEntry for whichever pet this is. */
@@ -336,6 +360,10 @@ export interface SmugglingV2Snapshot {
    *  design-requirement section. `N` always matches the live ready-delivery
    *  count exactly (57 real instances checked). */
   offloadAllCount: number | null;
+  /** See `OpenRoute`'s own doc — the idle-pet-independent "which destination
+   *  is open this hour" signal, read off the ribbon rather than the bulk
+   *  block. */
+  openRoute: OpenRoute | null;
 }
 
 /** What one click of "Run" actually did — shown in the in-page floating panel and
@@ -397,27 +425,37 @@ export interface CourierWatchSummary {
   autoDispatchEnabled: boolean;
   autoOffloadEnabled: boolean;
   /** Epoch ms the current rotation closes at, or `null` if the last check
-   *  found the destination locked (or nothing has checked yet). Only ever
-   *  set by an actual `'open'` read — see `lastProbeResult`. */
+   *  found dispatch unavailable (or nothing has checked yet). Only ever set
+   *  by an actual `'open'` read — see `lastProbeResult`. Answers "can
+   *  `v2_launch` actually fire right now" — for "which destination is open
+   *  this hour" independent of idle-pet count, see `openRoute` instead. */
   destinationOpenUntil: number | null;
   /** Epoch ms of the last hourly *cycle*, whether or not it found anything
    *  actionable — `0` if none has run yet. A cycle with zero idle pets still
-   *  runs (and reschedules), it just gets a `'skipped-no-idle-pets'` verdict
-   *  instead of `'open'`/`'locked'` — see `lastProbeResult`. */
+   *  runs (and reschedules), it just gets a `'no-idle-pets'` verdict instead
+   *  of `'open'`/`'locked'` — see `lastProbeResult`. */
   lastCheckedAt: number;
-  /** What the last cycle actually concluded — `null` before the first cycle.
-   *  Named `lastProbeResult` from when this came off a draft-then-cancel
-   *  probe; now a direct, live read of the panel's own `launchAvailability`
-   *  signal on every cycle (see docs/smuggling-bulk-actions-plan.md), so
-   *  there's no "couldn't check" case left to distinguish from a real
-   *  verdict — `'skipped-no-idle-pets'` is itself a confirmed answer (the
-   *  panel's own "No idle couriers" reason), not a missed check. */
-  lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
+  /** What the last cycle actually concluded about *dispatch* availability —
+   *  `null` before the first cycle. Named `lastProbeResult` from when this
+   *  came off a draft-then-cancel probe; now a direct, live read of the
+   *  panel's own `launchAvailability` signal on every cycle (see
+   *  docs/smuggling-bulk-actions-plan.md), so there's no "couldn't check"
+   *  case left to distinguish from a real verdict — `'no-idle-pets'` is
+   *  itself a confirmed answer (the panel's own "No idle couriers" reason),
+   *  not a missed check. Renamed from `'skipped-no-idle-pets'`: nothing is
+   *  ever skipped now (every cycle reads the live panel regardless of idle
+   *  count), so the old name was a leftover from the probe-based design that
+   *  genuinely did skip when it had no idle pet to draft with. */
+  lastProbeResult: 'open' | 'locked' | 'no-idle-pets' | null;
   /** Epoch ms the next hourly check is scheduled for, or `null` if — for
    *  whatever reason — no alarm is currently armed. */
   nextDestCheckAt: number | null;
   /** Every pet currently in flight and when it's due back, soonest first. */
   pendingReturns: { petName: string; arrivesAt: number }[];
+  /** See `OpenRoute`'s own doc — updated on every cycle regardless of
+   *  `lastProbeResult`/idle-pet count, since the ribbon reveals this
+   *  independently of whether anything is idle to send. */
+  openRoute: OpenRoute | null;
 }
 
 /** Read-only snapshot for the in-page floating panel to render without
@@ -467,14 +505,16 @@ export interface CourierAutoConfig {
  *  `CourierWatchSummary`) show honestly what the last cycle actually found. */
 export interface CourierWatchState {
   /** Epoch ms marking the end of the currently-open rotation hour, or `null`
-   *  if the last check found the destination locked (or none has checked
+   *  if the last check found dispatch unavailable (or none has checked
    *  yet). Only ever set by an actual `'open'` read. */
   destinationOpenUntil: number | null;
-  /** Epoch ms of the last hourly cycle, whether or not it found the
-   *  destination open. */
+  /** Epoch ms of the last hourly cycle, whether or not it found dispatch
+   *  available. */
   lastCheckedAt: number;
   /** See `CourierWatchSummary.lastProbeResult` — same field, persisted. */
-  lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
+  lastProbeResult: 'open' | 'locked' | 'no-idle-pets' | null;
+  /** See `CourierWatchSummary.openRoute` — same field, persisted. */
+  openRoute: OpenRoute | null;
 }
 
 /** One in-flight shipment's computed return time, persisted so the dynamic

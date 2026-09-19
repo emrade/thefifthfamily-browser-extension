@@ -5,6 +5,7 @@ import type {
   DestinationOption,
   FleetEntry,
   LaunchAvailability,
+  OpenRoute,
   PetRosterEntry,
   SmugglingV2Snapshot,
 } from '@/shared/types';
@@ -35,6 +36,7 @@ export function parseSmugglingV2PanelRegex(responseText: string): SmugglingV2Sna
     hiddenCargo: parseHiddenCargo(html),
     launchAvailability: parseLaunchAvailability(html),
     offloadAllCount: parseOffloadAllCount(html),
+    openRoute: parseOpenRoute(html),
   };
 }
 
@@ -381,4 +383,37 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
 function parseOffloadAllCount(html: string): number | null {
   const match = html.match(/Game\.smugV2OffloadAll\((\d+)\)/);
   return match ? Number(match[1]) : null;
+}
+
+/** Reads the "Where You Can Send" ribbon's own `is-lane` marker — see
+ *  `OpenRoute`'s own doc for why this exists as a signal independent of
+ *  `parseLaunchAvailability`. Order-independent class match, same reasoning
+ *  as `parseLaunchAvailability`'s own destination-button fix: a chip can
+ *  carry `sv2-rib-chip`, `is-lane`, and (rarely, if this hour's one open
+ *  route happens to also be above this account's level) `is-lock` together,
+ *  in any order. */
+function parseOpenRoute(html: string): OpenRoute | null {
+  const chipMatch = html.match(/<div class="(?=[^"]*\bsv2-rib-chip\b)(?=[^"]*\bis-lane\b)[^"]*"[^>]*>/);
+  if (!chipMatch) return null;
+
+  const chipStart = chipMatch.index!;
+  // Bounded to the next chip rather than an unbounded search — one chip's
+  // own name/meta/pct markup is at most a few hundred characters.
+  const nextChipIdx = html.indexOf('sv2-rib-chip', chipStart + chipMatch[0].length);
+  const chunk = html.slice(chipStart, nextChipIdx === -1 ? chipStart + 800 : nextChipIdx);
+
+  const nameMatch = chunk.match(/sv2-rib-name">([^<]+)</);
+  if (!nameMatch) return null;
+
+  const locked = /\bis-lock\b/.test(chipMatch[0]);
+  // Same icon-before-text shape confirmed real for `sv2-lo-why` and
+  // `sv2-cc-block` — the lock reason sits behind a `<i class="fa-solid
+  // fa-lock"></i>` icon inside `.sv2-rib-meta`, e.g. `<i .../></i> Lv 121`.
+  const lockReasonMatch = locked ? chunk.match(/sv2-rib-meta">(?:<i[^>]*><\/i>)?\s*([^<]+)</) : null;
+
+  return {
+    district: nameMatch[1].trim(),
+    locked,
+    lockReason: lockReasonMatch ? lockReasonMatch[1].trim() : null,
+  };
 }

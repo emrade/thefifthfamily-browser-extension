@@ -5,6 +5,7 @@ import type {
   DestinationOption,
   FleetEntry,
   LaunchAvailability,
+  OpenRoute,
   PetRosterEntry,
   SmugglingV2Snapshot,
 } from '@/shared/types';
@@ -38,6 +39,7 @@ export function parseSmugglingV2Panel(responseText: string): SmugglingV2Snapshot
     hiddenCargo: parseHiddenCargo(doc),
     launchAvailability: parseLaunchAvailability(doc),
     offloadAllCount: parseOffloadAllCount(doc),
+    openRoute: parseOpenRoute(doc),
   };
 }
 
@@ -318,4 +320,22 @@ function parseOffloadAllCount(doc: Document): number | null {
   const args = btn ? onclickArgs(btn, 'Game\\.smugV2OffloadAll') : null;
   const count = args ? Number(args[0]) : NaN;
   return Number.isFinite(count) ? count : null;
+}
+
+/** DOM twin of smugglingPanelRegexParser.ts's `parseOpenRoute` — see
+ *  `OpenRoute`'s own doc for why this exists as a signal independent of
+ *  `parseLaunchAvailability`/idle-pet count. `.sv2-rib-chip.is-lane` is a
+ *  plain compound class selector, so order/what-else-is-in-the-class-list
+ *  never matters here the way it did for the regex twin. */
+function parseOpenRoute(doc: Document): OpenRoute | null {
+  const chip = doc.querySelector('.sv2-rib-chip.is-lane');
+  if (!chip) return null;
+
+  const district = textOf(chip.querySelector('.sv2-rib-name'));
+  if (!district) return null;
+
+  const locked = chip.classList.contains('is-lock');
+  const lockReason = locked ? textOf(chip.querySelector('.sv2-rib-meta')) || null : null;
+
+  return { district, locked, lockReason };
 }

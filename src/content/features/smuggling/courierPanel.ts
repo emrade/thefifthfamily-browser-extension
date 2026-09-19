@@ -247,20 +247,33 @@ function renderWatchStatus(watch: CourierWatchSummary): string {
     return parts.join('');
   }
 
-  const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
-  if (watch.lastCheckedAt === 0) {
-    parts.push('<div class="ff-cp-watch-row">Destination: not checked yet.</div>');
-  } else if (watch.lastProbeResult === 'skipped-no-idle-pets') {
-    // Distinct from a 'locked' destination — this is the panel's own "No idle
-    // couriers" reason (see `LaunchAvailability`), i.e. nothing to send even
-    // if the destination is open, not a statement about the destination itself.
-    parts.push(`<div class="ff-cp-watch-row">Destination: no idle pets right now (last checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
-  } else if (destOpen) {
+  // Route: which destination is open this hour, read straight off the
+  // "Where You Can Send" ribbon (see `OpenRoute`'s own doc) — present on
+  // every fetch regardless of idle-pet count, unlike the dispatch line
+  // below, so this never goes blank just because nothing is idle to send.
+  if (watch.openRoute) {
     parts.push(
-      `<div class="ff-cp-watch-row">Destination: open, closes in ${formatRelativeTime(watch.destinationOpenUntil!, now)} (${new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).</div>`,
+      `<div class="ff-cp-watch-row">Route: ${watch.openRoute.district}${watch.openRoute.locked ? ` — locked (${watch.openRoute.lockReason ?? 'not unlocked yet'})` : ' open'}.</div>`,
     );
   } else {
-    parts.push(`<div class="ff-cp-watch-row">Destination: locked (checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
+    parts.push('<div class="ff-cp-watch-row">Route: none open this hour.</div>');
+  }
+
+  // Dispatch: whether `v2_launch` can actually fire right now — this is the
+  // idle-pet-dependent half, kept separate from the route line above since
+  // the two answer genuinely different questions (a route can be open with
+  // nothing idle to send, or idle pets can exist with the route locked).
+  const destOpen = watch.destinationOpenUntil !== null && watch.destinationOpenUntil > now;
+  if (watch.lastCheckedAt === 0) {
+    parts.push('<div class="ff-cp-watch-row">Dispatch: not checked yet.</div>');
+  } else if (watch.lastProbeResult === 'no-idle-pets') {
+    parts.push(`<div class="ff-cp-watch-row">Dispatch: no idle pets right now (last checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
+  } else if (destOpen) {
+    parts.push(
+      `<div class="ff-cp-watch-row">Dispatch: ready, closes in ${formatRelativeTime(watch.destinationOpenUntil!, now)} (${new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).</div>`,
+    );
+  } else {
+    parts.push(`<div class="ff-cp-watch-row">Dispatch: locked (checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
   }
 
   if (watch.nextDestCheckAt !== null) {

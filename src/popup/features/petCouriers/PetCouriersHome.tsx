@@ -129,21 +129,40 @@ export function PetCouriersHome() {
 
       {config.watchEnabled && (
         <>
-          <div class="ff-section-label">Destination</div>
+          {/* Which destination is open this hour, read off the "Where You
+              Can Send" ribbon — present on every check regardless of
+              idle-pet count, unlike the Dispatch section below, so it never
+              goes blank just because nothing is idle to send. */}
+          <div class="ff-section-label">Route</div>
+
+          {watch.openRoute ? (
+            <div class="ff-auto-row">
+              {watch.openRoute.district}
+              {watch.openRoute.locked ? ` — locked (${watch.openRoute.lockReason ?? 'not unlocked yet'})` : ' — open'}
+            </div>
+          ) : (
+            <div class="ff-empty">None open this hour.</div>
+          )}
+
+          {/* Whether `v2_launch` can actually fire right now — the
+              idle-pet-dependent half, kept separate from Route above since
+              the two answer different questions (a route can be open with
+              nothing idle to send, or idle pets can exist with it locked). */}
+          <div class="ff-section-label">Dispatch</div>
 
           {watch.lastCheckedAt === 0 && <div class="ff-empty">Not checked yet.</div>}
 
-          {watch.lastCheckedAt !== 0 && watch.lastProbeResult === 'skipped-no-idle-pets' && (
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult === 'no-idle-pets' && (
             <div class="ff-auto-row">No idle pets right now (last checked {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
           )}
 
-          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && destOpen && (
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'no-idle-pets' && destOpen && (
             <div class="ff-auto-row">
-              Open, closes in {formatRelativeTime(watch.destinationOpenUntil!, now)} ({new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).
+              Ready, closes in {formatRelativeTime(watch.destinationOpenUntil!, now)} ({new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).
             </div>
           )}
 
-          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && !destOpen && (
+          {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'no-idle-pets' && !destOpen && (
             <div class="ff-auto-row">Locked (checked {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
           )}
 
