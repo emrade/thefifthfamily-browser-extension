@@ -9,6 +9,22 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.29.1] - 2026-09-20
+
+### Fixed
+- Street Intel Auto-Attempt no longer stops itself over an ordinary,
+  expected rejection. Confirmed real (seen more than once): the gap
+  between scouting a candidate and actually attempting it is occasionally
+  enough for that opportunity's own window to close, which the game
+  reports as a plain `"This opportunity has expired."` rejection — not a
+  broken response, but the automation's `attempt` handler treated any
+  non-`ok:true` result as fully unrecognized and paused over it. The same
+  applied to a stale-cooldown rejection ("Cooldown active...") that a
+  prior incident had already documented but never actually special-cased.
+  Both are now treated as an ordinary miss — logged, and retried on the
+  normal 60-second cadence — while any genuinely unrecognized response
+  still pauses exactly as before.
+
 ## [0.29.0] - 2026-09-19
 
 ### Added
