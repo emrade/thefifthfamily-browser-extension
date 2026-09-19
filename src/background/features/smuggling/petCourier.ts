@@ -278,21 +278,79 @@ async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
   }
 }
 
+/**
+ * Set for the duration of whichever courier batch (dispatch or offload) is
+ * currently running, so a second call arriving while one is still in flight
+ * can be skipped outright instead of executing concurrently. Confirmed real:
+ * the hourly destination-poll alarm and the pet-return alarm can both decide
+ * to act within the same moment (e.g. a pet landing right as the top of the
+ * hour ticks over) — without this guard, two full courier batches ran fully
+ * concurrently, each independently reading the same "German Shepherd is
+ * idle" state, withdrawing $345,000 for it separately, and racing to
+ * dispatch it: one `v2_launch` succeeded, the other failed with "German
+ * Shepherd is already out on a delivery." Both runs' own end-of-batch cash
+ * sweeps raced the same way — one `deposit` succeeding, the next landing
+ * ~100-300ms later finding cash already at 0 and failing with "Invalid
+ * amount." Neither failure did any lasting harm (the rejected launch spent
+ * nothing, the rejected deposit had nothing to deposit), but it's wasted
+ * requests and confusing error text for something structurally preventable.
+ */
+let activeRun: Promise<CourierRunSummary> | null = null;
+
+function skippedRunSummary(reason: string): CourierRunSummary {
+  return {
+    timestamp: Date.now(),
+    offloaded: [],
+    sent: [],
+    skipped: [],
+    launched: null,
+    offloadedBatch: null,
+    cashWithdrawn: 0,
+    cashDeposited: 0,
+    stoppedReason: null,
+    errors: [reason],
+  };
+}
+
+/** Shared by `runCourierBatch`/`runOffloadBatch` — same bookend/deposit/persist
+ *  sequence either way, just gated so only one can ever be mid-flight at a
+ *  time (see `activeRun`'s own doc). Skips outright rather than queuing a
+ *  second run behind the first: whatever this second trigger wanted to check
+ *  will simply be re-evaluated on its own next natural cycle (the next
+ *  alarm, or the next manual click), so there's nothing lost by not queuing
+ *  it — only avoided by not running it concurrently. */
+async function runExclusive(execute: () => Promise<CourierRunSummary>, tabId: number | undefined): Promise<CourierRunSummary> {
+  if (activeRun) {
+    return skippedRunSummary('another courier run was already in progress — skipped this cycle');
+  }
+
+  const run = (async () => {
+    progressTabId = tabId;
+    emitProgress({ kind: 'started' });
+    const summary = await execute();
+    // Skipped when the session/CSRF itself is already known broken — the deposit
+    // call would just fail the exact same way and add a redundant error line.
+    if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
+    await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
+    emitProgress({ kind: 'finished' });
+    return summary;
+  })();
+
+  activeRun = run;
+  try {
+    return await run;
+  } finally {
+    activeRun = null;
+  }
+}
+
 /** Persists the summary regardless of which path produced it, so a reopened panel
  *  can show "last run" even if the run happened (or crashed) while it was closed.
  *  `tabId` (the tab that asked for the run, from the message `sender`) is stashed
  *  in `progressTabId` for the duration so `emitProgress` knows where to send
  *  live updates — see its comment. */
 export async function runCourierBatch(tabId?: number): Promise<CourierRunSummary> {
-  progressTabId = tabId;
-  emitProgress({ kind: 'started' });
-  const summary = await executeCourierBatch();
-  // Skipped when the session/CSRF itself is already known broken — the deposit
-  // call would just fail the exact same way and add a redundant error line.
-  if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
-  await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
-  emitProgress({ kind: 'finished' });
-  return summary;
+  return runExclusive(executeCourierBatch, tabId);
 }
 
 /** The lighter counterpart to `runCourierBatch` — just collects whatever's
@@ -300,13 +358,7 @@ export async function runCourierBatch(tabId?: number): Promise<CourierRunSummary
  *  Shares `executeCourierBatch`'s summary shape (mostly empty here) so both
  *  surfaces can render either kind of run through the same display code. */
 export async function runOffloadBatch(tabId?: number): Promise<CourierRunSummary> {
-  progressTabId = tabId;
-  emitProgress({ kind: 'started' });
-  const summary = await executeOffloadBatch();
-  if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
-  await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
-  emitProgress({ kind: 'finished' });
-  return summary;
+  return runExclusive(executeOffloadBatch, tabId);
 }
 
 async function executeOffloadBatch(): Promise<CourierRunSummary> {
