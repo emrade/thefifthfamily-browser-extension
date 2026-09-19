@@ -3,9 +3,9 @@ import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
-import { SystemicActionError, fetchLiveStatus, postAction, sleep, statusReleaseAt } from '../../gameAction';
-import { cancelShipment, fetchPanel, pickDestination, runCourierBatch, runOffloadBatch } from './petCourier';
-import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry } from '@/shared/types';
+import { SystemicActionError, fetchLiveStatus, statusReleaseAt } from '../../gameAction';
+import { cancelShipment, fetchPanel, runCourierBatch, runOffloadBatch } from './petCourier';
+import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
  * Watches for the hourly smuggling destination rotation and reacts to it in the
@@ -23,14 +23,27 @@ import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEn
  *   due back, so a pet that lands mid-open-window gets offloaded and
  *   redispatched within seconds rather than waiting out the next hourly tick.
  *
- * Both funnel into the same `evaluateDestination` below, which only probes
- * (drafts one idle pet, reads the destination list, cancels the draft — the
- * only way to see it at all) when there's both an idle pet to probe with
- * *and* no already-known verdict for the current rotation hour yet. That
- * second condition is what makes a pet's return useful on its own: if every
- * pet was out when the hourly check last fired, it had nothing to probe with
- * and had to skip — the *first* pet back is what finally has something to
- * check with, and shouldn't have to wait for the next hourly tick to do it.
+ * Both funnel into the same `evaluateDestination` below, which reads
+ * `snapshot.launchAvailability` straight off whichever panel fetch the caller
+ * already made for other reasons — no extra request needed to answer "is
+ * there anything I can send right now."
+ *
+ * This replaced an earlier version that drafted a shipment with one idle pet
+ * purely to read the destination list, then cancelled it — the only way to
+ * see the destination pair before the game exposed the `sv2-lo`/`sv2-lo off`
+ * signal directly on the panel itself (see
+ * docs/smuggling-bulk-actions-plan.md). That probe was a real source of false
+ * verdicts, not just an inefficiency: confirmed real (2026-09-05) that the
+ * hourly probe once drafted straight into a *pre-existing* stuck shipment (a
+ * "You already have a delivery being loaded." rejection, indistinguishable
+ * from a genuinely locked destination without extra cleanup logic first) and
+ * cached the resulting failure as a confident `'locked'` verdict for the rest
+ * of the hour, while the destination was actually open the whole time.
+ * Reading the live class off the panel removes that whole failure mode —
+ * there's no draft to get stuck on, no cleanup race, and no "didn't get a
+ * chance to check" case, since the panel always reports exactly one of
+ * open/locked/no-idle-pets/stuck-draft on every fetch, matching what a real
+ * player would see if they opened the page at that instant.
  *
  * `CourierAutoConfig.autoDispatchEnabled` only gates the "send" side —
  * detection and notification run whenever `watchEnabled` is on regardless of
@@ -101,17 +114,19 @@ export function scheduleHourlyDestCheck(): void {
  *  it here picks up an already-landed pet correctly.
  *
  *  The dispatch branch also wipes the stored watch state before arming the
- *  alarm, rather than just arming it. Without that, `evaluateDestination`'s
- *  own same-hour cache (`haveThisHoursAnswer` — see its doc) would just
- *  re-serve whatever verdict is already on file instead of actually
- *  re-probing: confirmed real (2026-08-30) as a `'locked'` verdict from
- *  earlier in the hour surviving an off→on toggle untouched, silently
- *  skipping the probe the player was toggling specifically to force. Clearing
- *  `lastProbeResult`/`lastCheckedAt` here makes toggling dispatch back on
- *  double as "check again right now," which is exactly what a player
- *  re-flipping it after a suspected-wrong verdict actually wants — cheaper
- *  than a dedicated recheck button, and there's no dedicated affordance for
- *  this elsewhere in the panel to begin with. */
+ *  alarm, rather than just arming it. `evaluateDestination` always reads
+ *  `launchAvailability` live now (see the module doc above), so this is no
+ *  longer covering for a stale verdict blocking the read itself the way it
+ *  used to — but `lastProbeResult`/`lastCheckedAt` still gate whether an
+ *  already-known-open window gets re-announced (see `actOnOpenDestination`'s
+ *  own doc), and without the wipe, a same-hour `'open'` verdict left over
+ *  from *before* dispatch was turned on would make the very next cycle treat
+ *  a fresh dispatch as a silent repeat instead of the first real notification
+ *  since the toggle. Clearing it here makes toggling dispatch back on double
+ *  as "check again right now" and announce whatever it finds, which is
+ *  exactly what a player re-flipping it after a suspected-wrong verdict
+ *  actually wants — cheaper than a dedicated recheck button, and there's no
+ *  dedicated affordance for this elsewhere in the panel to begin with. */
 function watchConfigChanges(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !(STORAGE_KEYS.COURIER_AUTO_CONFIG in changes)) return;
@@ -227,15 +242,17 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
   };
 }
 
+/** Only used for the idle-pet *count* shown in badges/notifications —
+ *  `snapshot.launchAvailability` (read directly off the panel) is the
+ *  authoritative "can I send right now" signal, not this roster diff. Kept
+ *  around because the panel's own `sv2-lo` markup doesn't expose the exact
+ *  idle count, only whether the bulk block is available at all. */
 async function getIdlePets(fleet: FleetEntry[]): Promise<PetRosterEntry[]> {
   const roster = await getRoster();
   const activeNames = new Set(fleet.map((f) => f.petName));
   // Same distinction as petCourier.ts's own idle-pet filter: not in the
   // active fleet isn't the same as actually draftable (a pet equipped as
   // your Fight Club combat pet is neither) — see `PetRosterEntry.draftBlockedReason`.
-  // Matters doubly here: `evaluateDestination` below probes with
-  // `idlePets[0]`, so a blocked pet sitting first in this list would waste
-  // the hourly destination check on a doomed draft instead of a real probe.
   return roster.filter((p) => !activeNames.has(p.name) && !p.draftBlockedReason);
 }
 
@@ -289,9 +306,10 @@ async function disableAutoWatch(message: string): Promise<void> {
  * into the returned summary's `stoppedReason` instead (so the summary is
  * still there to persist/display even when a run dies partway through). That
  * means this module's own try/catch below never sees an error from *those*
- * calls — only from its own direct probe/cancel calls — so this is where the
- * status-blocked/shape handling actually has to hook into the auto-dispatch
- * path itself. Returns `true` if the reason was handled here (reschedule or
+ * calls — only from its own direct `cancelShipment` calls (the stuck-draft
+ * cleanup in `evaluateDestination`) — so this is where the status-blocked/
+ * shape handling actually has to hook into the auto-dispatch path itself.
+ * Returns `true` if the reason was handled here (reschedule or
  * disable) and the caller should stop this cycle without doing anything more
  * with the summary.
  */
@@ -334,69 +352,20 @@ export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
   chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: earliest + COURIER_RETURN_BUFFER_MS });
 }
 
-/** Drafts with one idle pet purely to read the destination list (the only way
- *  to see it — see docs/smuggling-v2-plan.md's "only non-empty once a draft
- *  exists" note), then cancels that draft regardless of the outcome. Same
- *  one-retry-with-a-pause pattern as `petCourier.ts`'s own destination
- *  resolution, and opportunistically records fleet returns off the same fetch.
- *
- *  Cancels any pet already stuck mid-`'drafting'` first — the same cleanup
- *  `executeCourierBatch` does at the start of every batch (see its own doc) —
- *  because a stuck draft blocks *any* new `v2_draft` account-wide with "You
- *  already have a delivery being loaded.", which this function has no way to
- *  tell apart from a genuine locked-destination response otherwise. Confirmed
- *  real (2026-09-05) from the account's own request archive: the hourly probe
- *  drafted with an idle pet, got exactly that rejection with nothing else on
- *  the account holding a shipment open moments before or after, and cached
- *  the resulting failure as a confident 'locked' verdict for the rest of the
- *  hour — while a manual run minutes later, which does this same cleanup,
- *  found the destination genuinely open the whole time.
- *
- *  Returns `'inconclusive'` — instead of a confident open/locked verdict —
- *  when the draft call itself failed (even after the cleanup above) or the
- *  panel couldn't be read afterward, so the caller doesn't cache a false
- *  'locked' answer for something that was never actually seen. */
-async function probeDestination(idlePet: PetRosterEntry, fleet: FleetEntry[]): Promise<{ open: boolean; districtName: string | null } | 'inconclusive'> {
-  const stuck = fleet.find((f) => f.status === 'drafting');
-  if (stuck) {
-    await cancelShipment(stuck.shipmentId, stuck.petName, (msg) => console.error(LOG_PREFIX, msg));
-  }
-
-  const draft = await postAction('/actions/smuggling.php', { action: 'v2_draft', user_pet_id: idlePet.userPetId });
-  if (!draft?.ok) {
-    console.error(LOG_PREFIX, `courier watch probe draft failed for ${idlePet.name}: ${draft?.error ?? 'unknown error'}`);
-    return 'inconclusive';
-  }
-  const shipmentId = Number(draft.shipment_id);
-
-  let districtName: string | null = null;
-  let sawPanel = false;
-  for (let attempt = 0; attempt < 2 && !districtName; attempt++) {
-    if (attempt > 0) await sleep(1500);
-    const afterDraft = await fetchPanel();
-    if (!afterDraft) continue;
-    sawPanel = true;
-    await recordFleetReturns(afterDraft.fleet);
-    districtName = pickDestination(afterDraft.destinations)?.district ?? null;
-  }
-
-  await cancelShipment(shipmentId, idlePet.name, (msg) => console.error(LOG_PREFIX, msg));
-  if (!sawPanel) return 'inconclusive';
-  return { open: districtName !== null, districtName };
-}
-
-/** Sends idle pets (or notifies) once a destination is confirmed open — either
- *  just-probed, or already known-open from earlier this same rotation hour.
- *  `announceIfDispatched` gates the "sent" notification: true only for a
- *  fresh probe finding it open (genuinely new information worth a ping),
- *  false for reusing an already-known-open answer to redispatch a pet that
- *  just landed (expected and repetitive — every returning pet retriggers this
- *  while the window stays open, which got noisy fast once confirmed live:
- *  the player's own report). The badge and panel still reflect every dispatch
- *  either way; only the notification is skipped for the repeat case.
+/** Sends idle pets (or notifies) once `launchAvailability` confirms a
+ *  destination is open — either just observed this cycle, or already
+ *  known-open from earlier this same rotation hour. `announceIfDispatched`
+ *  gates the "sent"/"destination open" notification: true only the first
+ *  time this hour's open window is observed (genuinely new information worth
+ *  a ping), false for re-confirming an already-known-open window to
+ *  redispatch a pet that just landed (expected and repetitive — every
+ *  returning pet retriggers this while the window stays open, which got
+ *  noisy fast once confirmed live: the player's own report). The badge and
+ *  panel still reflect every dispatch either way; only the notification is
+ *  skipped for the repeat case.
  *  Returns `true` if a `SystemicActionError` from the actual dispatch was
  *  already handled (reschedule or disable) and the caller should stop. */
-async function actOnOpenDestination(idleCount: number, districtName: string | null, alarmName: string, announceIfDispatched: boolean): Promise<boolean> {
+async function actOnOpenDestination(idleCount: number, districtName: string, alarmName: string, announceIfDispatched: boolean): Promise<boolean> {
   const config = await storage.getCourierAutoConfig();
   if (config.autoDispatchEnabled) {
     const summary = await runCourierBatch(await findGameTabId());
@@ -431,7 +400,7 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
         title: 'Pet couriers auto-dispatched',
-        message: `Sent ${dispatchedCount} pet${dispatchedCount === 1 ? '' : 's'} to ${districtName ?? 'the open destination'}.`,
+        message: `Sent ${dispatchedCount} pet${dispatchedCount === 1 ? '' : 's'} to ${districtName}.`,
       });
     }
     await updateBadge(0);
@@ -440,7 +409,7 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: 'Smuggling destination open',
-      message: `${districtName ?? 'A destination'} is open — ${idleCount} pet${idleCount === 1 ? '' : 's'} ready to send.`,
+      message: `${districtName} is open — ${idleCount} pet${idleCount === 1 ? '' : 's'} ready to send.`,
     });
     await updateBadge(idleCount);
   }
@@ -448,63 +417,70 @@ async function actOnOpenDestination(idleCount: number, districtName: string | nu
 }
 
 /**
- * The core probe-and-react cycle, shared by the hourly alarm and a pet's
- * return. Probes for real only when there's no already-known verdict for the
- * *current* rotation hour yet — a same-hour "locked" or "open" verdict is
- * reacted to (or just left alone) without spending another draft/cancel
- * round-trip, while a hand-off from a cycle that had zero idle pets to probe
- * with (`lastProbeResult: 'skipped-no-idle-pets'`) — or simply never having
- * checked this hour at all — means the very next idle pet, however it became
- * idle, gets to run the check that couldn't happen before it. Returns `true`
- * if the caller should stop immediately (a dispatch's own error was already
- * handled).
+ * The core react-to-an-open-destination cycle, shared by the hourly alarm and
+ * a pet's return. Reads `snapshot.launchAvailability` — the single class
+ * check the panel itself already resolved (see the module doc above) — and
+ * acts directly off it, with one exception: a `'stuck-draft'` reason gets
+ * cleaned up and the panel re-read once, since nothing else in this passive
+ * watch would ever clear a stranded shipment on its own, and
+ * `launchAvailability` would otherwise report unavailable indefinitely once
+ * one exists.
+ *
+ * A same-hour `'open'` verdict is still tracked (`lastCheckedAt`/
+ * `lastProbeResult` in `CourierWatchState`) — not to skip the read itself
+ * (that costs nothing extra now; the caller already fetched this panel for
+ * other reasons), but purely to gate repeat notifications, so a destination
+ * that's been open for 40 minutes doesn't re-ping the player every time
+ * another pet happens to land into it. Returns `true` if the caller should
+ * stop immediately (a dispatch's own error was already handled).
  */
-async function evaluateDestination(idlePets: PetRosterEntry[], fleet: FleetEntry[], alarmName: string): Promise<boolean> {
-  const watchState = await storage.getCourierWatchState();
-  const haveThisHoursAnswer =
-    watchState.lastProbeResult !== null && watchState.lastProbeResult !== 'skipped-no-idle-pets' && watchState.lastCheckedAt >= currentHourStart();
+async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: string, retriedStuckDraft = false): Promise<boolean> {
+  const availability = snapshot.launchAvailability;
 
-  if (idlePets.length === 0) {
-    if (!haveThisHoursAnswer) {
+  if (!availability.available && availability.reasonKind === 'stuck-draft' && !retriedStuckDraft) {
+    // A stranded shipment blocks `v2_launch` account-wide, the same way it
+    // used to block `v2_draft` for the old probe — but nothing else in this
+    // passive watch will ever clear it on its own, so it's cleaned up here
+    // rather than left sitting until whichever manual run happens to notice
+    // it next.
+    const stuck = snapshot.fleet.find((f) => f.status === 'drafting');
+    if (stuck) await cancelShipment(stuck.shipmentId, stuck.petName, (msg) => console.error(LOG_PREFIX, msg));
+    const fresh = await fetchPanel();
+    if (fresh) {
+      await recordFleetReturns(fresh.fleet);
+      return evaluateDestination(fresh, alarmName, true);
+    }
+  }
+
+  if (!availability.available) {
+    const watchState = await storage.getCourierWatchState();
+    if (availability.reasonKind === 'no-idle-pets') {
       await storage.setCourierWatchState({ ...watchState, lastCheckedAt: Date.now(), lastProbeResult: 'skipped-no-idle-pets' });
+    } else if (availability.reasonKind === 'destination-locked') {
+      await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
+    } else {
+      // Either the cleanup above didn't resolve a stuck draft, or the reason
+      // is `'unknown'` (an unrecognized `sv2-lo-why` message — see
+      // `LaunchAvailability`'s own doc). Leaving the existing watch state
+      // untouched, rather than writing 'locked', means this doesn't get
+      // treated as a confirmed verdict: the next cycle gets a clean read
+      // instead of the panel showing a false "locked" off of something this
+      // cycle never actually confirmed. Logged since a persistent 'unknown'
+      // could mean the game changed the block's markup in a way the parser
+      // doesn't recognize — the same "don't act, surface it" contract
+      // `LaunchAvailability` was designed around.
+      console.error(LOG_PREFIX, `courier watch: destination unavailable (${availability.reasonKind}) — ${availability.reasonText}`);
     }
     await updateBadge(0);
     return false;
   }
 
-  if (haveThisHoursAnswer) {
-    const stillOpen = watchState.destinationOpenUntil !== null && watchState.destinationOpenUntil > Date.now();
-    if (!stillOpen) {
-      await updateBadge(0);
-      return false;
-    }
-    // No stored district name for an already-known verdict — `actOnOpenDestination`
-    // falls back to generic phrasing for it. Not announced — see that
-    // function's own doc for why a reused answer stays quiet.
-    return actOnOpenDestination(idlePets.length, null, alarmName, false);
-  }
-
-  const probe = await probeDestination(idlePets[0], fleet);
-
-  // Couldn't actually see the destination list this cycle (draft rejected,
-  // or the panel came back unreadable both retries) — leaving the existing
-  // watch state untouched, rather than writing 'locked', means this doesn't
-  // get treated as a confirmed verdict: the next probe opportunity (the
-  // following hourly tick, or the next pet to go idle) gets to try again
-  // instead of the panel showing a false "locked" for the rest of the hour.
-  if (probe === 'inconclusive') {
-    await updateBadge(0);
-    return false;
-  }
-
-  if (!probe.open) {
-    await storage.setCourierWatchState({ destinationOpenUntil: null, lastCheckedAt: Date.now(), lastProbeResult: 'locked' });
-    await updateBadge(0);
-    return false;
-  }
-
+  const watchState = await storage.getCourierWatchState();
+  const alreadyAnnouncedThisHour = watchState.lastProbeResult === 'open' && watchState.lastCheckedAt >= currentHourStart();
   await storage.setCourierWatchState({ destinationOpenUntil: nextHourBoundary(), lastCheckedAt: Date.now(), lastProbeResult: 'open' });
-  return actOnOpenDestination(idlePets.length, probe.districtName, alarmName, true);
+
+  const idlePets = await getIdlePets(snapshot.fleet);
+  return actOnOpenDestination(idlePets.length, availability.destination.name, alarmName, !alreadyAnnouncedThisHour);
 }
 
 export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
@@ -541,9 +517,8 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
       return;
     }
     await recordFleetReturns(snapshot.fleet);
-    const idlePets = await getIdlePets(snapshot.fleet);
 
-    const stopped = await evaluateDestination(idlePets, snapshot.fleet, ALARM_NAMES.SMUGGLING_DEST_POLL);
+    const stopped = await evaluateDestination(snapshot, ALARM_NAMES.SMUGGLING_DEST_POLL);
     if (stopped) return;
 
     // A dispatch (if one happened) creates new shipments — re-read so the
@@ -594,8 +569,7 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     const afterOffload = await fetchPanel();
     if (!afterOffload) return; // nothing more learnable this cycle — next return/hourly alarm tries again
 
-    const idlePets = await getIdlePets(afterOffload.fleet);
-    const stopped = await evaluateDestination(idlePets, afterOffload.fleet, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+    const stopped = await evaluateDestination(afterOffload, ALARM_NAMES.SMUGGLING_COURIER_RETURN);
     if (stopped) return;
 
     const fresh = await fetchPanel();

@@ -250,11 +250,10 @@ function renderWatchStatus(watch: CourierWatchSummary): string {
   if (watch.lastCheckedAt === 0) {
     parts.push('<div class="ff-cp-watch-row">Destination: not checked yet.</div>');
   } else if (watch.lastProbeResult === 'skipped-no-idle-pets') {
-    // Honest about *why* there's nothing fresher: the alarm ran at
-    // `lastCheckedAt` but every pet was out, so it had nothing to draft with
-    // and couldn't actually learn the destination's state — very different
-    // from having checked and found it locked.
-    parts.push(`<div class="ff-cp-watch-row">Destination: no idle pets to check with (last tried ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
+    // Distinct from a 'locked' destination — this is the panel's own "No idle
+    // couriers" reason (see `LaunchAvailability`), i.e. nothing to send even
+    // if the destination is open, not a statement about the destination itself.
+    parts.push(`<div class="ff-cp-watch-row">Destination: no idle pets right now (last checked ${new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>`);
   } else if (destOpen) {
     parts.push(
       `<div class="ff-cp-watch-row">Destination: open, closes in ${formatRelativeTime(watch.destinationOpenUntil!, now)} (${new Date(watch.destinationOpenUntil!).toLocaleTimeString()}).</div>`,

@@ -6,7 +6,7 @@ import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
 import { SystemicActionError, depositCashOnHand, postAction } from '../../gameAction';
 import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
-import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, DestinationOption, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
  * Set for the duration of one run, to the tab that asked for it — see
@@ -98,16 +98,6 @@ function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
   const buyable = blackMarket.filter((i) => i.buyableHere);
   if (buyable.length === 0) return null;
   return buyable.reduce((best, item) => (item.price > best.price ? item : best));
-}
-
-/** Prefers whichever open destination isn't level-locked; if both are open, the
- *  shorter `with courier` time — gets the pet back into service sooner. Sale rate
- *  is a flat ×1.20 everywhere (see docs/smuggling-v2-plan.md), so there's no profit
- *  difference between the two to weigh against travel time. */
-export function pickDestination(destinations: DestinationOption[]): DestinationOption | null {
-  const open = destinations.filter((d) => !d.locked);
-  if (open.length === 0) return null;
-  return open.reduce((best, d) => (d.courierMinutes < best.courierMinutes ? d : best));
 }
 
 /**

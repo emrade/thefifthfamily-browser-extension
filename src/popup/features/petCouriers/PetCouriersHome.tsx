@@ -134,7 +134,7 @@ export function PetCouriersHome() {
           {watch.lastCheckedAt === 0 && <div class="ff-empty">Not checked yet.</div>}
 
           {watch.lastCheckedAt !== 0 && watch.lastProbeResult === 'skipped-no-idle-pets' && (
-            <div class="ff-auto-row">No idle pets to check with (last tried {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
+            <div class="ff-auto-row">No idle pets right now (last checked {new Date(watch.lastCheckedAt).toLocaleTimeString()}).</div>
           )}
 
           {watch.lastCheckedAt !== 0 && watch.lastProbeResult !== 'skipped-no-idle-pets' && destOpen && (

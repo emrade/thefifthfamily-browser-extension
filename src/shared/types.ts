@@ -396,20 +396,22 @@ export interface CourierWatchSummary {
   watchEnabled: boolean;
   autoDispatchEnabled: boolean;
   autoOffloadEnabled: boolean;
-  /** Epoch ms the current rotation closes at, or `null` if the last probe
-   *  found both destinations locked (or nothing has probed yet). Only ever
-   *  set by an actual probe — see `lastProbeResult`. */
+  /** Epoch ms the current rotation closes at, or `null` if the last check
+   *  found the destination locked (or nothing has checked yet). Only ever
+   *  set by an actual `'open'` read — see `lastProbeResult`. */
   destinationOpenUntil: number | null;
-  /** Epoch ms of the last hourly *cycle*, whether or not it could actually
-   *  probe — `0` if none has run yet. Distinct from "last probe": a cycle
-   *  with zero idle pets still runs (and reschedules) but has nothing to
-   *  draft with, so it can't learn the destination's real state. */
+  /** Epoch ms of the last hourly *cycle*, whether or not it found anything
+   *  actionable — `0` if none has run yet. A cycle with zero idle pets still
+   *  runs (and reschedules), it just gets a `'skipped-no-idle-pets'` verdict
+   *  instead of `'open'`/`'locked'` — see `lastProbeResult`. */
   lastCheckedAt: number;
   /** What the last cycle actually concluded — `null` before the first cycle.
-   *  `'skipped-no-idle-pets'` means the timestamp above is honest about *when*
-   *  the system last ran, but it learned nothing about the destination that
-   *  time (nothing to draft with) — the panel should say so rather than
-   *  reusing a stale open/locked verdict from whenever the last real probe was. */
+   *  Named `lastProbeResult` from when this came off a draft-then-cancel
+   *  probe; now a direct, live read of the panel's own `launchAvailability`
+   *  signal on every cycle (see docs/smuggling-bulk-actions-plan.md), so
+   *  there's no "couldn't check" case left to distinguish from a real
+   *  verdict — `'skipped-no-idle-pets'` is itself a confirmed answer (the
+   *  panel's own "No idle couriers" reason), not a missed check. */
   lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
   /** Epoch ms the next hourly check is scheduled for, or `null` if — for
    *  whatever reason — no alarm is currently armed. */
@@ -438,8 +440,9 @@ export interface CourierStatus {
  *  already landed; dispatch spends cash and commits a pet to a new trip).
  *
  *  `watchEnabled` is the master switch for detection itself — the hourly
- *  destination probe (which drafts and cancels a real shipment just to read
- *  the destination list) and the pet-return tracking alarm. Neither
+ *  destination check (a live read of the panel's own `launchAvailability`
+ *  signal, see docs/smuggling-bulk-actions-plan.md) and the pet-return
+ *  tracking alarm. Neither
  *  `autoDispatchEnabled` nor `autoOffloadEnabled` has any other trigger to
  *  run from (both only ever fire from inside the watch's own alarm
  *  handlers — see `courierWatch.ts`), so they're meaningless without it;
@@ -460,15 +463,15 @@ export interface CourierAutoConfig {
 
 /** Background-owned runtime state for the hourly destination-rotation check —
  *  lets the pet-return alarm decide instantly whether a freshly-landed pet can
- *  be redispatched without an extra draft/cancel probe, and lets the panel
- *  (via `CourierWatchSummary`) show honestly what the last cycle actually did. */
+ *  be redispatched without a fresh panel read, and lets the panel (via
+ *  `CourierWatchSummary`) show honestly what the last cycle actually found. */
 export interface CourierWatchState {
   /** Epoch ms marking the end of the currently-open rotation hour, or `null`
-   *  if the last probe found both destinations locked (or none has probed
-   *  yet). Only ever set by an actual probe — untouched by a cycle that had
-   *  no idle pets to probe with. */
+   *  if the last check found the destination locked (or none has checked
+   *  yet). Only ever set by an actual `'open'` read. */
   destinationOpenUntil: number | null;
-  /** Epoch ms of the last hourly cycle, whether or not it could probe. */
+  /** Epoch ms of the last hourly cycle, whether or not it found the
+   *  destination open. */
   lastCheckedAt: number;
   /** See `CourierWatchSummary.lastProbeResult` — same field, persisted. */
   lastProbeResult: 'open' | 'locked' | 'skipped-no-idle-pets' | null;
