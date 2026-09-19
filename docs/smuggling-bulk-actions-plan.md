@@ -23,6 +23,17 @@ is **additive, not a replacement**. `v2_draft`, `v2_load`, `v2_depart`,
 new actions are a convenience layer, not a mechanic rewrite — confirmed by their
 coexistence with the old calls in the same session, not inferred.
 
+**The page is now split into tabs — "Operations · Inventory · History"** —
+and the manual buy UI moved rather than disappeared. Player's own
+confirmation: the Black Market Inventory grid (the `Game.buyContraband(...)`
+"Purchase" button — see below) now lives under **Inventory**, not the main
+**Operations** view where the fleet/launch/offload UI sits. Explains why it
+looked missing at first — it's a real navigation change, not a removed
+feature, and it's why the extension's own existing `buy` automation
+(`petCourier.ts`) kept working the whole time (confirmed: 740 real `buy`
+calls in the latest archive, all succeeding) while it looked absent from the
+page a player would normally be looking at.
+
 ## `v2_launch` — send some/all idle pets in one call
 
 **CONFIRMED real request/response** (one example, `origin: "page"` — the
