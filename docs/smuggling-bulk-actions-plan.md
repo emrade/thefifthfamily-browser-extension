@@ -82,23 +82,32 @@ Final button: `<button class="sv2-lo-go" onclick="Game.smugV2Launch(this)">
 Send N Couriers</button>` — reads all the selected state straight off the DOM
 and fires the one `v2_launch` call.
 
-### Insufficient cash doesn't block the send — it's a graceful partial, per the UI's own copy
+### Insufficient cash — CONFIRMED, and it's a hard rejection, not a partial
 
-**From a real screenshot, not yet cross-checked against an actual submitted
-`v2_launch` response** (the account owner hadn't sent this particular batch
-when it was captured) — worth flagging that distinction, but the UI's own
-live copy is specific enough to record: with 11 couriers needing $3,243,000
-total and insufficient cash on hand, the panel shows *"Not enough cash — the
-last couriers will be left behind"* in red, **while the Send button stays
-enabled**, not greyed out. That reads as "send whatever you can afford, drop
-the rest" rather than an all-or-nothing rejection — consistent with
-`v2_launch`'s own `max_spend` parameter existing as a cap in the first place
-(see the confirmed request shape above: `buy=1&max_spend=1403000` bought
-`61` of the `61` units requested that time, i.e. it capped at what
-`max_spend` allowed rather than failing outright). Still need a real
-captured response from a batch that actually got left short to confirm the
-exact shape (does `sent` come back lower than the roster size? does
-`units_bought` differ from a requested total?).
+**Corrected from an earlier draft of this doc, which guessed wrong from the
+UI's pre-send warning copy alone.** The warning text (*"Not enough cash — the
+last couriers will be left behind"*) reads like it's describing a graceful
+partial fill, and the Send button staying enabled while it shows supported
+that guess — but a real submitted call settles it:
+
+```
+action=v2_launch&user_pet_ids=<11 ids>&item_id=22&destination_city_id=1&buy=1&max_spend=3243000
+→ {"ok": false, "error": "Ran out of cash for more cargo."}
+```
+
+**Full rejection. Nothing sent, nothing bought, nothing spent** — an ordinary
+well-formed `{ok:false,"error":"..."}`, the same shape as every other
+expected rejection this codebase already handles (not a shape/parse problem
+to guard against). The warning text is telling you what *would* happen if
+you don't lower the ask — not describing what the server actually does when
+you send anyway.
+
+Confirmed real fix by the account owner, 6 seconds after a `withdraw`:
+dropped 2 pets from the roster, cut `max_spend` to `1,909,000`, resubmitted
+— `{"ok":true,"sent":9,"units_sent":83,...}`. **Also confirms the account
+owner's own observed workflow**: withdraw cash from the bank, then
+`v2_launch` straight from cash on hand — no separate buy/load step at all,
+matching `buy=1` handling the purchase inline as already documented above.
 
 ### A clean, single on/off signal — this answers one of the open questions above
 
@@ -223,15 +232,10 @@ place.
 
 ## What's still needed before any redesign
 
-1. **A real submitted `v2_launch` response for the insufficient-cash case** —
-   the UI's own "last couriers will be left behind" copy plus the Send
-   button staying enabled strongly suggests a graceful partial fill rather
-   than an outright rejection, but no actual captured response confirms the
-   shape yet (whether `sent` comes back lower than the roster size, whether
-   `units_bought` reads below what was requested, etc.).
-2. **A genuine rejection case for either action** — an empty roster, nothing
-   pending to offload — none captured yet.
-3. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
+1. **A genuine rejection case for `v2_offload_all`** — nothing pending to
+   collect, none captured yet. (`v2_launch`'s own rejection shape — cash —
+   is now confirmed above.)
+2. **`smugV2Reserve`/`smugV2Unload` in context** — a capture showing the
    surrounding UI (what section they're in, what triggers them) rather than
    just the bare `onclick` signature.
 
