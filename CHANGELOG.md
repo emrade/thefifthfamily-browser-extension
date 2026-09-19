@@ -9,6 +9,47 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.28.2] - 2026-09-19
+
+### Fixed
+- Pet Courier's background destination watch no longer freezes on a stale
+  "locked" or "unknown" reading. The panel's own "why can't I send" message
+  has an icon between its opening tag and the actual text
+  (`<i class="fa-solid fa-circle-info"></i>` before the message), which the
+  parser never accounted for — every real reading silently fell through to
+  an unrecognized state that the watch deliberately never overwrites its
+  last known verdict for, so it could get stuck reporting a destination as
+  locked long after it had actually opened. Confirmed by running the parser
+  directly against real captured panel responses: every "off" reading came
+  back misclassified before this fix, correctly resolved after it.
+- A landed pet with nothing else in flight could sit uncollected
+  indefinitely (or for however long it took some *other*, unrelated pet to
+  separately land) — the return-check alarm was scheduled purely off the
+  next inbound pet's own arrival time, with no path to check again sooner
+  just because cargo was already waiting. Confirmed real: one pet sat ready
+  to collect for 3.5 minutes before an unrelated pet's landing happened to
+  trigger the check that finally swept it up. Auto-offload now forces a
+  near-immediate recheck whenever something is sitting ready to collect.
+- Fixed a race where the hourly destination check and the pet-return check
+  could both decide to act within the same moment, running two courier
+  batches concurrently. Confirmed real: two identical dispatch requests for
+  the same pet 203ms apart (one succeeded, the other rejected as "already
+  out on a delivery"), and the losing run's own end-of-batch cash sweep
+  racing the winner's the same way ("Invalid amount" from depositing cash
+  that had just been swept by the other run). The unrecognized rejection
+  from the losing run also incorrectly triggered the feature's own
+  auto-disable safety net, turning off watch/dispatch/offload over what was
+  really just a race, not a broken feature. Only one courier batch can now
+  run at a time; a second trigger arriving mid-cycle is skipped outright
+  instead of racing the first.
+- The in-page courier panel's toggle switches could keep showing ON after
+  the background silently turned everything off (e.g. from the
+  auto-disable above, or a change made from the extension popup) — they
+  were only ever set once when the panel opened and after the player's own
+  clicks, with nothing watching for an external change. They now stay in
+  sync with the popup's own toggles and with anything the background
+  changes on its own.
+
 ## [0.28.1] - 2026-09-19
 
 ### Fixed
