@@ -19,9 +19,14 @@ files instead.
 
 Written 2026-09-20 after the account owner asked whether recent manual play
 supports raising the accuracy floor — see `STREET_RACING_ACCURACY_MIN`'s own
-doc in constants.ts for what that check found (short version: no clean
-upward trend across the full history; low 70s-80s scores appear throughout
-the whole date range, not just early on).
+doc in constants.ts, and this script's own README, for what that check
+found. Short version: a real first-pass run against a narrow date window
+looked flat, but a same-day re-run against a fuller archive set showed a
+genuine improvement trend in the first ~2-3 weeks of play followed by a
+plateau — low 70s-80s scores are real and recur even well past that
+plateau, just infrequently (a concentration-lapse pattern, not a skill
+floor), so re-run this against the *fullest* archive set you can find
+rather than trusting a single narrow pull.
 """
 
 import argparse

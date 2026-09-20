@@ -305,30 +305,37 @@ export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // fixed number, and never the maximum — matches its actual play better than
 // either a constant or a small discrete set.
 //
-// Revised 2026-09-20, per the account owner directly: that original 74-96
-// spread was from when the mini-game was brand new to them, and the low end
-// (74-75) was specifically early unfamiliarity, not their normal play — since
-// practicing, manual attempts consistently land 90+. The only real sample
-// available since then (a manual Tunnel Circuit attempt the same day this was
-// revised) scored 94, consistent with that claim, though it's one data point,
-// not a fresh 23-sample fit the way the original numbers were — the honest
-// thing is to revisit this again once more real post-practice attempts exist,
-// the same way the original range was grounded in real captures rather than
-// assumed. This matters beyond just the bonus cash a 100%-base race pays:
-// unlike those, a race with a base win chance under 100% (e.g. Tunnel
-// Circuit's 69.6%) can only ever gain up to `(accuracy-50)*0.1` percentage
-// points from `accuracy` — confirmed real, both wins and losses in the same
-// session matched this exactly — so a low draw here isn't just a smaller
-// bonus, it can be the actual difference between winning and losing.
-export const STREET_RACING_ACCURACY_MEAN = 92;
+// Re-verified 2026-09-20 against 149 completed real `attempt_race` calls
+// (Aug 12 - Sep 20) via `verification/street-racing/verify_manual_accuracy.py`
+// — the first re-check to actually pull an expanded archive set rather than
+// take the account owner's word for it. This *disproved* an earlier revision
+// of this comment that claimed "since practicing, manual attempts
+// consistently land 90+" based on a single post-practice data point: real
+// play plateaus around mean 89.0/stdev 5.2 from Aug 24 onward, not 90+, and
+// still dips into the mid-70s occasionally (74 twice, most recently
+// 2026-09-11 — well after the claimed "practiced" cutoff, not just early
+// unfamiliarity). Per the account owner, this matches how the mini-game
+// actually works: it's a click-timing/concentration game, not a
+// skill-progression one, so low scores are occasional focus lapses rather
+// than a skill floor that rises with practice — consistent with the data,
+// where sub-80 scores are real but rare (7.1% of the post-plateau sample,
+// not evenly spread through the range). This also matters beyond just the
+// bonus cash a 100%-base race pays: unlike those, a race with a base win
+// chance under 100% (e.g. Tunnel Circuit's 69.6%) can only ever gain up to
+// `(accuracy-50)*0.1` percentage points from `accuracy` — confirmed real,
+// both wins and losses in the same session matched this exactly — so a low
+// draw here isn't just a smaller bonus, it can be the actual difference
+// between winning and losing.
+export const STREET_RACING_ACCURACY_MEAN = 91;
 export const STREET_RACING_ACCURACY_STDDEV = 4;
 export const STREET_RACING_ACCURACY_MIN = 85;
-// 98, not 99 or 100 — per the account owner directly: they don't believe
-// they've ever actually hit 99 manually, so 99 would overshoot their own real
-// ceiling, not just avoid a suspiciously-perfect 100 the way the original
-// design intended. Shared as the ceiling for the hard-race distribution below
-// too, for the same reason.
-export const STREET_RACING_ACCURACY_MAX = 98;
+// 97, not 98 — the 2026-09-20 re-verification found a real all-time high of
+// 97 across the full 149-attempt sample (previously assumed to be 96, with
+// 98 picked as a one-above-ceiling cushion). Set to the account's actual
+// verified ATH rather than a cushion above it, per the account owner
+// directly. Shared as the ceiling for the hard-race distribution below too,
+// though that one hasn't been re-verified against this same archive set.
+export const STREET_RACING_ACCURACY_MAX = 97;
 
 // A race whose own `odds_pct` (from the race catalog) is under 100% can only
 // ever gain up to `(accuracy-50)*0.1` percentage points of win chance from
