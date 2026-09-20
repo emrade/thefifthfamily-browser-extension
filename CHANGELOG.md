@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.31.0] - 2026-09-21
+
+### Added
+- Street Racing's in-page panel now badges any race whose current win odds
+  are below 100% ("⚠ 70% odds") — confirmed real via archive analysis that
+  this tracks weather (rainy/snowy conditions can drop a race from a
+  guaranteed win to as low as 59%) and can flip more than once a day as
+  weather changes, not a fixed per-race difficulty.
+- "Race All Unlocked" and a single race's own "Run All" now skip
+  weather-affected races by default, with a per-run checkbox in the confirm
+  dialog (unchecked every time, never persisted) to include them anyway —
+  naming exactly which races and current odds would be added. The batch
+  summary lists anything skipped this way by name so it's never silent.
+
+### Changed
+- Street Racing's `STREET_RACING_ACCURACY_MEAN` moves from 91 to 93,
+  matching a recent 8-race manual session's own mean at the account owner's
+  direction — see `verification/street-racing/README.md`'s 2026-09-21 entry
+  for how this compares to the broader multi-week trend it's set above.
+
 ## [0.30.0] - 2026-09-20
 
 ### Added
