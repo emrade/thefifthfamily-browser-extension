@@ -11,8 +11,8 @@ account's real mini-game performance has shifted, rather than guessing.
 
 Run: python3 verification/street-racing/verify_manual_accuracy.py [--archive PATH ...]
 
-By default this combines *every* matching archive found under ~/Downloads,
-~/Desktop, and their "tff archives" subfolders (not just the newest) — a
+By default this combines *every* matching archive found under ~/Downloads
+and its "tff archives" subfolder (not just the newest) — a
 single export's rolling window rarely covers enough real manual play to say
 anything about a trend; `--archive` is repeatable if you want to pin specific
 files instead.
@@ -40,8 +40,6 @@ from urllib.parse import parse_qs
 ARCHIVE_GLOBS = [
     str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
     str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Desktop" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Desktop" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
 ]
 
 
@@ -119,7 +117,7 @@ def main():
         action="append",
         default=None,
         help="Path to a fifth-family-archive-*.ndjson.gz (repeatable; default: every match under "
-        "~/Downloads, ~/Desktop, and their 'tff archives' subfolders)",
+        "~/Downloads and its 'tff archives' subfolder)",
     )
     args = parser.parse_args()
     archive_paths = args.archives or find_default_archives()
