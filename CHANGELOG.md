@@ -9,6 +9,29 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.30.0] - 2026-09-20
+
+### Added
+- Street Racing automation now models a separate, tighter, higher accuracy
+  distribution for "hard" races — ones where the race catalog's own
+  `odds_pct` is below 100%. On those races `accuracy` isn't just a cash-bonus
+  multiplier, it can be the literal difference between winning and losing
+  (confirmed real: `win_chance` derives from `base_chance` plus up to
+  `(accuracy-50)*0.1` points from `accuracy`), so a real player naturally
+  focusing harder when the win isn't already guaranteed is modeled instead of
+  sampling from the same general-purpose distribution used for guaranteed
+  wins.
+
+### Changed
+- Street Racing's general `accuracy` distribution (`STREET_RACING_ACCURACY_MEAN`
+  and `_MAX`) has been re-tuned against a much larger verified sample of real
+  manual play — 149 real `attempt_race` calls across six weeks, not the
+  23-sample fit (and later a single anecdotal data point) it was previously
+  based on. `MEAN` moves from 92 to 91 and `MAX` from 98 to 97, both now
+  matching the account's actual observed plateau and all-time high rather
+  than overshooting them. See `verification/street-racing/` for the
+  re-runnable check behind this.
+
 ## [0.29.1] - 2026-09-20
 
 ### Fixed
