@@ -17,7 +17,6 @@ from pathlib import Path
 
 ARCHIVE_GLOBS = [
     str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Desktop" / "fifth-family-archive-*.ndjson.gz"),
 ]
 
 
@@ -36,7 +35,7 @@ def add_archive_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--archive",
         default=None,
-        help="Path to fifth-family-archive-*.ndjson.gz (default: newest match under ~/Downloads or ~/Desktop)",
+        help="Path to fifth-family-archive-*.ndjson.gz (default: newest match under ~/Downloads)",
     )
 
 
@@ -56,7 +55,7 @@ def add_archives_arg(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=None,
         help="Path to a fifth-family-archive-*.ndjson.gz (repeatable to combine several; "
-        "default: every match under ~/Downloads or ~/Desktop)",
+        "default: every match under ~/Downloads)",
     )
 
 

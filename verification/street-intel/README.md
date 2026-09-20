@@ -23,8 +23,8 @@ python3 verification/street-intel/verify_complication_type_stats.py [--archive .
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
-under `~/Downloads` or `~/Desktop` — pass it explicitly if the archive lives
-somewhere else or you want to pin a specific export.
+under `~/Downloads` — pass it explicitly if the archive lives somewhere
+else or you want to pin a specific export.
 
 `verify_complication_type_stats.py` is the one exception: it defaults to
 *every* matching archive found (not just the newest) and `--archive` is
