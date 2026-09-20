@@ -295,7 +295,7 @@ export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 
 // --- Street Racing overlay ----------------------------------------------------
 //
-// Derived from this account's real `races_v2.php` history: 23 real
+// Originally derived from this account's real `races_v2.php` history: 23 real
 // `attempt_race` calls submitted `accuracy` values ranging continuously from
 // 74-96 (mean 88.7, median 90, stdev 5.9) — every value in that range was
 // distinct, unlike Career Auto's mini-game, which (see
@@ -304,13 +304,46 @@ export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // normal distribution around this account's own real mean/stdev — not a
 // fixed number, and never the maximum — matches its actual play better than
 // either a constant or a small discrete set.
-export const STREET_RACING_ACCURACY_MEAN = 89;
-export const STREET_RACING_ACCURACY_STDDEV = 6;
-// Clamped a little past the observed 74-96 range rather than exactly to it —
-// a hard wall right at this account's own historical min/max would itself be
-// a tell if enough attempts ever got compared.
-export const STREET_RACING_ACCURACY_MIN = 68;
-export const STREET_RACING_ACCURACY_MAX = 99;
+//
+// Revised 2026-09-20, per the account owner directly: that original 74-96
+// spread was from when the mini-game was brand new to them, and the low end
+// (74-75) was specifically early unfamiliarity, not their normal play — since
+// practicing, manual attempts consistently land 90+. The only real sample
+// available since then (a manual Tunnel Circuit attempt the same day this was
+// revised) scored 94, consistent with that claim, though it's one data point,
+// not a fresh 23-sample fit the way the original numbers were — the honest
+// thing is to revisit this again once more real post-practice attempts exist,
+// the same way the original range was grounded in real captures rather than
+// assumed. This matters beyond just the bonus cash a 100%-base race pays:
+// unlike those, a race with a base win chance under 100% (e.g. Tunnel
+// Circuit's 69.6%) can only ever gain up to `(accuracy-50)*0.1` percentage
+// points from `accuracy` — confirmed real, both wins and losses in the same
+// session matched this exactly — so a low draw here isn't just a smaller
+// bonus, it can be the actual difference between winning and losing.
+export const STREET_RACING_ACCURACY_MEAN = 92;
+export const STREET_RACING_ACCURACY_STDDEV = 4;
+export const STREET_RACING_ACCURACY_MIN = 85;
+// 98, not 99 or 100 — per the account owner directly: they don't believe
+// they've ever actually hit 99 manually, so 99 would overshoot their own real
+// ceiling, not just avoid a suspiciously-perfect 100 the way the original
+// design intended. Shared as the ceiling for the hard-race distribution below
+// too, for the same reason.
+export const STREET_RACING_ACCURACY_MAX = 98;
+
+// A race whose own `odds_pct` (from the race catalog) is under 100% can only
+// ever gain up to `(accuracy-50)*0.1` percentage points of win chance from
+// `accuracy` — confirmed real (Tunnel Circuit, 2026-09-20): both wins and
+// losses in the same session matched this formula exactly. Unlike a
+// guaranteed-win race, where a low accuracy draw only costs a smaller cash
+// bonus, a low draw here can be the literal difference between winning and
+// losing. Sampled from a separate, tighter, higher distribution than the
+// general one above rather than just always sending the max — a real player
+// naturally focusing harder on a race that isn't already guaranteed is a
+// plausible reason to skew high, but always sending an identical value on
+// every hard race would be its own tell.
+export const STREET_RACING_ACCURACY_HARD_RACE_MEAN = 96;
+export const STREET_RACING_ACCURACY_HARD_RACE_STDDEV = 1.5;
+export const STREET_RACING_ACCURACY_HARD_RACE_MIN = 92;
 
 // Derived from the same history: matching `can_race` -> `attempt_race`
 // timestamp pairs for the same `race_id` landed 22-25s apart in 22 of 23

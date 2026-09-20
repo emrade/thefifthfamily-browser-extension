@@ -530,7 +530,13 @@ async function handleRun(raceId: number, raceName: string): Promise<void> {
   renderAll();
 
   try {
-    const result = (await chrome.runtime.sendMessage({ type: 'street-race-run-requested', raceId, raceName })) as RaceAttemptResult;
+    // Looked up from the already-fetched catalog rather than passed in by
+    // the caller — every call site here already has `raceId` from the same
+    // catalog this reads, so there's no reason to thread a third parameter
+    // through just to avoid one lookup. See `runRace`'s own doc for why
+    // background needs this.
+    const oddsPct = catalog?.races.find((r) => r.id === raceId)?.oddsPct;
+    const result = (await chrome.runtime.sendMessage({ type: 'street-race-run-requested', raceId, raceName, oddsPct })) as RaceAttemptResult;
     lastRowResults.set(raceId, { won: result.won, cashAwarded: result.cashAwarded });
 
     const race = catalog?.races.find((r) => r.id === raceId);

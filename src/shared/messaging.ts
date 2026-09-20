@@ -139,8 +139,11 @@ export type ExtensionMessage =
   // resulting `RaceAttemptResult` directly, so the overlay can update just
   // that race's row the moment it resolves rather than re-fetching the
   // whole catalog. `raceName` is threaded through only because
-  // `attempt_race`'s own response never echoes it back.
-  | { type: 'street-race-run-requested'; raceId: number; raceName: string }
+  // `attempt_race`'s own response never echoes it back. `oddsPct` is the
+  // overlay's own cached `RaceCatalogEntry.oddsPct` for this race — passed
+  // through rather than re-fetched, since background has no other way to
+  // know whether this is a hard race (see `runRace`'s own doc).
+  | { type: 'street-race-run-requested'; raceId: number; raceName: string; oddsPct?: number }
   // Broadcast (via `chrome.tabs.sendMessage`, not `chrome.runtime.sendMessage`
   // — same targeting reason as 'courier-run-progress') the moment `can_race`
   // clears and the sampled minigame delay starts, so the overlay can show a

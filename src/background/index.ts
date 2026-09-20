@@ -201,7 +201,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // can_race -> (sampled minigame delay) -> attempt_race sequence has run,
   // so this is a genuinely slow (~20-27s) call, not an instant one.
   if (msg.type === 'street-race-run-requested') {
-    return runStreetRace(msg.raceId, msg.raceName, sender.tab?.id);
+    return runStreetRace(msg.raceId, msg.raceName, sender.tab?.id, msg.oddsPct);
   }
 
   // Sent by the in-page Garage & Dealership overlay on mount/refresh — see

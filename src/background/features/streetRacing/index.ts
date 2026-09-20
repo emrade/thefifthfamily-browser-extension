@@ -1,5 +1,8 @@
 import {
   GAME_ORIGIN,
+  STREET_RACING_ACCURACY_HARD_RACE_MEAN,
+  STREET_RACING_ACCURACY_HARD_RACE_MIN,
+  STREET_RACING_ACCURACY_HARD_RACE_STDDEV,
   STREET_RACING_ACCURACY_MAX,
   STREET_RACING_ACCURACY_MEAN,
   STREET_RACING_ACCURACY_MIN,
@@ -73,6 +76,7 @@ function mapRace(raw: any): RaceCatalogEntry {
     bestStreak: raw.best_streak,
     raceType: raw.race_type,
     familySlug: raw.race_type === 'family' ? (FAMILY_SLUG_BY_OPPONENT[raw.opponent_name] ?? null) : null,
+    oddsPct: Number(raw.odds_pct) || 0,
   };
 }
 
@@ -122,8 +126,17 @@ export async function fetchCatalog(): Promise<RaceCatalog> {
  * can be driven by the real sampled duration instead of guessing one.
  * Best-effort: `undefined` (or the tab having navigated away) just means no
  * one's listening, which changes nothing about the race itself.
+ *
+ * `oddsPct` is the race catalog's own pre-race win-odds display, passed
+ * through by the caller (which already has the full catalog entry in hand)
+ * rather than re-fetched here. Below 100 means `accuracy` can actually
+ * decide the outcome, not just a cash bonus's size — see
+ * `STREET_RACING_ACCURACY_HARD_RACE_MEAN`'s own doc — so that case samples
+ * from a separate, higher-biased distribution. `undefined` (the caller
+ * couldn't find this race in its own cached catalog for some reason) falls
+ * back to the general distribution, same as a confirmed-100% race.
  */
-export async function runRace(raceId: number, raceName: string, tabId?: number): Promise<RaceAttemptResult> {
+export async function runRace(raceId: number, raceName: string, tabId?: number, oddsPct?: number): Promise<RaceAttemptResult> {
   const canRace = await postAction('/actions/races_v2.php', { action: 'can_race', race_id: raceId });
   if (canRace.ok === false) throw new Error(canRace.error || canRace.msg || 'This race can’t be attempted right now.');
   if (canRace.can_race === false) {
@@ -148,7 +161,10 @@ export async function runRace(raceId: number, raceName: string, tabId?: number):
   // `accuracy_adj: 0` every time this was omitted). That's invisible on any
   // race with a 100% base chance but quietly zeroes out the accuracy bonus
   // on tougher ones.
-  const accuracy = sampleClampedNormal(STREET_RACING_ACCURACY_MEAN, STREET_RACING_ACCURACY_STDDEV, STREET_RACING_ACCURACY_MIN, STREET_RACING_ACCURACY_MAX);
+  const isHardRace = oddsPct !== undefined && oddsPct < 100;
+  const accuracy = isHardRace
+    ? sampleClampedNormal(STREET_RACING_ACCURACY_HARD_RACE_MEAN, STREET_RACING_ACCURACY_HARD_RACE_STDDEV, STREET_RACING_ACCURACY_HARD_RACE_MIN, STREET_RACING_ACCURACY_MAX)
+    : sampleClampedNormal(STREET_RACING_ACCURACY_MEAN, STREET_RACING_ACCURACY_STDDEV, STREET_RACING_ACCURACY_MIN, STREET_RACING_ACCURACY_MAX);
   const attemptParams: Record<string, string | number> = { action: 'attempt_race', race_id: raceId, accuracy };
   if (canRace.run_token) attemptParams.run_token = canRace.run_token;
   const resp = await postAction('/actions/races_v2.php', attemptParams);

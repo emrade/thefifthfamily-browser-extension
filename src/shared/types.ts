@@ -1020,6 +1020,12 @@ export interface RaceCatalogEntry {
    *  `null` for a `'district'` race, or if `opponentName` is ever an
    *  unrecognized value the mapping doesn't cover. */
   familySlug: string | null;
+  /** The game's own pre-race win-odds display (confirmed real: Tunnel
+   *  Circuit showed `100` for every guaranteed-win opponent this account had
+   *  faced until "Static," which showed `70`). Below 100 means `accuracy`
+   *  can actually decide the outcome, not just the size of a cash bonus — see
+   *  `STREET_RACING_ACCURACY_HARD_RACE_MEAN`'s own doc in shared/constants.ts. */
+  oddsPct: number;
 }
 
 export interface RaceCatalog {
