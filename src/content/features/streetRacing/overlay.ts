@@ -113,6 +113,12 @@ const PANEL_CSS = `
 }
 .ff-rp-batch-summary-close { float: right; background: none; border: none; color: #6b6455; cursor: pointer; font-size: 12px; }
 
+.ff-rp-batch-weather {
+  display: flex; align-items: flex-start; gap: 7px; margin-top: 8px;
+  font-size: 9.5px; line-height: 1.5; color: #fbbf24; cursor: pointer;
+}
+.ff-rp-batch-weather input { margin-top: 2px; flex-shrink: 0; }
+
 .ff-rp-race {
   padding: 9px 10px; margin-bottom: 8px;
   background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
@@ -124,6 +130,7 @@ const PANEL_CSS = `
 .ff-rp-race-opp { font-size: 9px; color: #6b6455; margin-top: 1px; }
 .ff-rp-race-meta { font-size: 9.5px; color: #9ca3af; margin-top: 5px; display: flex; gap: 10px; flex-wrap: wrap; }
 .ff-rp-race-meta span { white-space: nowrap; }
+.ff-rp-odds-warn { color: #fbbf24 !important; font-weight: 700; }
 .ff-rp-race-result { font-size: 9.5px; margin-top: 5px; }
 .ff-rp-race-result.ff-rp-win { color: #4ade80; }
 .ff-rp-race-result.ff-rp-loss { color: #f87171; }
@@ -188,6 +195,12 @@ interface BatchSummary {
    *  "Race All Unlocked" run — captured at the start of `runBatch` since
    *  `batchScopeRaceId` itself is reset back to `null` once the run ends. */
   scopedRaceName: string | null;
+  /** Names of races that were eligible but sat out this run because they're
+   *  currently weather-affected (`oddsPct < 100`) and the "include
+   *  weather-affected races" box was left unchecked — see
+   *  `batchIncludeWeatherAffected`'s own doc. Empty whenever nothing was
+   *  skipped for this reason, including when the box was checked. */
+  weatherSkipped: string[];
 }
 
 let panelEl: HTMLDivElement | null = null;
@@ -209,6 +222,14 @@ let batchSummary: BatchSummary | null = null;
 // on its row) — both go through the same confirm/run/stop machinery below,
 // just with the queue restricted differently.
 let batchScopeRaceId: number | null = null;
+
+// Per-run, not persisted: reset to `false` every time a fresh confirm dialog
+// opens (see both `.ff-rp-run-all` and `.ff-rp-batch-start` click handlers),
+// so a weather-affected race is never silently included just because a
+// previous run happened to opt in. See `renderBatchControls`'s 'confirming'
+// branch for the checkbox this drives, and `isWeatherAffected`'s own doc for
+// what "affected" means here.
+let batchIncludeWeatherAffected = false;
 
 // Drives the countdown text under the active progress bar — cleared whenever
 // a race finishes or a new one starts, since only one can ever be animating.
@@ -257,6 +278,28 @@ function lockLabel(race: RaceCatalogEntry): string | null {
  *  own mini-game, or an earlier session) never gets queued again. */
 function isEligible(race: RaceCatalogEntry): boolean {
   return lockLabel(race) == null && race.attemptsToday < race.dailyAttempts;
+}
+
+/** True when this race's current win odds are below 100% — the same
+ *  `oddsPct < 100` condition `runRace`'s own `isHardRace` check uses to
+ *  switch accuracy distributions, reused here rather than inventing a
+ *  second threshold. Confirmed real (see `verify_boss_odds.py`'s Arena
+ *  counterpart for the general pattern, and this feature's own `Static`
+ *  investigation): this tracks weather, not a fixed per-race difficulty, so
+ *  it can flip on or off race to race as weather changes mid-session.
+ *  `oddsPct > 0` guards a race whose odds simply haven't loaded yet
+ *  (`mapRace` defaults a missing/unparseable `odds_pct` to `0`) from being
+ *  flagged as "weather-affected" when it's really just "unknown". */
+function isWeatherAffected(race: RaceCatalogEntry): boolean {
+  return race.oddsPct > 0 && race.oddsPct < 100;
+}
+
+/** `isEligible` plus the weather-affected gate a batch run applies —
+ *  `includeWeatherAffected` mirrors the confirm dialog's own checkbox, so
+ *  the count shown there and what `runBatch` actually queues never drift
+ *  apart. */
+function isEligibleForBatch(race: RaceCatalogEntry, includeWeatherAffected: boolean): boolean {
+  return isEligible(race) && (includeWeatherAffected || !isWeatherAffected(race));
 }
 
 function renderRace(race: RaceCatalogEntry): string {
@@ -316,6 +359,7 @@ function renderRace(race: RaceCatalogEntry): string {
         <span>${money(race.cashReward)}</span>
         <span>${race.staminaCost} stamina</span>
         <span>${race.wins}W-${race.losses}L</span>
+        ${isWeatherAffected(race) ? `<span class="ff-rp-odds-warn" title="Win odds currently reduced by weather — accuracy actually decides this one">⚠ ${race.oddsPct}% odds</span>` : ''}
       </div>
       ${progressHtml}
       ${resultHtml}
@@ -331,6 +375,9 @@ function renderBatchSummary(): string {
     batchSummary.stopped ? 'stopped' : 'finished'
   } — ${parts.join(', ')}.`;
   if (batchSummary.errors.length) html += `<br>${batchSummary.errors.join('<br>')}`;
+  if (batchSummary.weatherSkipped.length) {
+    html += `<br>Skipped (weather-affected, not checked): ${batchSummary.weatherSkipped.join(', ')}`;
+  }
   html += '</div>';
   return html;
 }
@@ -342,10 +389,10 @@ function renderBatchSummary(): string {
  *  `scopeRaceId` narrows this to one race's own remaining attempts — same
  *  restriction `runBatch`'s own `eligibleForThisRun` applies when actually
  *  running. */
-function totalEligibleAttempts(scopeRaceId: number | null = null): number {
+function totalEligibleAttempts(scopeRaceId: number | null = null, includeWeatherAffected = false): number {
   if (!catalog) return 0;
   return catalog.races
-    .filter((r) => isEligible(r) && (scopeRaceId == null || r.id === scopeRaceId))
+    .filter((r) => isEligibleForBatch(r, includeWeatherAffected) && (scopeRaceId == null || r.id === scopeRaceId))
     .reduce((sum, r) => sum + (r.dailyAttempts - r.attemptsToday), 0);
 }
 
@@ -364,13 +411,30 @@ function renderBatchControls(): string {
   }
 
   if (batchState === 'confirming') {
-    const totalAttempts = totalEligibleAttempts(batchScopeRaceId);
+    const totalAttempts = totalEligibleAttempts(batchScopeRaceId, batchIncludeWeatherAffected);
     const scopedRace = batchScopeRaceId != null ? catalog.races.find((r) => r.id === batchScopeRaceId) : null;
     const estimateSeconds = Math.round((totalAttempts * STREET_RACING_MINIGAME_DELAY_MEAN_MS) / 1000);
     const subjectText = scopedRace ? `on ${scopedRace.name}` : 'across your unlocked races';
+
+    // Races this scope would touch if weather-affected ones were included —
+    // used only to decide whether the checkbox is worth showing at all and
+    // to name what it would add, not to gate anything itself.
+    const affectedInScope = catalog.races.filter(
+      (r) => isEligible(r) && isWeatherAffected(r) && (batchScopeRaceId == null || r.id === batchScopeRaceId),
+    );
+    const weatherHtml = affectedInScope.length
+      ? `<label class="ff-rp-batch-weather">
+          <input type="checkbox" class="ff-rp-batch-weather-toggle" ${batchIncludeWeatherAffected ? 'checked' : ''} />
+          <span>Include ${affectedInScope.length} weather-affected race${affectedInScope.length === 1 ? '' : 's'} (${affectedInScope
+            .map((r) => `${r.name} ${r.oddsPct}%`)
+            .join(', ')}) — unchecked by default, accuracy actually decides these</span>
+        </label>`
+      : '';
+
     return `
       <div class="ff-rp-batch">
         <div class="ff-rp-batch-text">Race all ${totalAttempts} remaining attempt${totalAttempts === 1 ? '' : 's'} ${subjectText}? Takes ~${estimateSeconds}s total.</div>
+        ${weatherHtml}
         <div class="ff-rp-batch-actions">
           <button class="ff-rp-batch-confirm" type="button">Confirm</button>
           <button class="ff-rp-batch-cancel" type="button">Cancel</button>
@@ -381,7 +445,10 @@ function renderBatchControls(): string {
 
   // Idle state only ever shows the global start button — a per-race "Run
   // All" lives inline on that race's own row instead (see `renderRace`).
-  const totalAttempts = totalEligibleAttempts(null);
+  // Weather-affected races excluded from this count too (matches the
+  // confirm dialog's own unchecked-by-default state), so this number is
+  // what would actually run without opting in, not an inflated total.
+  const totalAttempts = totalEligibleAttempts(null, false);
   if (!totalAttempts) return '';
   return `<button class="ff-rp-batch-start" type="button">Race All Unlocked (${totalAttempts} left)</button>`;
 }
@@ -426,18 +493,24 @@ function renderAll(): void {
   panelEl.querySelectorAll<HTMLButtonElement>('.ff-rp-run-all').forEach((btn) => {
     btn.addEventListener('click', () => {
       batchScopeRaceId = Number(btn.dataset.raceId);
+      batchIncludeWeatherAffected = false;
       batchState = 'confirming';
       renderAll();
     });
   });
   panelEl.querySelector('.ff-rp-batch-start')?.addEventListener('click', () => {
     batchScopeRaceId = null;
+    batchIncludeWeatherAffected = false;
     batchState = 'confirming';
     renderAll();
   });
   panelEl.querySelector('.ff-rp-batch-cancel')?.addEventListener('click', () => {
     batchState = 'idle';
     batchScopeRaceId = null;
+    renderAll();
+  });
+  panelEl.querySelector('.ff-rp-batch-weather-toggle')?.addEventListener('change', (e) => {
+    batchIncludeWeatherAffected = (e.target as HTMLInputElement).checked;
     renderAll();
   });
   panelEl.querySelector('.ff-rp-batch-confirm')?.addEventListener('click', () => void runBatch());
@@ -575,6 +648,10 @@ async function runBatch(): Promise<void> {
   batchCancelRequested = false;
   batchSummary = null;
   const scopeId = batchScopeRaceId;
+  // Snapshotted, not read live off `batchIncludeWeatherAffected` throughout
+  // — the checkbox itself is gone the moment `batchState` leaves
+  // 'confirming', so this is the only point its value can be captured.
+  const includeWeatherAffected = batchIncludeWeatherAffected;
 
   // A race that fails an attempt (most commonly: not enough stamina) doesn't
   // advance its own `attemptsToday` — the failure happens at `can_race`,
@@ -584,7 +661,8 @@ async function runBatch(): Promise<void> {
   // it's dropped from consideration for the rest of it (but stays fully
   // eligible again next time "Race All"/"Run All" is started fresh).
   const abandoned = new Set<number>();
-  const eligibleForThisRun = (r: RaceCatalogEntry) => isEligible(r) && !abandoned.has(r.id) && (scopeId == null || r.id === scopeId);
+  const eligibleForThisRun = (r: RaceCatalogEntry) =>
+    isEligibleForBatch(r, includeWeatherAffected) && !abandoned.has(r.id) && (scopeId == null || r.id === scopeId);
 
   // Refreshed right before starting, not reused from whatever was last
   // loaded — the player may have raced a few by hand (in this panel or the
@@ -595,6 +673,15 @@ async function runBatch(): Promise<void> {
   renderAll();
   await refresh();
 
+  // Computed once, off the freshly-refreshed catalog, purely for the
+  // summary line — doesn't affect what actually runs (`eligibleForThisRun`
+  // above already excludes these when `includeWeatherAffected` is false).
+  const weatherSkipped = includeWeatherAffected
+    ? []
+    : (catalog?.races ?? [])
+        .filter((r) => isEligible(r) && isWeatherAffected(r) && (scopeId == null || r.id === scopeId))
+        .map((r) => r.name);
+
   const tally: BatchSummary = {
     won: 0,
     lost: 0,
@@ -602,6 +689,7 @@ async function runBatch(): Promise<void> {
     errors: [],
     stopped: false,
     scopedRaceName: scopeId != null ? (catalog?.races.find((r) => r.id === scopeId)?.name ?? null) : null,
+    weatherSkipped,
   };
 
   // Picks whichever eligible race sorts first, runs one attempt on it, then
