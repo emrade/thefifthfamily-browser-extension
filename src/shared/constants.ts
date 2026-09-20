@@ -326,7 +326,21 @@ export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // both wins and losses in the same session matched this exactly — so a low
 // draw here isn't just a smaller bonus, it can be the actual difference
 // between winning and losing.
-export const STREET_RACING_ACCURACY_MEAN = 91;
+// Revised 2026-09-21, per the account owner directly, after a strong
+// 8-race manual session that morning (93, 94, 85, 95, 95, 95, 93, 94 — all
+// wins, session mean 93.0): MEAN moved from 91 to 93 to match that
+// session's mean exactly. Flagged at the time that this outruns what the
+// broader trend supports on its own — the 8-week plateau mean including
+// that session is 89.3 (was 89.0 the day before), and even a recency-
+// weighted estimate off the last 3 weeks + that session lands around 90.4,
+// not 93 — a single strong day barely moves 90-some prior data points, by
+// construction. Account owner's call to use the session's own mean anyway;
+// see `verification/street-racing/README.md`'s 2026-09-21 entry for the
+// full weekly breakdown this was weighed against. STDDEV left at 4 (not
+// widened) — with MEAN=93 that puts P(sampleClampedNormal clamps to
+// MIN=85) at ~2.3%, confirmed acceptable directly by the account owner
+// (who'd assumed it was closer to 30%+ before checking).
+export const STREET_RACING_ACCURACY_MEAN = 93;
 export const STREET_RACING_ACCURACY_STDDEV = 4;
 export const STREET_RACING_ACCURACY_MIN = 85;
 // 97, not 98 — the 2026-09-20 re-verification found a real all-time high of
