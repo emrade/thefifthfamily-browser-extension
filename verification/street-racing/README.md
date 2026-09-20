@@ -84,3 +84,56 @@ cushion above it, per the account owner directly); `MIN` left at 85 (account
 owner's call — this doesn't reach the real observed floor of 54-74, which
 only shows up rarely, so treat 85 as a deliberate choice, not a verified
 value, if revisiting this again).
+
+## 2026-09-21 — checked a claimed skill improvement against the data
+
+The account owner reported feeling noticeably better at the mini-game and
+asked whether `MEAN`/`MIN` should move again. Checked two archives (one from
+Sept 20 afternoon, one from Sept 21 morning local time) rather than taking
+the claim at face value, consistent with this project's general rule of
+verifying submitted-vs-actual values on real captures rather than trusting
+a description of what should have happened.
+
+**Session of 2026-09-21 (local), 8 completed manual attempts, all wins:**
+93, 94, 85, 95, 95, 95, 93, 94 — mean 93.0, min 85, max 95. A 9th data point
+exists from the same morning — accuracy 94 submitted on an `attempt_race`
+call that was rejected for an unrelated reason (`"You cannot race while
+travelling"`, per the account owner: submitted deliberately while
+travelling, to practice the mini-game itself) — no combat was resolved, so
+it can't be scored as a win/loss, but the accuracy value itself is still
+real mini-game output and is included in the discussion below where
+relevant.
+
+**This alone is a strong session, but it barely moves the 8-week plateau**
+(Aug 24 - Sep 21, now n=93): mean 89.30 vs. 88.95 without today — a 0.35
+point shift. One good day can't outweigh 85 prior data points, by
+construction.
+
+**There is a real, separate, smaller signal that predates today** — four
+consecutive weeks trending up before this session even happened:
+
+| Week | n | mean | min |
+|---|---|---|---|
+| W35 (Aug 24-30) | 30 | 88.6 | 74 |
+| W36 (Aug 31-Sep 6) | 20 | 89.0 | 79 |
+| W37 (Sep 7-13) | 29 | 89.8 | 74 |
+| W38 (Sep 14-20) | 14 | 90.1 | 82 |
+| 2026-09-21 session | 8 | 93.0 | 85 |
+
+A weighted mean across the last three rows (W37 + W38 + today) comes to
+~90.4 — still under the current `MEAN=91`, not above it. **Conclusion: the
+data doesn't support raising `MEAN` further right now** — 91 is already
+slightly ahead of what even the recent trend justifies, and pushing it up
+off one strong day would repeat the exact mistake this file already
+documents above (a claim disproven a day after it was written).
+
+`MIN` specifically should **not** move: a 74 appeared in W37, **10 days
+before this session**, not in some distant early-practice period. One
+lapse-free day doesn't retire a pattern that recent — see the mini-game's
+concentration-based nature discussed above (the account owner lost focus
+and missed a click during today's Bulldozer race, landing exactly on the
+current `MIN=85` floor — a live example of the same failure mode, not a
+historical one).
+
+No `constants.ts` change made from this entry. Revisit once the trend
+either breaks (another string of 90+ weeks) or reverses.
