@@ -1,6 +1,6 @@
 ---
 name: release
-description: Use when the user asks to release, ship, publish, cut a new version, or "do a release" of this browser extension (The Fifth Family Enhancements). Bumps the version in both package.json and manifest.json, updates CHANGELOG.md, commits, then runs the full build/sign/tag pipeline to Mozilla AMO. Only ever run when explicitly invoked as /release — never trigger this proactively from other work, even after finishing a feature or fix the user might want released.
+description: Use when the user asks to release, ship, publish, cut a new version, or "do a release" of this browser extension (The Fifth Family Enhancements). Bumps the version in both package.json and manifest.json, updates CHANGELOG.md, commits, runs the full build/sign/tag pipeline to Mozilla AMO, then pushes the commit and tag. Only ever run when explicitly invoked as /release — never trigger this proactively from other work, even after finishing a feature or fix the user might want released.
 user-invocable: true
 argument-hint: "[patch|minor]"
 ---
@@ -99,6 +99,23 @@ Report the actual outcome plainly: the signed `.xpi` path from
 `web-ext-artifacts/`, whether the git tag was created (it silently isn't if
 the tree was dirty at sign time — say so if that happens), and print any
 real failure verbatim rather than summarizing it away.
+
+## 9. Push
+
+Push once the pipeline has actually finished, not right after the commit in
+step 6 — this way a single push carries the version-bump commit and its tag
+together, rather than pushing the bump commit early and then a second time
+for the tag once signing finishes.
+
+Push the current branch (`git push`), then push the new tag specifically
+(`git push origin vX.Y.Z`) if step 8 created one. If step 8 failed before
+tagging, push the branch anyway (the version-bump commit itself is harmless
+on its own) but skip the tag push — there isn't one yet — and say so plainly
+alongside the rest of the failure report.
+
+This is a real push to the shared remote — don't force-push, and if `git
+push` is rejected (e.g. remote has commits this branch doesn't), stop and
+tell the user rather than guessing at a merge/rebase.
 
 ## What NOT to do
 
