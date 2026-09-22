@@ -100,16 +100,67 @@ async function pause(message: string): Promise<void> {
 
 type MoneyActionResult = { kind: 'ok'; spent: number } | { kind: 'rejected'; message: string } | { kind: 'blocked' } | { kind: 'error'; message: string };
 
+/** Confirmed real capture: a heat-capped `action=bribe` rejects with
+ *  `"You need $48,500 to bribe."`. `bail`'s own insufficient-cash wording
+ *  hasn't been captured, but the game reuses this same "You need $X ..."
+ *  prefix elsewhere for unrelated shortfalls (see
+ *  docs/trade-assistant-plan.md's taxi example) with only the trailing
+ *  clause differing, so this matches on the prefix alone rather than
+ *  hardcoding "to bribe"/"to bail". If bail's wording doesn't follow this
+ *  shape, this simply never matches and bail falls back to today's
+ *  behavior (an ordinary rejection) — it can't misfire on a difference in
+ *  the trailing words. */
+const INSUFFICIENT_CASH_RE = /you need \$([\d,]+)/i;
+
+/** Withdraws exactly the shortfall between what a rejection just said was
+ *  needed and what's on hand, same `amount=<comma-formatted>` shape
+ *  `petCourier.ts`'s own bank top-up uses. Returns `withdrawn: 0` with no
+ *  network call when `cashOnHand` already covers `neededCash` (nothing to
+ *  reconcile — the rejection must have been for some other reason). */
+async function withdrawShortfall(neededCash: number, cashOnHand: number): Promise<{ ok: true; withdrawn: number } | { ok: false; message: string }> {
+  const shortfall = neededCash - cashOnHand;
+  if (shortfall <= 0) return { ok: true, withdrawn: 0 };
+  try {
+    const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') });
+    if (resp?.ok === true) return { ok: true, withdrawn: shortfall };
+    return { ok: false, message: typeof resp?.error === 'string' ? resp.error : 'Withdrawal was rejected.' };
+  } catch (err) {
+    return { ok: false, message: err instanceof SystemicActionError ? err.message : String(err) };
+  }
+}
+
 /** `cashBefore` comes from whichever live read is freshest at the call site
  *  (a pre-flight `fetchLiveStatus`, or a commit response's own `stats.cash`)
  *  — the bail/bribe response only reports the *resulting* balance, not what
  *  it actually cost, so the spend is derived by diffing the two rather than
- *  parsed from anywhere the game exposes directly. */
+ *  parsed from anywhere the game exposes directly.
+ *
+ *  On an insufficient-cash rejection (see `INSUFFICIENT_CASH_RE`), withdraws
+ *  the shortfall from the bank and retries exactly once — same "one top-up,
+ *  one retry" recovery `petCourier.ts` already uses for the same situation.
+ *  `spent` is then measured against `cashBefore` plus whatever got
+ *  withdrawn, so the stored stat reflects the real total cost regardless of
+ *  whether it came from cash-on-hand or the bank. */
 async function payBail(cashBefore: number): Promise<MoneyActionResult> {
   try {
-    const resp = await postAction('/api/emergency.php', { action: 'bail' });
+    let resp = await postAction('/api/emergency.php', { action: 'bail' });
+    let cashBaseline = cashBefore;
+
+    if (resp?.ok === false && typeof resp.error === 'string') {
+      const match = resp.error.match(INSUFFICIENT_CASH_RE);
+      if (match) {
+        const needed = Number(match[1].replace(/,/g, ''));
+        const withdrawal = await withdrawShortfall(needed, cashBefore);
+        if (!withdrawal.ok) {
+          return { kind: 'rejected', message: `${resp.error} (withdrawing the shortfall from the bank also failed: ${withdrawal.message})` };
+        }
+        cashBaseline = cashBefore + withdrawal.withdrawn;
+        resp = await postAction('/api/emergency.php', { action: 'bail' });
+      }
+    }
+
     if (resp?.ok === true) {
-      return { kind: 'ok', spent: Math.max(0, cashBefore - (Number(resp.stats?.cash) || cashBefore)) };
+      return { kind: 'ok', spent: Math.max(0, cashBaseline - (Number(resp.stats?.cash) || cashBaseline)) };
     }
     return { kind: 'rejected', message: typeof resp?.error === 'string' ? resp.error : 'Bail request was rejected.' };
   } catch (err) {
@@ -118,14 +169,30 @@ async function payBail(cashBefore: number): Promise<MoneyActionResult> {
   }
 }
 
-/** Same shape as `payBail` — see its doc comment. No `quote=1` preview call
+/** Same shape as `payBail` — see its doc comment, including the
+ *  withdraw-shortfall-and-retry-once recovery. No `quote=1` preview call
  *  first: a real capture confirmed that's purely informational for the
  *  page's own UI, not a precondition the actual `action=bribe` call needs. */
 async function payBribe(cashBefore: number): Promise<MoneyActionResult> {
   try {
-    const resp = await postAction('/api/crimes.php', { action: 'bribe' });
+    let resp = await postAction('/api/crimes.php', { action: 'bribe' });
+    let cashBaseline = cashBefore;
+
+    if (resp?.ok === false && typeof resp.error === 'string') {
+      const match = resp.error.match(INSUFFICIENT_CASH_RE);
+      if (match) {
+        const needed = Number(match[1].replace(/,/g, ''));
+        const withdrawal = await withdrawShortfall(needed, cashBefore);
+        if (!withdrawal.ok) {
+          return { kind: 'rejected', message: `${resp.error} (withdrawing the shortfall from the bank also failed: ${withdrawal.message})` };
+        }
+        cashBaseline = cashBefore + withdrawal.withdrawn;
+        resp = await postAction('/api/crimes.php', { action: 'bribe' });
+      }
+    }
+
     if (resp?.ok === true) {
-      return { kind: 'ok', spent: Math.max(0, cashBefore - (Number(resp.stats?.cash) || cashBefore)) };
+      return { kind: 'ok', spent: Math.max(0, cashBaseline - (Number(resp.stats?.cash) || cashBaseline)) };
     }
     return { kind: 'rejected', message: typeof resp?.error === 'string' ? resp.error : 'Bribe request was rejected.' };
   } catch (err) {
