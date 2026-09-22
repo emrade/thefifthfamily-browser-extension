@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.31.1] - 2026-09-22
+
+### Fixed
+- Crimes Auto's bail and bribe handling now withdraws from the bank when
+  cash on hand falls short, instead of pausing the automation outright.
+  Previously a heat-capped bribe or a bail while short on cash would
+  immediately disable Auto-Run with a "could not bribe"/"could not bail"
+  notification even though the account had enough total funds (cash +
+  bank) to cover it. Both actions now parse the exact amount needed from
+  the game's own rejection message, withdraw just the shortfall, and retry
+  once before falling back to pausing.
+
 ## [0.31.0] - 2026-09-21
 
 ### Added
