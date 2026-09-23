@@ -339,6 +339,13 @@ export interface SmugglingV2Snapshot {
   destinations: DestinationOption[];
   assignedCourier: AssignedCourier | null;
   dailyProfitCapRemaining: number | null;
+  /** The Daily Profit monitor's own red "Cap reached · resets midnight" label.
+   *  The game's own statement that collecting is blocked, as opposed to
+   *  `dailyProfitCapRemaining`'s raw figure, whose real cut-off is unknown:
+   *  across every archived panel from 2026-09-15 to 09-22, the label appeared
+   *  only with ≤ $792 left and never with less than $3.9M left otherwise.
+   *  False when the monitor is missing. */
+  dailyProfitCapReached: boolean;
   /**
    * "Hidden Cargo" — total unspent stash across every item, shared by the whole
    * account, distinct from any one pet's own carry capacity (`PetRosterEntry.capacity`).
@@ -391,10 +398,11 @@ export interface CourierRunSummary {
   cashWithdrawn: number;
   /** Whatever cash-on-hand got swept into the bank at the end of this run, so it's
    *  not sitting exposed (the player's own worry: "so i don't get mugged and loose
-   *  money"). Attempted regardless of what else the run did — even a run that only
-   *  offloaded, or did nothing at all, still sweeps standing cash. */
+   *  money"). Only attempted when the run itself put cash on hand — collected
+   *  cargo, or withdrew to fund cargo — see petCourier.ts's `runLeftCashOnHand`.
+   *  A failed or empty run leaves the player's own cash alone. */
   cashDeposited: number;
-  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | 'status-blocked' | null;
+  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | 'status-blocked' | 'repeated-rejection' | null;
   errors: string[];
 }
 

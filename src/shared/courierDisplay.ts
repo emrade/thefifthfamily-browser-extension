@@ -54,6 +54,7 @@ export const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedRea
   'session-error': 'Stopped early — the game rejected a request (stale session or token). Reload the game tab, view Smuggling once, then run again.',
   'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
   'status-blocked': 'Stopped early — jailed, hospitalized, or travelling right now. Try again once that clears.',
+  'repeated-rejection': 'Stopped — the game kept rejecting the same request the same way. Check the errors below before running again.',
 };
 
 /** The "N pets known: ..." line both surfaces show above the Run button. */

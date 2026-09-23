@@ -32,11 +32,21 @@ import { getCsrfToken } from './csrfToken';
  *   that gate and this call). Recoverable and expected, never a sign anything is
  *   broken — the caller should reschedule for later, not treat it like `shape`
  *   and stop the automation.
+ * - `repeated-rejection`: the exact same request (same path and params) has
+ *   come back with the exact same well-formed `ok:false` rejection
+ *   `REPEATED_REJECTION_LIMIT` times within `REPEATED_REJECTION_WINDOW_MS` —
+ *   the automation is stuck retrying something the server keeps refusing,
+ *   whatever the specific reason. Nothing about the response is unrecognized,
+ *   so this is not a parse failure, but it is unexpected: every background
+ *   caller pauses its feature on it until the player checks and resumes,
+ *   including callers that treat a single ordinary rejection as best-effort
+ *   (the end-of-run deposits). See `recordRejection` below for the confirmed
+ *   real incidents this exists for.
  */
 export class SystemicActionError extends Error {
   constructor(
     message: string,
-    public readonly kind: 'auth' | 'shape' | 'status-blocked',
+    public readonly kind: 'auth' | 'shape' | 'status-blocked' | 'repeated-rejection',
   ) {
     super(message);
   }
@@ -62,11 +72,87 @@ export const ACTION_PACING_MS = 600;
  *  rather than retrying forever against a limit that might not be lifting soon. */
 export const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 4000, 8000];
 
-export async function postAction(path: string, params: Record<string, string | number>): Promise<any> {
+/** Identical rejections of an identical request within `REPEATED_REJECTION_WINDOW_MS`
+ *  before `postAction` throws `'repeated-rejection'` instead of returning the
+ *  rejection. Sized against every background request in the archives from
+ *  2026-08-26 to 2026-09-22: in normal operation, no request was rejected the
+ *  same way more than 4 times in any 10-minute window (`v2_draft` "You already
+ *  have a delivery being loaded"). The two real stuck loops in that span ran
+ *  at 202 (`v2_offload_all` "Daily profit cap reached", 2026-09-22) and 15
+ *  (`deposit` "Bank is full!", 2026-09-03) per 10 minutes. */
+export const REPEATED_REJECTION_LIMIT = 6;
+export const REPEATED_REJECTION_WINDOW_MS = 10 * 60_000;
+
+/** Per-request streak of identical consecutive rejections, keyed by scope +
+ *  path + params (CSRF excluded). Kept in `chrome.storage.session`, not module
+ *  memory: the background is a service worker / event page that the browser
+ *  suspends after ~30s idle, which would wipe an in-memory count between any
+ *  two calls further apart than that — the 2026-09-03 "Bank is full!" loop ran
+ *  about once every 40s, slow enough to never reach the limit. Session storage
+ *  survives suspension and clears on browser close, same as `csrfToken.ts`. */
+const STREAK_STORAGE_PREFIX = 'rejectionStreak:';
+
+interface RejectionStreak {
+  error: string;
+  at: number[];
+}
+
+/**
+ * Tracks a normal-shaped `ok:false` rejection and throws once the same request
+ * has been refused the same way `REPEATED_REJECTION_LIMIT` times within the
+ * window. A single business rejection ("insufficient funds", "cargo hold is
+ * full") is still returned to the caller as before — this only catches the
+ * pattern no single call can see.
+ *
+ * Confirmed real, twice: Pet Courier's return alarm re-armed itself 2s out
+ * for cargo it could never collect, sending `v2_offload_all` into "Daily
+ * profit cap reached" 2,897 times over 3.5 hours (2026-09-22), sweeping the
+ * player's manual withdrawals back into the bank each time via the batch's
+ * end-of-run deposit; and `deposit` hit "Bank is full!" 46 times in a row
+ * (2026-09-03). Neither tripped any safety net, because both rejections were
+ * well-formed and each feature correctly treated one of them as ordinary.
+ */
+async function recordRejection(key: string, path: string, error: string): Promise<void> {
+  const storageKey = STREAK_STORAGE_PREFIX + key;
+  const now = Date.now();
+  const stored = (await chrome.storage.session.get(storageKey))[storageKey] as RejectionStreak | undefined;
+  const recent = stored ? stored.at.filter((t) => now - t < REPEATED_REJECTION_WINDOW_MS) : [];
+  const streak: RejectionStreak = stored && stored.error === error && recent.length > 0 ? { error, at: [...recent, now] } : { error, at: [now] };
+  await chrome.storage.session.set({ [storageKey]: streak });
+
+  if (streak.at.length >= REPEATED_REJECTION_LIMIT) {
+    throw new SystemicActionError(
+      `"${error}" from ${path} — the same request was rejected the same way ${streak.at.length} times in ${REPEATED_REJECTION_WINDOW_MS / 60_000} minutes; paused so it isn't retried again`,
+      'repeated-rejection',
+    );
+  }
+}
+
+async function clearRejections(key: string): Promise<void> {
+  await chrome.storage.session.remove(STREAK_STORAGE_PREFIX + key);
+}
+
+export interface PostActionOptions {
+  /** Which feature is making the call, for requests more than one feature
+   *  sends identically (the bank's `deposit`/`withdraw`) — each feature's
+   *  repeated-rejection count stays its own, so one feature's failures can't
+   *  pause another that never repeated anything. Unneeded for a feature's
+   *  own endpoints; their params already make the key unique. */
+  rejectionScope?: string;
+}
+
+export async function postAction(path: string, params: Record<string, string | number>, options: PostActionOptions = {}): Promise<any> {
   const csrf = await getCsrfToken();
   if (!csrf) throw new SystemicActionError('no CSRF token observed yet — open the game tab and view any panel first, then run again', 'auth');
 
-  const body = new URLSearchParams({ ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])), _csrf: csrf });
+  const paramEntries = Object.entries(params).map(([k, v]) => [k, String(v)]);
+  // Requests are never refused locally on the strength of this streak: every
+  // background caller pauses on the throw anyway, and a manual retry after the
+  // player fixed the cause (emptied a full bank, waited out a cap) has to
+  // actually reach the server to succeed and clear it.
+  const streakKey = `${options.rejectionScope ?? ''}|${path}?${new URLSearchParams(paramEntries).toString()}`;
+
+  const body = new URLSearchParams({ ...Object.fromEntries(paramEntries), _csrf: csrf });
 
   for (let attempt = 0; ; attempt++) {
     await sleep(ACTION_PACING_MS);
@@ -142,6 +228,13 @@ export async function postAction(path: string, params: Record<string, string | n
     if (json.ok === false && typeof json.error === 'string' && /slow down/i.test(json.error) && attempt < RATE_LIMIT_RETRY_DELAYS_MS.length) {
       await sleep(RATE_LIMIT_RETRY_DELAYS_MS[attempt]);
       continue;
+    }
+
+    if (json.ok === false) {
+      const error = typeof json.error === 'string' ? json.error : typeof json.msg === 'string' ? json.msg : 'unknown error';
+      await recordRejection(streakKey, path, error);
+    } else {
+      await clearRejections(streakKey);
     }
 
     return json;
@@ -264,6 +357,6 @@ export function statusReleaseAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospit
  * between "how much cash did we see" and "how much is actually there by the
  * time this fires."
  */
-export async function depositCashOnHand(): Promise<any> {
-  return postAction('/actions/bank.php', { action: 'deposit', amount: 'ALL' });
+export async function depositCashOnHand(feature: string): Promise<any> {
+  return postAction('/actions/bank.php', { action: 'deposit', amount: 'ALL' }, { rejectionScope: feature });
 }

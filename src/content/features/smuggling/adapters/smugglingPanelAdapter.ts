@@ -36,6 +36,7 @@ export function parseSmugglingV2Panel(responseText: string): SmugglingV2Snapshot
     destinations: parseDestinations(doc),
     assignedCourier: parseAssignedCourier(doc),
     dailyProfitCapRemaining: parseDailyCapRemaining(doc),
+    dailyProfitCapReached: parseDailyCapReached(doc),
     hiddenCargo: parseHiddenCargo(doc),
     launchAvailability: parseLaunchAvailability(doc),
     offloadAllCount: parseOffloadAllCount(doc),
@@ -251,6 +252,14 @@ function parseDailyCapRemaining(doc: Document): number | null {
   if (!dailyProfit) return null;
   const match = textOf(dailyProfit).match(/\$([\d,]+)\s*left/);
   return match ? numberFrom(match[1]) : null;
+}
+
+/** The monitor's red "Cap reached · resets midnight" footer — see
+ *  `SmugglingV2Snapshot.dailyProfitCapReached`. */
+function parseDailyCapReached(doc: Document): boolean {
+  const monitors = Array.from(doc.querySelectorAll('.sv2-monitor'));
+  const dailyProfit = monitors.find((m) => textOf(m.querySelector('.sv2-m-lbl')).includes('Daily Profit'));
+  return dailyProfit ? /Cap reached/i.test(textOf(dailyProfit)) : false;
 }
 
 /** Reads "Hidden Cargo" — `.sv2-m-val` renders as `"21 / 21"` once the nested

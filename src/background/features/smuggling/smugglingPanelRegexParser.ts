@@ -33,6 +33,7 @@ export function parseSmugglingV2PanelRegex(responseText: string): SmugglingV2Sna
     destinations: parseDestinations(html),
     assignedCourier: parseAssignedCourier(html),
     dailyProfitCapRemaining: parseDailyCapRemaining(html),
+    dailyProfitCapReached: parseDailyCapReached(html),
     hiddenCargo: parseHiddenCargo(html),
     launchAvailability: parseLaunchAvailability(html),
     offloadAllCount: parseOffloadAllCount(html),
@@ -262,6 +263,12 @@ function parseDailyCapRemaining(html: string): number | null {
   const window = html.slice(idx, idx + 800);
   const match = window.match(/\$([\d,]+)\s*left/);
   return match ? numberFrom(match[1]) : null;
+}
+
+function parseDailyCapReached(html: string): boolean {
+  const idx = html.indexOf('Daily Profit');
+  if (idx === -1) return false;
+  return /Cap reached/i.test(html.slice(idx, idx + 800));
 }
 
 /** Reads "Hidden Cargo" — the same account-wide stash cap the DOM adapter reads,

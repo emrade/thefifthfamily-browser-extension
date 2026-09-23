@@ -4,7 +4,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, fetchLiveStatus, statusReleaseAt } from '../../gameAction';
-import { cancelShipment, fetchPanel, runCourierBatch, runOffloadBatch } from './petCourier';
+import { cancelShipment, fetchPanel, isDailyCapReached, runCourierBatch, runOffloadBatch } from './petCourier';
 import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
 
 /**
@@ -324,7 +324,7 @@ async function handleBatchStop(summary: CourierRunSummary, alarmName: string): P
     chrome.alarms.create(alarmName, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
     return true;
   }
-  if (summary.stoppedReason === 'shape-changed' || summary.stoppedReason === 'session-error') {
+  if (summary.stoppedReason === 'shape-changed' || summary.stoppedReason === 'session-error' || summary.stoppedReason === 'repeated-rejection') {
     const detail = summary.errors[summary.errors.length - 1];
     await disableAutoWatch(detail ?? `Auto-dispatch stopped after a courier run reported "${summary.stoppedReason}" — check the Pet Couriers panel for details.`);
     return true;
@@ -350,8 +350,19 @@ async function handleBatchStop(summary: CourierRunSummary, alarmName: string): P
  * just because cargo was already waiting to be collected. Only overrides the
  * schedule when auto-offload is actually on — with it off, checking sooner
  * would just be a wasted fetch with nothing able to act on what it finds.
+ *
+ * Nor when today's profit cap is used up: collecting is refused until the
+ * reset, and since every check here re-arms this same alarm 2s out, the
+ * override used to turn into a loop — `v2_offload_all` rejected every few
+ * seconds for 3.5 hours on 2026-09-22, each cycle's end-of-batch deposit
+ * sweeping the player's own withdrawals straight back into the bank. The
+ * cargo gets picked up after the reset by the hourly destination check (the
+ * reset lands on an hour boundary), which calls this again with a fresh
+ * snapshot. `capReached` covers the case where the panel's own cap readout
+ * didn't parse but an offload in this same cycle was refused for the cap.
  */
-export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
+export async function recordFleetReturns(snapshot: SmugglingV2Snapshot, capReached = false): Promise<void> {
+  const { fleet } = snapshot;
   const now = Date.now();
   const pending: PendingCourierReturn[] = fleet
     .filter((f) => f.status === 'moving' && f.etaSeconds != null)
@@ -360,7 +371,7 @@ export async function recordFleetReturns(fleet: FleetEntry[]): Promise<void> {
   await storage.setPendingCourierReturns(pending);
 
   const config = await storage.getCourierAutoConfig();
-  const hasUncollectedCargo = config.autoOffloadEnabled && fleet.some((f) => f.status === 'ready-to-offload');
+  const hasUncollectedCargo = config.autoOffloadEnabled && !capReached && !isDailyCapReached(snapshot) && fleet.some((f) => f.status === 'ready-to-offload');
 
   if (pending.length === 0 && !hasUncollectedCargo) {
     chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
@@ -415,7 +426,7 @@ async function actOnOpenDestination(idleCount: number, districtName: string, ala
 
     if (dispatchedCount > 0) {
       const fresh = await fetchPanel();
-      if (fresh) await recordFleetReturns(fresh.fleet);
+      if (fresh) await recordFleetReturns(fresh);
     }
 
     if (dispatchedCount > 0 && announceIfDispatched) {
@@ -482,7 +493,7 @@ async function evaluateDestination(snapshot: SmugglingV2Snapshot, alarmName: str
     if (stuck) await cancelShipment(stuck.shipmentId, stuck.petName, (msg) => console.error(LOG_PREFIX, msg));
     const fresh = await fetchPanel();
     if (fresh) {
-      await recordFleetReturns(fresh.fleet);
+      await recordFleetReturns(fresh);
       return evaluateDestination(fresh, alarmName, true);
     }
   }
@@ -557,7 +568,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
       chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + 60_000 });
       return;
     }
-    await recordFleetReturns(snapshot.fleet);
+    await recordFleetReturns(snapshot);
 
     const stopped = await evaluateDestination(snapshot, ALARM_NAMES.SMUGGLING_DEST_POLL);
     if (stopped) return;
@@ -566,7 +577,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
     // return alarm reflects them immediately rather than waiting for
     // whichever fetch happens to come next.
     const fresh = await fetchPanel();
-    if (fresh) await recordFleetReturns(fresh.fleet);
+    if (fresh) await recordFleetReturns(fresh);
 
     scheduleHourlyDestCheck();
   } catch (err) {
@@ -602,9 +613,11 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
 
   try {
     const config = await storage.getCourierAutoConfig();
+    let capReached = false;
     if (config.autoOffloadEnabled) {
       const offloadSummary = await runOffloadBatch(await findGameTabId());
       if (await handleBatchStop(offloadSummary, ALARM_NAMES.SMUGGLING_COURIER_RETURN)) return;
+      capReached = offloadSummary.stoppedReason === 'daily-cap-reached';
     }
 
     const afterOffload = await fetchPanel();
@@ -614,7 +627,7 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     if (stopped) return;
 
     const fresh = await fetchPanel();
-    if (fresh) await recordFleetReturns(fresh.fleet);
+    if (fresh) await recordFleetReturns(fresh, capReached);
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
       const freshStatus = await fetchLiveStatus();

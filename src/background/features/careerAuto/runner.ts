@@ -217,7 +217,9 @@ async function runIfEligibleOnce(): Promise<void> {
       scheduleNextCheck(freshStatus ? statusReleaseAt(freshStatus) : null);
       return;
     }
-    recordParseFailure(FEATURE_KEY);
+    // A repeated rejection is a well-formed response the game kept giving,
+    // not a sign its format changed — stop, but don't flag feature health.
+    if (!(err instanceof SystemicActionError && err.kind === 'repeated-rejection')) recordParseFailure(FEATURE_KEY);
     const message = err instanceof SystemicActionError ? err.message : String(err);
     console.error(LOG_PREFIX, 'career auto-runner action failed', err);
     await pause('error', message);

@@ -36,6 +36,25 @@ function emitProgress(event: CourierProgressEvent): void {
  *  that would just sit there past the daily cap. */
 const DAILY_CAP_STOP_THRESHOLD = 1000;
 
+/** True once the panel itself says today's profit cap is used up — its red
+ *  "Cap reached" label, not `DAILY_CAP_STOP_THRESHOLD`: that buffer is for
+ *  deciding whether new cargo is worth buying, and the server's real cut-off
+ *  for *collecting* isn't known. Confirmed real (2026-09-22): with the label
+ *  showing ("Cap reached · resets midnight · $792 left"), `v2_offload_all` was
+ *  rejected with "Daily profit cap reached. Wait for the reset or offload at a
+ *  loss." The reset lands at the top of an hour (23:00 UTC, every day in the
+ *  archive since 2026-09-13), which courierWatch's hourly destination check
+ *  already fires just after. */
+export function isDailyCapReached(snapshot: SmugglingV2Snapshot): boolean {
+  return snapshot.dailyProfitCapReached;
+}
+
+/** The server's own wording for the same condition — the fallback for when the
+ *  panel's readout couldn't be parsed. */
+function isDailyCapRejection(error: unknown): boolean {
+  return typeof error === 'string' && /daily profit cap/i.test(error);
+}
+
 /**
  * `v2_launch` silently caps at 10 pet ids per call — confirmed post-ship,
  * not something either archive available while building this feature ever
@@ -161,6 +180,7 @@ async function runOffloadAll(count: number): Promise<any> {
 function classifyStop(err: SystemicActionError): CourierRunSummary['stoppedReason'] {
   if (err.kind === 'auth') return 'session-error';
   if (err.kind === 'status-blocked') return 'status-blocked';
+  if (err.kind === 'repeated-rejection') return 'repeated-rejection';
   return 'shape-changed';
 }
 
@@ -183,6 +203,10 @@ async function offloadReady(
       const resp = await postAction('/actions/smuggling.php', { action: 'v2_offload', shipment_id: entry.shipmentId, qty: '' });
       if (resp?.ok) {
         pushOffloaded({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
+      } else if (isDailyCapRejection(resp?.error)) {
+        // Every remaining shipment would be refused the same way.
+        pushError(`offload failed for ${entry.petName}: ${resp.error}`);
+        return 'daily-cap-reached';
       } else {
         pushError(`offload failed for ${entry.petName}: ${resp?.error ?? 'unknown error'}`);
       }
@@ -216,6 +240,11 @@ async function offloadWhatIsReady(
   pushError: (message: string) => void,
   summary: CourierRunSummary,
 ): Promise<CourierRunSummary['stoppedReason']> {
+  // Collecting at the cap is refused outright, so don't send it at all. Before
+  // this check, the return alarm kept retrying `v2_offload_all` every few
+  // seconds for hours (see `isDailyCapReached`).
+  if (isDailyCapReached(snapshot)) return 'daily-cap-reached';
+
   if (snapshot.offloadAllCount === null) {
     return offloadReady(snapshot.fleet, pushOffloaded, pushError);
   }
@@ -231,6 +260,7 @@ async function offloadWhatIsReady(
       };
     } else {
       pushError(`offload-all failed: ${resp?.error ?? 'unknown error'}`);
+      if (isDailyCapRejection(resp?.error)) return 'daily-cap-reached';
     }
     return null;
   } catch (err) {
@@ -245,9 +275,8 @@ async function offloadWhatIsReady(
 
 /**
  * Sweeps whatever cash is currently on hand into the bank — cash sitting on hand
- * is what gets taken in a mugging, so this runs at the end of *every* batch
- * (full run or offload-only), not just when a run itself earned or spent
- * anything. Best-effort: a failure here doesn't change `stoppedReason` or fail
+ * is what gets taken in a mugging. Only runs when the batch itself put cash
+ * there (see `runLeftCashOnHand`). Best-effort: a failure here doesn't change `stoppedReason` or fail
  * the batch, since by this point the batch's own substantive work is already
  * done (or already gave up) — this is just protecting whatever's left standing.
  *
@@ -262,7 +291,7 @@ async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
   if (!funds || funds.cash <= 0) return;
 
   try {
-    const resp = await depositCashOnHand();
+    const resp = await depositCashOnHand('pet-courier');
     if (resp?.ok) {
       summary.cashDeposited = funds.cash;
       emitProgress({ kind: 'deposited', amount: funds.cash });
@@ -275,6 +304,13 @@ async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
     const message = err instanceof SystemicActionError ? err.message : `deposit failed: ${String(err)}`;
     summary.errors.push(message);
     emitProgress({ kind: 'error', message });
+    // One failed deposit is best-effort; the same one failing over and over
+    // (confirmed real: "Bank is full!" 46 times in a row, 2026-09-03) is not,
+    // so it pauses auto-watch through `handleBatchStop` like any other
+    // unexpected stop.
+    if (err instanceof SystemicActionError && err.kind === 'repeated-rejection' && !summary.stoppedReason) {
+      summary.stoppedReason = 'repeated-rejection';
+    }
   }
 }
 
@@ -312,6 +348,18 @@ function skippedRunSummary(reason: string): CourierRunSummary {
   };
 }
 
+/** Whether this batch itself put cash on hand, which is the only time it should
+ *  deposit. There are two ways: it collected cargo (a successful offload), or it
+ *  withdrew from the bank to fund cargo (the leftover goes back whether or not
+ *  the launch worked). A run that failed, found nothing to do, or hit the cap
+ *  brought in nothing, so any cash on hand is the player's own and stays put.
+ *  Confirmed real (2026-09-22): the old "deposit after every batch" rule swept
+ *  the player's own manual withdrawals back into the bank after each of 2,897
+ *  failed offloads. */
+function runLeftCashOnHand(summary: CourierRunSummary): boolean {
+  return summary.offloaded.length > 0 || summary.offloadedBatch !== null || summary.cashWithdrawn > 0;
+}
+
 /** Shared by `runCourierBatch`/`runOffloadBatch` — same bookend/deposit/persist
  *  sequence either way, just gated so only one can ever be mid-flight at a
  *  time (see `activeRun`'s own doc). Skips outright rather than queuing a
@@ -330,7 +378,7 @@ async function runExclusive(execute: () => Promise<CourierRunSummary>, tabId: nu
     const summary = await execute();
     // Skipped when the session/CSRF itself is already known broken — the deposit
     // call would just fail the exact same way and add a redundant error line.
-    if (summary.stoppedReason !== 'session-error') await depositLeftoverCash(summary);
+    if (summary.stoppedReason !== 'session-error' && runLeftCashOnHand(summary)) await depositLeftoverCash(summary);
     await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
     emitProgress({ kind: 'finished' });
     return summary;
@@ -487,7 +535,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       if (fresh) snapshot = fresh;
     }
 
-    if (snapshot.dailyProfitCapRemaining !== null && snapshot.dailyProfitCapRemaining < DAILY_CAP_STOP_THRESHOLD) {
+    if (isDailyCapReached(snapshot) || (snapshot.dailyProfitCapRemaining !== null && snapshot.dailyProfitCapRemaining < DAILY_CAP_STOP_THRESHOLD)) {
       summary.stoppedReason = 'daily-cap-reached';
       return summary;
     }
@@ -592,7 +640,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         // Comma-formatted, matching the exact request shape confirmed in the
         // archive (`amount=1,000,000`) — not confirmed that a plain digit string
         // is also accepted, so this doesn't guess.
-        const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') });
+        const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
         if (!resp?.ok) {
           pushError(`withdrawal failed: ${resp?.error ?? 'unknown error'}`);
           summary.stoppedReason = 'insufficient-funds';
@@ -672,7 +720,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           const fundsNow = await fetchCashAndDistrict();
           if (fundsNow && fundsNow.cash < chunkCost && fundsNow.bank > 0) {
             const topUp = Math.min(fundsNow.bank, chunkCost - fundsNow.cash);
-            const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') });
+            const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
             if (withdraw?.ok) {
               summary.cashWithdrawn += topUp;
               launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);

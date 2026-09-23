@@ -187,7 +187,7 @@ export async function pollNow(): Promise<void> {
   try {
     resp = await postAction('/actions/stocks_v2.php', { action: 'poll' });
   } catch (err) {
-    if (err instanceof SystemicActionError && err.kind === 'shape') {
+    if (err instanceof SystemicActionError && (err.kind === 'shape' || err.kind === 'repeated-rejection')) {
       await pause(err.message);
       return;
     }

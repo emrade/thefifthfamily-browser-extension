@@ -440,7 +440,9 @@ async function runAutomationCycle(config: ArenaAutoConfig): Promise<void> {
       return;
     }
     if (err instanceof SystemicActionError) {
-      recordParseFailure(FEATURE_KEY);
+      // A repeated rejection is a well-formed response the game kept giving,
+      // not a sign its format changed — stop, but don't flag feature health.
+      if (err.kind !== 'repeated-rejection') recordParseFailure(FEATURE_KEY);
       await pause(err.message);
       return;
     }

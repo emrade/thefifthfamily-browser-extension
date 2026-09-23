@@ -206,7 +206,7 @@ export async function runRace(raceId: number, raceName: string, tabId?: number, 
   // already resolved by this point — just logged.
   try {
     const postStatus = await fetchLiveStatus();
-    if (postStatus && postStatus.cash > 0) await depositCashOnHand();
+    if (postStatus && postStatus.cash > 0) await depositCashOnHand('street-racing');
   } catch (err) {
     console.error(LOG_PREFIX, 'street racing post-attempt deposit failed', err);
   }

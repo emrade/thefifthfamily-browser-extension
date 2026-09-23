@@ -121,7 +121,7 @@ async function withdrawShortfall(neededCash: number, cashOnHand: number): Promis
   const shortfall = neededCash - cashOnHand;
   if (shortfall <= 0) return { ok: true, withdrawn: 0 };
   try {
-    const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') });
+    const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') }, { rejectionScope: 'crimes-auto' });
     if (resp?.ok === true) return { ok: true, withdrawn: shortfall };
     return { ok: false, message: typeof resp?.error === 'string' ? resp.error : 'Withdrawal was rejected.' };
   } catch (err) {
@@ -325,7 +325,9 @@ async function runIfEligibleOnce(): Promise<void> {
       scheduleAt(freshStatus ? statusReleaseAt(freshStatus) : Date.now() + CRIMES_AUTO_FALLBACK_INTERVAL_MS);
       return;
     }
-    recordParseFailure(FEATURE_KEY);
+    // A repeated rejection is a well-formed response the game kept giving,
+    // not a sign its format changed — stop, but don't flag feature health.
+    if (!(err instanceof SystemicActionError && err.kind === 'repeated-rejection')) recordParseFailure(FEATURE_KEY);
     await pause(err instanceof SystemicActionError ? err.message : String(err));
     return;
   }

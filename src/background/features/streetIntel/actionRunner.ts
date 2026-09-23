@@ -614,11 +614,15 @@ async function runIfEligibleOnce(): Promise<void> {
     // call (and its now-confirmed-real "Invalid amount" rejection) whenever
     // there's genuinely nothing there.
     const postAttemptStatus = await fetchLiveStatus();
+    let stuckDeposit: SystemicActionError | null = null;
     if (postAttemptStatus && postAttemptStatus.cash > 0) {
       try {
-        await depositCashOnHand();
+        await depositCashOnHand('street-intel');
       } catch (err) {
         console.error(LOG_PREFIX, 'street intel post-attempt deposit failed', err);
+        // Deferred until this attempt's result is recorded below — the attempt
+        // itself already happened and its stats shouldn't be lost.
+        if (err instanceof SystemicActionError && err.kind === 'repeated-rejection') stuckDeposit = err;
       }
     }
 
@@ -680,6 +684,13 @@ async function runIfEligibleOnce(): Promise<void> {
       complicationTypeStats,
     });
 
+    // The same deposit rejected over and over is unexpected — pause until the
+    // player checks, same as any other stop.
+    if (stuckDeposit) {
+      await pause(stuckDeposit.message);
+      return;
+    }
+
     scheduleNextCheck(nextEligibleAt);
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
@@ -696,7 +707,9 @@ async function runIfEligibleOnce(): Promise<void> {
       return;
     }
     if (err instanceof SystemicActionError) {
-      recordParseFailure(FEATURE_KEY);
+      // A repeated rejection is a well-formed response the game kept giving,
+      // not a sign its format changed — stop, but don't flag feature health.
+      if (err.kind !== 'repeated-rejection') recordParseFailure(FEATURE_KEY);
       await pause(err.message);
       return;
     }
