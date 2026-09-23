@@ -9,6 +9,38 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.31.2] - 2026-09-23
+
+### Fixed
+- Pet Courier no longer loops when the daily smuggling profit cap is
+  reached. Before, landed cargo that couldn't be collected re-armed the
+  return check every 2 seconds, and each failed `v2_offload_all` ended with
+  a deposit of all cash on hand. For 3.5 hours on 2026-09-22 (2,897 rejected
+  offloads), every manual bank withdrawal was deposited straight back within
+  seconds. Collecting now stops when the panel shows the game's own
+  "Cap reached" label, or on the server's "Daily profit cap reached"
+  rejection if the label can't be read. The cargo is collected by the hourly
+  check just after the reset (23:00 UTC). The $1,000 cap buffer now applies
+  only to buying new cargo.
+- Pet Courier now deposits only when the run itself put cash on hand:
+  cargo was collected, or cash was withdrawn to fund cargo (the leftover is
+  banked back whether or not the launch worked). Failed, empty or capped
+  runs leave the player's own cash alone.
+
+### Changed
+- A safeguard against stuck automation loops. If the same request gets the
+  same rejection 6 times within 10 minutes, the feature that sent it pauses
+  until the player resumes it, and other features keep running. Pet Courier
+  turns off auto-watch with a notification. Arena, Street Intel, Career,
+  Crimes Auto and the stock market poller pause. That includes their
+  best-effort end-of-run deposits, which used to only log the error. The
+  limit comes from four weeks of archived traffic: normal play never went
+  above 4, and replaying the rule fired only on the two real loops (the cap
+  loop above, and "Bank is full!" 46 times in a row on 2026-09-03). Counts
+  are kept per feature for shared bank requests and survive the background
+  script being suspended. These pauses aren't reported as the game changing
+  its response format.
+
 ## [0.31.1] - 2026-09-22
 
 ### Fixed
