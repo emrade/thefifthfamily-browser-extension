@@ -24,6 +24,22 @@ samples than the street-racing check.
 
 ## What it checks
 
+**`verify_combat_rule.py`** (added 2026-09-24): checks
+`docs/arena-combat-mechanics.md`. Rebuilds every V2 fight (regular and boss)
+with the quoted win%, the opponent card's STR/DEF/AGI/DEX, Combat Power and
+Passive tag, and the combat log. Reports: quoted-vs-actual calibration; the
+win% ~ ln(Combat Power) fit per week; card → base damage / reduction / HP
+fits; dodge/block/crit roll rules and multipliers; the kill-race score's
+accuracy by band, with the week's K and boss break-even STR; bosses by
+family; and passive vs active inside the coin-flip band. First run: 179
+fights; rule 155/179 correct (quoted ≥ 50: 138/179); score ≥ 1.2 won 81/81;
+every boss loss was an Iron River (STR-built) boss. This answers the "why"
+left open by the 2026-09-20 findings below.
+
+```
+python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
+```
+
 **`verify_boss_odds.py`** — finds every real Arena boss `attack` call
 (`opponent_id=0`, `ok:true`) across the given archives, pairs each one with
 the `win_pct` the game itself quoted in the most recent `open_next_page`
