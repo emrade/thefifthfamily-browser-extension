@@ -1,6 +1,6 @@
 import type {
-  ArenaAutoConfig,
-  ArenaAutoStatus,
+  ArenaMyProfile,
+  ArenaWatchStatus,
   CareerAutoConfig,
   CareerAutoStatus,
   CourierAutoConfig,
@@ -20,7 +20,7 @@ import type {
   StreetIntelAutoStatus,
   StreetRacingStatus,
 } from './types';
-import { ARENA_AUTO_DEFAULT_BOSS_WIN_PCT_THRESHOLD, CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS, STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT } from './constants';
+import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS, STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
@@ -64,15 +64,6 @@ const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
 // Off by default, same convention as every other auto feature.
 const DEFAULT_CRIMES_AUTO_CONFIG: CrimesAutoConfig = {
   enabled: false,
-};
-
-// Off by default, same convention as every other auto feature — the passive
-// "a page is ready" notification (see runner.ts's runPassiveCheck) is
-// deliberately *not* gated by this flag at all, so it still works with
-// Auto-Attack off (player's own request).
-const DEFAULT_ARENA_AUTO_CONFIG: ArenaAutoConfig = {
-  enabled: false,
-  bossWinPctThreshold: ARENA_AUTO_DEFAULT_BOSS_WIN_PCT_THRESHOLD,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
@@ -227,16 +218,14 @@ export const storage = {
   getGarageDoNotTouch: () => get<number[]>(STORAGE_KEYS.GARAGE_DO_NOT_TOUCH, []),
   setGarageDoNotTouch: (v: number[]) => set(STORAGE_KEYS.GARAGE_DO_NOT_TOUCH, v),
 
-  // Same merge-with-defaults/simple-nullable split as every other auto
-  // feature's config/status pair above.
-  getArenaAutoConfig: async (): Promise<ArenaAutoConfig> => {
-    const stored = await get<Partial<ArenaAutoConfig>>(STORAGE_KEYS.ARENA_AUTO_CONFIG, {});
-    return { ...DEFAULT_ARENA_AUTO_CONFIG, ...stored };
-  },
-  setArenaAutoConfig: (v: ArenaAutoConfig) => set(STORAGE_KEYS.ARENA_AUTO_CONFIG, v),
+  // `null` until the reminder has run once — see watcher.ts's bootstrap.
+  getArenaWatchStatus: () => get<ArenaWatchStatus | null>(STORAGE_KEYS.ARENA_WATCH_STATUS, null),
+  setArenaWatchStatus: (v: ArenaWatchStatus) => set(STORAGE_KEYS.ARENA_WATCH_STATUS, v),
 
-  getArenaAutoStatus: () => get<ArenaAutoStatus | null>(STORAGE_KEYS.ARENA_AUTO_STATUS, null),
-  setArenaAutoStatus: (v: ArenaAutoStatus) => set(STORAGE_KEYS.ARENA_AUTO_STATUS, v),
+  // Written by the in-page fight advisor from captured `preview_loadout` and
+  // `attack` responses; `null` until one of those has been seen.
+  getArenaMyProfile: () => get<ArenaMyProfile | null>(STORAGE_KEYS.ARENA_MY_PROFILE, null),
+  setArenaMyProfile: (v: ArenaMyProfile) => set(STORAGE_KEYS.ARENA_MY_PROFILE, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

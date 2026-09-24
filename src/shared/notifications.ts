@@ -58,14 +58,9 @@ export const NOTIFICATION_DEFINITIONS = [
   },
   {
     id: 'arenaPageUnlocked',
-    label: 'Arena Page Unlocked',
+    label: 'Arena Page Reminder',
     description:
-      'Notify when a new Arena page is ready to open. Repeats periodically for as long as it sits unopened — works whether or not Arena Auto-Attack itself is on, so you can rely on it as a reminder even with automation switched off.',
-  },
-  {
-    id: 'arenaAutoStopped',
-    label: 'Arena Auto Stopped',
-    description: 'Notify when Arena Auto-Attack stops itself after an unrecognized response.',
+      'Notify when a new Arena page is ready to open, or when an opened page still has fights left, an unlocked boss, or an unbanked pot. Repeats every 15 minutes until the page is banked.',
   },
 ] as const;
 

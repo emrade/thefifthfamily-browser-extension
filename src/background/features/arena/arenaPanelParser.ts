@@ -6,28 +6,12 @@ import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
  * background-service-worker parser in this codebase: no reliable `DOMParser`
  * there.
  *
- * Everything the automated runner actually *acts* on comes from the JSON
- * action responses themselves (`open_next_page`/`attack`/`bank`), not this
- * HTML — this parser exists only for the two pieces of state the game never
- * puts in JSON at all:
- *
- * - The "Next Page Unlocks In" countdown's real end time
- *   (`parseArenaTimerEnd`) — needed by the *passive* watcher (see
- *   runner.ts), which has to work without ever having called
- *   `open_next_page` itself.
- * - The boss's own attack call, which needs a `page_id` argument
- *   (`parseBossEnginePageId` — see its own doc) that is rendered directly
- *   into the "ENGAGE BOSS" button's `onclick` and appears nowhere in any
- *   JSON response this feature has ever seen, including `open_next_page`'s.
- *
- * Regular-opponent win% *is* readable from this HTML too
- * (`parseOpenOpponents`) — real, rendered "N% CHANCE" text — confirmed
- * identical to `open_next_page`'s own `opponent_bounties[id].win_pct` for
- * the same account/page. Reading it here rather than caching the
- * `open_next_page` response lets the runner re-derive "who's still
- * unfought" from a fresh page load at any point (e.g. resuming a page the
- * player had already started fighting manually before Auto-Attack was
- * turned on), instead of only ever trusting its own prior action responses.
+ * Used by the page reminder (watcher.ts) to tell where the current page
+ * stands: the next page's countdown (`parseArenaTimerEnd`), today's pages
+ * being used up (`parseIsDayComplete`), and whether an open page still has
+ * something left to do: live opponents (`parseOpenOpponents`), an
+ * engageable boss (`parseBossEnginePageId`), or an unbanked pot
+ * (`parseIsPotActive`).
  */
 
 export interface ArenaOpenOpponent {
@@ -92,9 +76,7 @@ export function parseBossEnginePageId(html: string): number | null {
 }
 
 /** The current page's own number, from its section header ("Page 3
- *  Targets") — needed for `bank`'s own `page_number` param, and the only
- *  way to recover it when resuming a page this feature didn't itself open
- *  (see runner.ts's `runAutomationCycle` for when that matters). */
+ *  Targets"). Used in the reminder's text. */
 export function parseCurrentPageNumber(html: string): number | null {
   const match = html.match(/<span>Page (\d+) Targets<\/span>/);
   return match ? Number(match[1]) : null;
@@ -117,7 +99,13 @@ export function parseCurrentPageNumber(html: string): number | null {
  *  never produce in that state — not just a wasted call, a request with no
  *  legitimate manual-play equivalent to point to. */
 export function parseIsDayComplete(html: string): boolean {
-  return html.includes('class="ar-day-complete"');
+  // After the daily reset the page keeps the same `ar-day-complete` box but
+  // turns it into "The Gates Await … Open The Gates" (every page dot back to
+  // `locked`), with an `av2_arenaOpenNextPage()` button in it. Confirmed
+  // real 2026-09-23 23:19 UTC: a new day's first page was ready while the
+  // old check still read "day complete". The final-page banner has no such
+  // button.
+  return html.includes('class="ar-day-complete"') && !html.includes('onclick="av2_arenaOpenNextPage()"');
 }
 
 /** Whether the current page has a real, unbanked pot right now — the page's

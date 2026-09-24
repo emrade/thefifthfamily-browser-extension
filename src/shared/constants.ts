@@ -26,9 +26,16 @@ export const STORAGE_KEYS = {
   STREET_RACING_STATUS: 'ff_street_racing_status',
   ITEM_MARKET_SORT_PREFS: 'ff_item_market_sort_prefs',
   GARAGE_DO_NOT_TOUCH: 'ff_garage_do_not_touch',
-  ARENA_AUTO_CONFIG: 'ff_arena_auto_config',
-  ARENA_AUTO_STATUS: 'ff_arena_auto_status',
+  ARENA_WATCH_STATUS: 'ff_arena_watch_status',
+  ARENA_MY_PROFILE: 'ff_arena_my_profile',
 } as const;
+
+// Storage keys and alarm names left behind by the removed Arena Auto-Attack
+// feature (removed 2026-09-24, see docs/arena-combat-mechanics.md). Cleared
+// once on background startup so nothing stale lingers in a long-installed
+// profile.
+export const LEGACY_ARENA_AUTO_STORAGE_KEYS = ['ff_arena_auto_config', 'ff_arena_auto_status'] as const;
+export const LEGACY_ARENA_AUTO_ALARM = 'ff-arena-auto';
 
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
@@ -40,7 +47,7 @@ export const ALARM_NAMES = {
   SMUGGLING_DEST_POLL: 'ff-smuggling-dest-poll',
   SMUGGLING_COURIER_RETURN: 'ff-smuggling-courier-return',
   CRIMES_AUTO: 'ff-crimes-auto',
-  ARENA_AUTO: 'ff-arena-auto',
+  ARENA_WATCH: 'ff-arena-watch',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -397,32 +404,23 @@ export const STREET_RACING_MINIGAME_DELAY_STDDEV_MS = 1_000;
 export const STREET_RACING_MINIGAME_DELAY_MIN_MS = 20_000;
 export const STREET_RACING_MINIGAME_DELAY_MAX_MS = 27_000;
 
-// --- Arena auto-attack --------------------------------------------------------
-//
-// The boss is never shown its own "% CHANCE" badge in-game — confirmed real
-// (2026-09-17): the game computes and returns it anyway, in `open_next_page`'s
-// own `boss_data.win_pct`, it just isn't rendered. 50 is the player's own
-// picked floor (see the conversation this feature was built from) for when
-// the automation should risk the boss fight — editable per-account in the
-// popup, this is only the shipped default.
-export const ARENA_AUTO_DEFAULT_BOSS_WIN_PCT_THRESHOLD = 50;
+// --- Arena page reminder -------------------------------------------------------
 
-// Same reasoning as CAREER_AUTO_BUFFER_MS/STREET_INTEL_AUTO_BUFFER_MS — a
-// small guard past a page's own tracked `unlocks_next_at` against firing a
-// hair early on clock skew.
-export const ARENA_AUTO_BUFFER_MS = 5_000;
+// A small guard past a page's own tracked `unlocks_next_at` against firing a
+// hair early on clock skew. Same reasoning as CAREER_AUTO_BUFFER_MS.
+export const ARENA_WATCH_BUFFER_MS = 5_000;
 
-// Same reasoning as CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS — flipping
-// Auto-Attack on from the popup shouldn't wait out however long is left on
-// whatever cadence this last resolved to before its first check.
-export const ARENA_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+// First check after the player is first seen on the Arena page (see the
+// 'arena-viewed' message). Same reasoning as CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS.
+export const ARENA_WATCH_BOOTSTRAP_DELAY_MS = 3_000;
 
-// Used only by the *passive* watcher (`runPassiveCheck` in runner.ts), which
-// runs unconditionally — same "no gameplay action, no kill switch" posture as
-// `stockMarket`'s poller — so it can fire the "a page is ready" notification
-// even with Auto-Attack itself switched off. Doubles as both the "go check
-// again" nag cadence once a page is confirmed ready and unopened, and the
-// blind fallback if a panel read ever fails to produce a real timer — there's
-// no server-provided "try again in N" for either case the way there is for a
-// real `unlocks_next_at`, which this defers to whenever one's known instead.
+// Reminder cadence while a page needs the player: ready to open, or opened
+// but not banked yet (see background/features/arena/watcher.ts). Also the
+// blind fallback when a panel read can't produce a real timer. The player
+// kept 15 minutes when asked (2026-09-24).
 export const ARENA_WATCH_REPEAT_MS = 15 * 60_000;
+
+// Fixed notification id for the reminder, so each repeat replaces the last
+// one instead of piling up (the watcher clears it first, so it still pops
+// and sounds again).
+export const ARENA_REMINDER_NOTIFICATION_ID = 'ff-arena-reminder';

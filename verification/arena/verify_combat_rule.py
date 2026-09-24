@@ -24,7 +24,8 @@ Defaults to every archive under ~/Downloads and its "tff archives" subfolder
 
 Written 2026-09-24. First run: 179 V2 fights (156 regular, 23 bosses,
 2026-09-09 .. 09-24): rule 155/179 correct vs 138/179 for "quoted >= 50";
-score >= 1.2 won 80/80; every boss loss was Iron River (STR-built).
+score >= 1.2 won 81/81; score < 0.8 won 2/40; every boss loss was Iron
+River (STR-built).
 """
 
 import argparse
@@ -42,7 +43,7 @@ ARCHIVE_GLOBS = [
     str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
     str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
 ]
-FLOOR_FRACTION = 0.088  # mean of the 5 min-damage steps, as a fraction of the attacker's mean base damage
+FLOOR_FRACTION = 0.088  # min-damage mean / attacker mean base: measured 8.5% (you) and 9.1% (opponents); 8.8% shared fits results best
 
 
 def find_default_archives() -> list:
@@ -118,6 +119,11 @@ def linfit(xs, ys):
     return a, b, r, resid
 
 
+def mean_pos(xs):
+    xs = [x for x in xs if x and x > 0]
+    return statistics.mean(xs) if xs else None
+
+
 def build_fights(rows):
     quotes, boss_quote, cards, fights, hits = {}, None, {}, [], []
     for row in rows:
@@ -160,8 +166,9 @@ def build_fights(rows):
                 "family": b.get("boss_family"), "won": bool(b["won"]), "wp": q["win_pct"], "cp": cp,
                 "stats": stats, "passive": passive, "lvl": b["def_level"],
                 "my_hp": b["att_max_hp"], "op_hp": b["def_max_hp"],
-                "my_base": statistics.mean([h["base_dmg"] for h in atk]) if atk else None,
-                "op_base": statistics.mean([h["base_dmg"] for h in dfd]) if dfd else None,
+                # Misses log base_dmg 0; including them drags the mean down ~5%.
+                "my_base": mean_pos([h["base_dmg"] for h in atk]),
+                "op_base": mean_pos([h["base_dmg"] for h in dfd]),
                 "my_red": nz(dfd, "reduction"), "op_red": nz(atk, "reduction"),
             })
     return fights, hits
@@ -170,10 +177,11 @@ def build_fights(rows):
 def score(f, my):
     """Kill-race score: >1 means you're expected to outlast them."""
     STR, DEF = f["stats"][0], f["stats"][1]
+    # Same coefficients as src/shared/arenaCombat.ts.
     if f["boss"]:
-        op_base, op_hp = 0.435 * STR + 21, 95 + 5 * f["lvl"]
+        op_base, op_hp = 0.4824 * STR + 9.85, 95 + 5 * f["lvl"]
     else:
-        op_base, op_hp = 0.54 * STR - 11, 7.19 * f["lvl"] - 49
+        op_base, op_hp = 0.5546 * STR - 6.77, 7.19 * f["lvl"] - 49
     theirs = max(FLOOR_FRACTION * op_base, op_base - my["red"])
     mine = max(FLOOR_FRACTION * my["base"], my["base"] - DEF)
     return (my["hp"] / theirs) / (op_hp / mine)
@@ -235,21 +243,23 @@ def main():
     print(f"   hits where base < reduction (floor damage): {len(below)}/{sum(1 for h in hits if h['action'] == 'hit')}")
 
     print("\n== 5. Kill-race score rule ==")
+    # Your side is grouped by season loadout (your locked max HP), not by
+    # calendar week: a week can straddle two seasons.
     season = collections.defaultdict(lambda: collections.defaultdict(list))
     for f in fights:
-        s = season[iso_week(f["ts"])]
+        s = season[f["my_hp"]]
         if f["my_base"]:
             s["base"].append(f["my_base"])
         if f["my_red"]:
             s["red"].append(f["my_red"])
         s["hp"].append(f["my_hp"])
-    my_by_week = {w: {k: statistics.median(v) for k, v in s.items()} for w, s in season.items()}
-    for w, m in sorted(my_by_week.items()):
-        k_const = m["hp"] * FLOOR_FRACTION * m["base"] / (FLOOR_FRACTION * 0.54)
-        boss_str = ((m["hp"] * FLOOR_FRACTION * m["base"] / (625 * FLOOR_FRACTION)) - 21) / 0.435
-        print(f"   week {w}: my base {m['base']:.0f}  HP {m['hp']:.0f}  reduction {m['red']:.0f}"
+    my_by_season = {hp: {k: statistics.median(v) for k, v in s.items()} for hp, s in season.items()}
+    for hp, m in sorted(my_by_season.items()):
+        k_const = m["hp"] * m["base"] / 0.5546
+        boss_str = (m["hp"] * m["base"] / 625 - 9.85) / 0.4824
+        print(f"   season with max HP {hp:.0f}: my base {m['base']:.0f}  reduction {m['red']:.0f}"
               f"  -> K ≈ {k_const:,.0f}, boss break-even STR ≈ {boss_str:,.0f}")
-    scored = [(score(f, my_by_week[iso_week(f["ts"])]), f) for f in fights]
+    scored = [(score(f, my_by_season[f["my_hp"]]), f) for f in fights]
     ok = sum((s >= 1) == f["won"] for s, f in scored)
     q_ok = sum((f["wp"] >= 50) == f["won"] for f in fights)
     print(f"   rule correct {ok}/{len(scored)}   vs quoted>=50 correct {q_ok}/{len(fights)}")

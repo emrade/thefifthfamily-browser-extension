@@ -20,12 +20,12 @@ import { initGarageOverlay } from './features/garage/overlay';
 import { initAchievementChip } from './shared/achievementChip';
 import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
 import { initArenaOverlay } from './features/arena/overlay';
-import { handleCapturedRequest as handleArenaBossOdds, initArenaBossOdds } from './features/arena/bossOdds';
+import { handleCapturedRequest as handleArenaFightAdvisor, initArenaFightAdvisor } from './features/arena/fightAdvisor';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
 // matching dispatch on the message side.
-const handlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArenaBossOdds];
+const handlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArenaFightAdvisor];
 
 // Bridge from the MAIN-world fetch/XHR hook (mainWorldHook.ts) — that script has no
 // chrome.* API access, so it can only forward raw bytes via postMessage; all parsing
@@ -154,8 +154,8 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     if (prefs.arenaOverlay) {
       initArenaOverlay();
     }
-    if (prefs.arenaBossOdds) {
-      initArenaBossOdds();
+    if (prefs.arenaFightAdvisor) {
+      initArenaFightAdvisor();
     }
   });
 }

@@ -34,7 +34,6 @@ import {
   handleAlarm as handleArenaAlarm,
   handleMessage as handleArena,
   init as initArena,
-  runCheckNow as runArenaCheckNow,
 } from './features/arena';
 import {
   getStatus as getStockTrackerStatus,
@@ -82,9 +81,8 @@ initStreetIntelAuto();
 // features/crimesAuto/index.ts's init.
 initCrimesAuto();
 
-// Re-arms Arena's own shared alarm (auto-attack cycle or passive "page
-// ready" watcher, depending on `ArenaAutoConfig.enabled`) — see
-// features/arena/index.ts's init.
+// Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
+// init.
 initArena();
 
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
@@ -268,18 +266,9 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return claimAchievementLine(msg.lineId);
   }
 
-  // Sent by the popup's Arena Auto view and the in-page overlay alike —
-  // both read the same config/status, this is just the one place that
-  // assembles them for a surface that can't reach `storage` directly
-  // (the overlay; the popup reads storage straight through as usual).
+  // Sent by the in-page Arena panel for the reminder's last-seen state.
   if (msg.type === 'arena-status-requested') {
     return getArenaStatus();
-  }
-
-  // Sent by the overlay's own "Check Now" button — see that message
-  // type's own doc in shared/messaging.ts.
-  if (msg.type === 'arena-check-requested') {
-    return runArenaCheckNow().then(getArenaStatus);
   }
 
   // Archive writes are split off onto their own queue rather than joining the

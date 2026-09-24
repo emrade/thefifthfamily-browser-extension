@@ -68,15 +68,15 @@ export const PAGE_FEATURE_DEFINITIONS = [
   },
   {
     id: 'arenaOverlay',
-    label: 'Arena Status Panel',
+    label: 'Arena Reminder Panel',
     description:
-      'A floating panel on the Arena page showing Auto-Attack status, the boss win% threshold, and the last page it ran — with the toggle right there so you don’t need the popup to turn it on or off.',
+      'A floating panel on the Arena page with the page reminder’s toggle and status, and the season numbers the Fight Advisor is using for you (HP, damage, armour, and the STR limits they give).',
   },
   {
-    id: 'arenaBossOdds',
-    label: 'Arena Boss Odds',
+    id: 'arenaFightAdvisor',
+    label: 'Arena Fight Advisor',
     description:
-      'Badges the boss card on the Arena page with its real win % — the game computes this the moment you open a page, it just never shows it. Only appears after you open the page yourself (manually or via Refresh); a page Auto-Attack opened on its own has no way to be shown this way.',
+      'Badges every opponent and the boss on the Arena page Beatable, Coin-flip or Avoid, from the stats on their card, and numbers the attack order (riskiest first). Hover a badge for the reason and the game’s own quoted %. A line above the cards sums up the page: the order, whether to fight the boss or bank and skip it, and when the free Refresh is worth using.',
   },
   {
     id: 'garageBulkOps',

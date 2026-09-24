@@ -1,6 +1,11 @@
 # Arena Auto-Attack
 
-Status: **implemented.**
+Status: **removed 2026-09-24.** Kept for history. It won 16/38 fights and never fought
+a boss (every boss is quoted under its 50% threshold), so the player switched to
+playing pages by hand with the Arena Fight Advisor. The passive page reminder
+survives, extended to unbanked pages, as `background/features/arena/watcher.ts`. See
+[arena-combat-mechanics.md](./arena-combat-mechanics.md). File and code references
+below describe the removed implementation.
 
 Fully automates the Arena page loop: opens a page once its timer allows, attacks every
 regular opponent in win%-ascending order (riskiest first), attacks the boss if (and only if) its own

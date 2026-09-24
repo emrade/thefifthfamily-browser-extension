@@ -5,28 +5,19 @@ import { storage } from '@/shared/storage';
 import { sendMessage } from '@/shared/messaging';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@/shared/notifications';
-import type { ArenaAutoConfig, ArenaAutoStatus, ArenaStatusResponse } from '@/shared/types';
+import { bossStrengthBreakEven, regularStrengthLimit } from '@/shared/arenaCombat';
+import type { ArenaMyProfile, ArenaWatchStatus } from '@/shared/types';
 
 /**
- * A floating panel on the live Arena page — collapsed badge by default,
- * expanding into the Auto-Attack toggle, the boss win% threshold, and the
- * last page it ran. Same badge/expand shape as `courierPanel.ts`; unlike
- * that one, the toggle here writes straight through `storage.ts` (a plain
- * config flag, no network call behind the write itself — same shortcut
- * courierPanel.ts's own three toggles already take) rather than a message
- * round-trip, while status itself still has to be message-based, since this
- * runs on the game's own origin and can't read `chrome.alarms` directly.
+ * A floating panel on the live Arena page: collapsed badge by default,
+ * expanding into the page reminder's toggle and last-seen state, and the
+ * season numbers the fight advisor (fightAdvisor.ts) is working from, with
+ * the STR limits they give. Same badge/expand shape as `courierPanel.ts`.
  *
- * Also carries the `arenaPageUnlocked` notification toggle — player's own
- * ask: Settings toggles it too, but this panel is what they're already
- * looking at, so duplicating the one that matters here beats making them
- * tab away. Reads/writes the exact same `NotificationPreferences` storage key
- * Settings does (`storage.ts`'s `getNotificationPreferences`/
- * `setNotificationPreferences`), and a `chrome.storage.onChanged` listener
- * keeps this panel's checkboxes live if the value changes from Settings
- * while this panel happens to be open — same pattern
- * `PetCouriersHome.tsx` uses to reflect a courier toggle changed from its
- * own in-page panel, just in the other direction.
+ * The reminder toggle reads/writes the same `NotificationPreferences` key as
+ * Settings, and a `chrome.storage.onChanged` listener keeps it live if
+ * Settings changes it while this panel is open. The reminder's state comes
+ * from the background by message, since this runs on the game's origin.
  */
 
 const CONTAINER_ID = 'ff-arena-panel';
@@ -110,124 +101,80 @@ const PANEL_CSS = `
 .ff-arp-toggle:checked { background: rgba(251,191,36,0.18); border-color: #fbbf24; }
 .ff-arp-toggle:checked::before { transform: translateX(14px); background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
 
-.ff-arp-field { margin-bottom: 12px; }
-.ff-arp-field-label { font-size: 9.5px; color: #6b6455; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
-.ff-arp-field-input {
-  width: 70px; padding: 6px 8px; font-size: 12px; font-family: 'Courier New', monospace;
-  background: rgba(0,0,0,0.4); border: 1px solid rgba(201,168,76,0.3); border-radius: 6px; color: #f1ede2;
-}
-
-.ff-arp-check {
-  display: block; width: 100%; padding: 10px; margin-bottom: 12px;
-  border-radius: 8px; font-weight: 800; font-size: 10.5px;
-  text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer;
-  background: linear-gradient(135deg, rgba(201,168,76,0.30), rgba(201,168,76,0.12));
-  border: 1px solid rgba(201,168,76,0.5);
-  color: #f4d160;
-}
-.ff-arp-check:hover { background: linear-gradient(135deg, rgba(201,168,76,0.42), rgba(201,168,76,0.18)); }
-.ff-arp-check:disabled { opacity: 0.5; cursor: default; }
-
 .ff-arp-row-head {
   font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em;
   color: #6b6455; margin: 8px 0 3px;
 }
 .ff-arp-row { font-size: 10.5px; color: #ccc; padding: 2px 0; line-height: 1.4; }
-.ff-arp-row--win { color: #7fd88f; }
-.ff-arp-row--error { color: #f27f7f; }
+.ff-arp-muted { color: #8b8f9e; }
 .ff-arp-summary-time { font-size: 9px; color: #6b6455; margin-top: 8px; }
 `;
 
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
-let checking = false;
 
 function formatCountdown(nextAt: number, now: number): string {
   const s = Math.max(0, Math.round((nextAt - now) / 1000));
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   const rem = s % 60;
-  return `${m}:${String(rem).padStart(2, '0')}`;
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}:${String(rem).padStart(2, '0')}`;
 }
 
-function renderStatus(config: ArenaAutoConfig, status: ArenaAutoStatus | null): string {
-  const parts: string[] = [];
+const STATE_TEXT: Record<NonNullable<ArenaWatchStatus['state']>, string> = {
+  ready: 'A page is ready to open. Reminding every 15 minutes.',
+  'in-progress': 'Your open page isn’t finished (fights, boss or pot left). Reminding every 15 minutes until it’s banked.',
+  waiting: 'Waiting for the next page.',
+  'day-complete': 'Today’s 6 pages are done.',
+};
 
-  if (status?.dayComplete) {
-    parts.push('<div class="ff-arp-row">Today’s 6 Arena pages are done — resets with the game’s own daily reset.</div>');
+function renderReminder(status: ArenaWatchStatus | null): string {
+  if (!status?.state) return '<div class="ff-arp-row">Not checked yet.</div>';
+  const parts = [`<div class="ff-arp-row">${STATE_TEXT[status.state]}</div>`];
+  const now = Date.now();
+  if (status.state === 'waiting' && status.nextUnlockAt !== null) {
+    parts.push(`<div class="ff-arp-row">Next page in ${formatCountdown(status.nextUnlockAt, now)}</div>`);
   }
-
-  const nextAt = status?.nextUnlockAt ?? null;
-  if (nextAt !== null) {
-    const label = config.enabled ? 'Next page' : 'Next reminder check';
-    parts.push(`<div class="ff-arp-row">${label}: ${formatCountdown(nextAt, Date.now())}</div>`);
+  if (status.nextCheckAt !== null && status.nextCheckAt > now) {
+    parts.push(`<div class="ff-arp-summary-time">Next check in ${formatCountdown(status.nextCheckAt, now)}</div>`);
   }
-
-  if (status?.pausedReason) {
-    parts.push(`<div class="ff-arp-row ff-arp-row--error">Stopped: ${status.pausedMessage ?? 'unexpected response'}</div>`);
-  }
-
-  if (!status?.lastPage) {
-    parts.push('<div class="ff-arp-row">No pages run yet.</div>');
-    return parts.join('');
-  }
-
-  const page = status.lastPage;
-  parts.push(`<div class="ff-arp-row-head">${page.complete ? 'Last Page' : 'Current Page — in progress'}</div>`);
-  if (page.complete) {
-    parts.push(`<div class="ff-arp-row">Page ${page.pageNumber} · banked +${page.banked} · score ${page.seasonScore}</div>`);
-  } else {
-    parts.push(`<div class="ff-arp-row">Page ${page.pageNumber} · fights below happened for real, not banked yet</div>`);
-  }
-  for (const o of page.opponents) {
-    parts.push(`<div class="ff-arp-row${o.won ? ' ff-arp-row--win' : ''}">${o.won ? '✓' : '✗'} ${o.name} (${o.winPctAtAttack}%)</div>`);
-  }
-  if (page.boss) {
-    parts.push(
-      page.boss.attacked
-        ? `<div class="ff-arp-row${page.boss.won ? ' ff-arp-row--win' : ''}">${page.boss.won ? '✓' : '✗'} ${page.boss.name} (boss, ${page.boss.winPct}%)</div>`
-        : `<div class="ff-arp-row">Boss skipped — ${page.boss.skippedReason}</div>`,
-    );
-  }
-  parts.push(`<div class="ff-arp-summary-time">${new Date(page.timestamp).toLocaleString()}</div>`);
   return parts.join('');
+}
+
+const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+
+function renderProfile(p: ArenaMyProfile | null): string {
+  if (!p) {
+    return '<div class="ff-arp-row">Not seen yet. Read from the season lock-in screen, or from your first fight.</div>';
+  }
+  const source = p.source === 'fights' ? `from ${p.fightCount} fight${p.fightCount === 1 ? '' : 's'}` : 'estimated from lock-in';
+  const limits = [90, 100, 110, 120].map((lvl) => `Lv ${lvl}: ~${fmt(regularStrengthLimit(lvl, p))}`).join(' · ');
+  return [
+    `<div class="ff-arp-row">${fmt(p.maxHp)} HP · ~${fmt(p.baseDamage)} damage · ~${fmt(p.reduction)} armour <span class="ff-arp-muted">(${source})</span></div>`,
+    p.lockedStats
+      ? `<div class="ff-arp-row ff-arp-muted">Locked STR ${fmt(p.lockedStats.strength)} · DEF ${fmt(p.lockedStats.defence)} · AGI ${fmt(p.lockedStats.agility)} · DEX ${fmt(p.lockedStats.dexterity)}</div>`
+      : '',
+    '<div class="ff-arp-row-head">Max opponent STR you beat (score 1.0)</div>',
+    `<div class="ff-arp-row">${limits}</div>`,
+    `<div class="ff-arp-row">Boss (level 106) break-even: ~${fmt(bossStrengthBreakEven(p))} STR</div>`,
+  ].join('');
 }
 
 async function refresh() {
   if (!panelEl) return;
-  const toggle = panelEl.querySelector<HTMLInputElement>('.ff-arp-toggle');
-  const thresholdInput = panelEl.querySelector<HTMLInputElement>('.ff-arp-threshold-input');
-  const statusEl = panelEl.querySelector('.ff-arp-status');
+  const reminderEl = panelEl.querySelector('.ff-arp-status');
+  const profileEl = panelEl.querySelector('.ff-arp-profile');
   try {
-    const { config, status } = (await chrome.runtime.sendMessage({ type: 'arena-status-requested' })) as ArenaStatusResponse;
-    if (toggle) toggle.checked = config.enabled;
-    if (thresholdInput && document.activeElement !== thresholdInput) thresholdInput.value = String(config.bossWinPctThreshold);
-    if (statusEl) statusEl.innerHTML = renderStatus(config, status);
+    const [status, profile] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'arena-status-requested' }) as Promise<ArenaWatchStatus | null>,
+      storage.getArenaMyProfile(),
+    ]);
+    if (reminderEl) reminderEl.innerHTML = renderReminder(status);
+    if (profileEl) profileEl.innerHTML = renderProfile(profile);
   } catch (err) {
-    console.error(LOG_PREFIX, 'arena panel status refresh failed', err);
+    console.error(LOG_PREFIX, 'arena panel refresh failed', err);
   }
   await refreshNotifToggles();
-}
-
-async function handleCheckNow() {
-  if (!panelEl || checking) return;
-  checking = true;
-  const btn = panelEl.querySelector<HTMLButtonElement>('.ff-arp-check');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Checking…';
-  }
-  try {
-    await chrome.runtime.sendMessage({ type: 'arena-check-requested' });
-    await refresh();
-  } catch (err) {
-    console.error(LOG_PREFIX, 'arena panel check-now failed', err);
-  } finally {
-    checking = false;
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'Check Now';
-    }
-  }
 }
 
 function setExpanded(next: boolean) {
@@ -246,54 +193,24 @@ function buildPanel(): HTMLDivElement {
     </button>
     <div class="ff-arp-panel">
       <div class="ff-arp-head">
-        ${brandBadgeHtml('Arena Auto-Attack')}
+        ${brandBadgeHtml('Arena')}
         <button class="ff-arp-close" type="button" title="Collapse">✕</button>
       </div>
       <label class="ff-arp-toggle-row">
         <div class="ff-arp-toggle-row__text">
-          <div class="ff-arp-toggle-row__title">Auto-Attack</div>
-          <div class="ff-arp-toggle-row__status">Fight every opponent, then the boss if it clears the threshold, then bank</div>
-        </div>
-        <input class="ff-arp-toggle" type="checkbox">
-      </label>
-      <div class="ff-arp-field">
-        <div class="ff-arp-field-label">Boss win% threshold</div>
-        <input class="ff-arp-field-input ff-arp-threshold-input" type="number" min="0" max="100">
-      </div>
-      <label class="ff-arp-toggle-row">
-        <div class="ff-arp-toggle-row__text">
-          <div class="ff-arp-toggle-row__title">Notify: page ready</div>
-          <div class="ff-arp-toggle-row__status">A new Arena page is ready to open — repeats until you open it</div>
+          <div class="ff-arp-toggle-row__title">Page reminder</div>
+          <div class="ff-arp-toggle-row__status">When a page is ready, or an opened page isn’t banked yet. Repeats every 15 minutes.</div>
         </div>
         <input class="ff-arp-toggle ff-arp-notif-toggle" type="checkbox" data-notif-id="arenaPageUnlocked">
       </label>
-      <button class="ff-arp-check" type="button">Check Now</button>
       <div class="ff-arp-status"><div class="ff-arp-row">Loading…</div></div>
+      <div class="ff-arp-row-head">Your season numbers</div>
+      <div class="ff-arp-profile"><div class="ff-arp-row">Loading…</div></div>
     </div>
   `;
 
   el.querySelector('.ff-arp-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-arp-close')?.addEventListener('click', () => setExpanded(false));
-  el.querySelector('.ff-arp-check')?.addEventListener('click', () => void handleCheckNow());
-
-  const toggle = el.querySelector<HTMLInputElement>('.ff-arp-toggle');
-  toggle?.addEventListener('change', () => {
-    storage
-      .getArenaAutoConfig()
-      .then((config) => storage.setArenaAutoConfig({ ...config, enabled: toggle.checked }))
-      .then(() => setTimeout(() => void refresh(), 4_000)) // background's own immediate-check delay
-      .catch((err) => console.error(LOG_PREFIX, 'arena panel toggle write failed', err));
-  });
-
-  const thresholdInput = el.querySelector<HTMLInputElement>('.ff-arp-threshold-input');
-  thresholdInput?.addEventListener('change', () => {
-    const value = Math.min(100, Math.max(0, Math.round(Number(thresholdInput.value))));
-    if (!Number.isFinite(value)) return;
-    storage
-      .getArenaAutoConfig()
-      .then((config) => storage.setArenaAutoConfig({ ...config, bossWinPctThreshold: value }))
-      .catch((err) => console.error(LOG_PREFIX, 'arena panel threshold write failed', err));
-  });
 
   el.querySelectorAll<HTMLInputElement>('.ff-arp-notif-toggle').forEach((notifToggle) => {
     const id = notifToggle.dataset.notifId as keyof NotificationPreferences;
@@ -308,11 +225,10 @@ function buildPanel(): HTMLDivElement {
   return el;
 }
 
-/** Syncs the two notification checkboxes straight from storage — split out
- *  from `refresh()` (which round-trips to the background for the rest of
- *  the panel) since this half only ever needs a local read, and the
- *  `chrome.storage.onChanged` listener below reuses it to reflect a change
- *  made from Settings without waiting on the slower path. */
+/** Syncs the reminder checkbox straight from storage — split out from
+ *  `refresh()` (which round-trips to the background for the rest of the
+ *  panel) so the `chrome.storage.onChanged` listener below can reflect a
+ *  change made from Settings without waiting on the slower path. */
 async function refreshNotifToggles() {
   if (!panelEl) return;
   const prefs = await storage.getNotificationPreferences();
@@ -349,13 +265,11 @@ export function initArenaOverlay(): void {
     if (expanded) void refresh();
   }, 15_000);
 
-  // Live-reflects a notification toggle changed from Settings instead —
-  // both surfaces read the same storage key, same `chrome.storage.onChanged`
-  // pattern `PetCouriersHome.tsx` uses for its own courier toggle, just
-  // watching the other direction (Settings → this panel rather than
-  // in-page panel → popup).
+  // Live-reflects the reminder toggle changed from Settings, and the
+  // reminder state or season numbers changing while the panel is open.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(STORAGE_KEYS.NOTIFICATION_PREFERENCES in changes)) return;
-    void refreshNotifToggles();
+    if (area !== 'local') return;
+    if (STORAGE_KEYS.NOTIFICATION_PREFERENCES in changes) void refreshNotifToggles();
+    if (expanded && (STORAGE_KEYS.ARENA_WATCH_STATUS in changes || STORAGE_KEYS.ARENA_MY_PROFILE in changes)) void refresh();
   });
 }

@@ -3,8 +3,8 @@ import { LiveStats } from './LiveStats';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { ArenaAutoConfig, CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, MaskIcon, SendIcon, SettingsIcon, ShieldIcon } from './icons';
+import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
+import { ArchiveIcon, BriefcaseIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenFightClub: () => void;
@@ -13,7 +13,6 @@ interface HomeProps {
   onOpenStreetIntelAuto: () => void;
   onOpenPetCouriers: () => void;
   onOpenCrimesAuto: () => void;
-  onOpenArenaAuto: () => void;
   onOpenSettings: () => void;
 }
 
@@ -32,7 +31,6 @@ export function Home(props: HomeProps) {
   const [streetIntelAutoConfig, setStreetIntelAutoConfig] = useState<StreetIntelAutoConfig | null>(null);
   const [courierAutoConfig, setCourierAutoConfig] = useState<CourierAutoConfig | null>(null);
   const [crimesAutoConfig, setCrimesAutoConfig] = useState<CrimesAutoConfig | null>(null);
-  const [arenaAutoConfig, setArenaAutoConfig] = useState<ArenaAutoConfig | null>(null);
   // The icon badge's own count, read back rather than re-derived — the badge
   // already *is* "how many pets need attention right now," so this row just
   // surfaces the same number instead of running its own separate computation
@@ -59,10 +57,6 @@ export function Home(props: HomeProps) {
       .getCrimesAutoConfig()
       .then(setCrimesAutoConfig)
       .catch((err) => console.error(LOG_PREFIX, 'failed to read crimes auto config', err));
-    storage
-      .getArenaAutoConfig()
-      .then(setArenaAutoConfig)
-      .catch((err) => console.error(LOG_PREFIX, 'failed to read arena auto config', err));
     chrome.action
       .getBadgeText({})
       .then(setCourierBadge)
@@ -96,7 +90,6 @@ export function Home(props: HomeProps) {
 
   const crimesAutoStatus = crimesAutoConfig?.enabled ? 'Running' : 'Off';
 
-  const arenaAutoStatus = arenaAutoConfig?.enabled ? 'Running' : 'Off';
 
   // Only broken features are listed. A healthy extension shows nothing here — this
   // is meant to be invisible until the day the game changes underneath it, which
@@ -177,15 +170,6 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">Crimes Auto</div>
           <div class="ff-nav-row__status">{crimesAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenArenaAuto}>
-        <div class="ff-nav-row__icon"><ShieldIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Arena Auto</div>
-          <div class="ff-nav-row__status">{arenaAutoStatus}</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

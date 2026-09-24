@@ -8,8 +8,15 @@ import type { NotificationId } from './notifications';
  * ever needs one new entry in notifications.ts, not a separate preference check
  * hand-wired at each call site.
  */
-export async function notify(id: NotificationId, options: chrome.notifications.NotificationOptions<true>): Promise<void> {
+export async function notify(
+  id: NotificationId,
+  options: chrome.notifications.NotificationOptions<true>,
+  /** Optional fixed notification id, so a repeating reminder replaces its
+   *  own previous notification instead of stacking a new one each time. */
+  notificationId?: string,
+): Promise<void> {
   const prefs = await storage.getNotificationPreferences();
   if (!prefs[id]) return;
-  chrome.notifications.create(options);
+  if (notificationId) chrome.notifications.create(notificationId, options);
+  else chrome.notifications.create(options);
 }

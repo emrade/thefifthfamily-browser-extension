@@ -1331,94 +1331,56 @@ export interface AchievementClaimResult {
   message: string;
 }
 
-// --- Arena auto-attack --------------------------------------------------------
+// --- Arena ------------------------------------------------------------------
 
-export interface ArenaAutoConfig {
-  enabled: boolean;
-  /** Attack the boss only when its own server-computed `win_pct` (see
-   *  `ArenaBossResult`) is at least this — the boss is never shown a "%
-   *  CHANCE" badge in-game the way regular opponents are, but the number
-   *  exists and is exposed in `open_next_page`'s own response regardless.
-   *  Player-set (player's own words: "let us proceed... make the things
-   *  that can be editable like so, like the percentage"), default derived
-   *  from the same conversation. */
-  bossWinPctThreshold: number;
-}
+/** Where the current Arena page stands, as the background reminder last saw
+ *  it (see background/features/arena/watcher.ts). */
+export type ArenaPageState =
+  /** The next page's timer has run out and it hasn't been opened yet. */
+  | 'ready'
+  /** A page is open with something left to do: live opponents, an
+   *  engageable boss, or an unbanked pot. */
+  | 'in-progress'
+  /** Nothing open and the next page's timer is still running. */
+  | 'waiting'
+  /** Today's 6 pages are used. */
+  | 'day-complete';
 
-export interface ArenaOpponentResult {
-  name: string;
-  won: boolean;
-  /** The opponent's own `win_pct` as shown on the page at the moment this
-   *  fight was attempted — recorded per-fight rather than trusted to still
-   *  match a page-open-time snapshot, since a `Refresh` (before combat
-   *  begins) can change the roster. */
-  winPctAtAttack: number;
-  bountyEarned: number;
-}
-
-export interface ArenaBossResult {
-  name: string;
-  attacked: boolean;
-  won: boolean | null;
-  /** Always recorded, whether or not the boss was actually attacked — this
-   *  is what a skip decision was judged against, so it belongs in the log
-   *  either way. */
-  winPct: number;
-  /** Non-null only when `attacked` is false — e.g. "43% < 50% threshold". */
-  skippedReason: string | null;
-}
-
-/** What one fully-automated page cycle actually did — shown in the popup as
- *  "last page", same role `CareerShiftResult`/`CrimeAttemptResult` play for
- *  their own auto-runners. */
-export interface ArenaPageResult {
-  timestamp: number;
-  pageNumber: number;
-  /** In the order actually attacked (see runner.ts for the ordering rule),
-   *  not necessarily `opponent_ids` order. */
-  opponents: ArenaOpponentResult[];
-  /** Null only if the boss's own "ENGAGE BOSS" button never appeared at all
-   *  this cycle (unconfirmed edge case — every real capture so far reached
-   *  it once all four regular opponents were attacked). */
-  boss: ArenaBossResult | null;
-  banked: number;
-  seasonScore: number;
-  /** False for a page this cycle didn't finish — an attack, the boss fight,
-   *  or `bank` itself came back an unrecognized response partway through
-   *  (see runner.ts's `pause`). `opponents`/`boss` still reflect exactly
-   *  what actually happened before that point (real fights, real
-   *  win/loss), since this is written incrementally as each step
-   *  succeeds, not only once at the very end — a partial run has a real
-   *  story to tell, not just "it failed." `banked`/`seasonScore` stay 0
-   *  when `bank` itself was never reached or itself failed. */
-  complete: boolean;
-}
-
-export interface ArenaAutoStatus {
-  lastPage: ArenaPageResult | null;
-  /** The next page's own `unlocks_next_at`, straight from the game — both
-   *  what the runner's own alarm aligns to and what the passive "page
-   *  unlocked" notification (see runner.ts's `runPassiveCheck`) watches for
-   *  independently of whether `enabled` is on. */
+export interface ArenaWatchStatus {
+  state: ArenaPageState | null;
+  /** The next page's own unlock time from the page's countdown, when one
+   *  is running. */
   nextUnlockAt: number | null;
-  pausedReason: 'error' | null;
-  pausedMessage: string | null;
-  pausedAt: number | null;
-  pagesRun: number;
-  totalBanked: number;
-  /** True once the game's own "final summons of the day" banner has been
-   *  seen — today's 6 Arena pages are fully used. See
-   *  `arenaPanelParser.ts`'s `parseIsDayComplete` for the real markup this
-   *  is read from. Not an error state (`pausedReason` stays `null` for it) —
-   *  purely informational, so the overlay can show "done for today" instead
-   *  of an empty countdown. */
-  dayComplete: boolean;
+  /** When the reminder will look again (the watcher's own alarm). */
+  nextCheckAt: number | null;
+  checkedAt: number;
 }
 
-/** Read-only counterpart to `CourierStatus` — a surface that can't reach
- *  `storage` directly (the in-page overlay) gets both config and status in
- *  one message round-trip instead of two. */
-export interface ArenaStatusResponse {
-  config: ArenaAutoConfig;
-  status: ArenaAutoStatus | null;
+/** The player's own side of an Arena fight for the current season — the
+ *  numbers the fight advisor's kill-race score needs (see
+ *  docs/arena-combat-mechanics.md). Locked for the whole season, so it only
+ *  changes at season lock-in. */
+export interface ArenaMyProfile {
+  /** `preview`: estimated from `preview_loadout`'s locked stats at lock-in.
+   *  `fights`: measured from the combat logs of this season's fights, which
+   *  replaces the estimate from the first fight on. */
+  source: 'preview' | 'fights';
+  maxHp: number;
+  /** The player's own mean `base_dmg` per fight: the median across this
+   *  season's fights (it shifts a few % by opponent, and a running mean
+   *  drifts high). */
+  baseDamage: number;
+  /** The player's own `reduction` (armour) as the opponent's hits see it:
+   *  the median across this season's fights (it varies 673–777 by
+   *  opponent). */
+  reduction: number;
+  /** Number of fights sampled this season (0 for `preview`). */
+  fightCount: number;
+  /** Per-fight values behind the medians, newest last, capped at
+   *  `ARENA_PROFILE_MAX_SAMPLES`. Empty for `preview`. */
+  baseSamples: number[];
+  reductionSamples: number[];
+  /** Locked stats from `preview_loadout`, when seen this season. */
+  lockedStats: { strength: number; defence: number; agility: number; dexterity: number } | null;
+  updatedAt: number;
 }

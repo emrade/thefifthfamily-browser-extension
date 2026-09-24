@@ -4,19 +4,18 @@ Measured 2026-09-17 against real `POST /actions/arena_v2.php` captures, includin
 full round-by-round combat log for a loss and confirmed `win_pct` values for both a
 regular opponent and (see below) the boss.
 
-## `win_pct` is a real probability, already computed server-side
+## `win_pct` is *not* a real probability (corrected 2026-09-24)
 
-Every regular opponent's card shows its own "N% CHANCE" — and that number is exactly
-what the account owner sees before attacking, not an estimate this extension derives.
-The boss is the one exception **in the UI only**: its card never renders a "% CHANCE"
-badge at all. The server computes one anyway — `open_next_page`'s own response carries
-`boss_data.win_pct` unconditionally, it's just never rendered. Confirmed real
-(2026-09-17): a boss with `win_pct: 43` was fought and won, `win_pct: 48` on the
-opponent fought just before it.
+> **Superseded.** This section originally said `win_pct` "already is the answer
+> to what are my real odds" and that there was nothing to predict. 184 real
+> fights disprove that: `win_pct` is a curve on the opponent's Combat Power
+> alone (`≈ 249 − 24.6·ln(CP)`), so it ignores *which* stat is high. Every
+> boss is quoted 37–47% yet bosses won 21/24, and regular opponents act on a
+> blunt ~50% cut-off. A kill-race score from the card's STR and level calls
+> 160/184 fights. See **[arena-combat-mechanics.md](./arena-combat-mechanics.md)**.
 
-**There is nothing to predict here that isn't already known.** `win_pct` already is the
-answer to "what are my real odds" — building a model to re-derive it would be
-reverse-engineering a number the game already hands over for free.
+Every regular opponent's card shows its own "N% CHANCE". The boss's card never
+renders one, but `open_next_page`'s `boss_data.win_pct` carries it anyway.
 
 ## A single fight is genuinely random — `win_pct` is not a guarantee
 
@@ -36,11 +35,10 @@ account, same weapon, same opponent produced `base_dmg` values of 322, 256, 289,
 307, 261, 322 (that one a crit)... across consecutive rounds of the *same* fight. The
 fight resolved over 19 rounds of this compounding independently, ending 0 HP to 221.
 
-**Consequence:** a 48% (or 51%, or 43%) win chance is a real probability over many
-trials, never a certainty on any one attempt. At 51% the outcome is barely better than
-a coin flip on that specific fight — losing it is not evidence anything is wrong, and
-winning a 43% fight (as happened, real capture) is not evidence the number was wrong
-either. There is no pre-roll or seed exposed anywhere the client (or this extension)
+**Consequence:** no single fight is certain, but the dice matter less than they
+look. Over a fight's 2–35 rounds they mostly average out, so the stat matchup
+decides most results; about 10% of fights are genuine coin-flips (see
+[arena-combat-mechanics.md](./arena-combat-mechanics.md)). There is no pre-roll or seed exposed anywhere the client (or this extension)
 can read before committing to an attack; the dice are rolled server-side at the moment
 of the `attack` call itself.
 
@@ -58,8 +56,10 @@ field subtracted from `base_dmg` in the round log above), not a general "power" 
 Nearly identical totals, but the boss put almost everything into DEF at the cost of
 AGI/DEX — making it the *harder* matchup despite matching power, not an equal one. A
 "combat power comparison" heuristic (e.g. "I beat someone with slightly more CP, so I'm
-favored here too") reliably undersells risk in exactly this shape. Read `win_pct`
-directly instead; it already accounts for the full stat distribution on both sides.
+favored here too") reliably undersells risk in exactly this shape. (`win_pct` has
+the same blind spot, since it's derived from Combat Power; see
+[arena-combat-mechanics.md](./arena-combat-mechanics.md). That boss was later found
+to be an easy win: DEF only matters when your base damage exceeds it.)
 
 ## The player's own combat power is also already computed, not something to estimate
 
@@ -116,8 +116,8 @@ relevant to the same "what does each stat do" question):
 here sat at 563 Defence (between T2's 364→5% and T3's 800→10%) and the page showed 8%
 Block live — not a hard step at the tier boundary, so *some* smooth function connects
 consecutive tiers rather than a flat step function. The exact formula is unconfirmed;
-`win_pct` already being a complete, server-computed answer (see above) is the reason
-this hasn't been chased further.
+Not chased further: dodge/block/crit only move fights by a few percent (see
+[arena-combat-mechanics.md](./arena-combat-mechanics.md)).
 
 ---
 

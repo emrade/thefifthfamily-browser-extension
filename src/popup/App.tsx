@@ -10,10 +10,9 @@ import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
 import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoHome';
 import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
 import { CrimesAutoHome } from './features/crimesAuto/CrimesAutoHome';
-import { ArenaAutoHome } from './features/arenaAuto/ArenaAutoHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'arenaAuto' | 'settings';
+type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -45,7 +44,6 @@ export function App() {
             onOpenStreetIntelAuto={() => setView('streetIntelAuto')}
             onOpenPetCouriers={() => setView('petCouriers')}
             onOpenCrimesAuto={() => setView('crimesAuto')}
-            onOpenArenaAuto={() => setView('arenaAuto')}
             onOpenSettings={() => setView('settings')}
           />
         )}
@@ -55,7 +53,6 @@ export function App() {
         {view === 'streetIntelAuto' && <StreetIntelAutoHome />}
         {view === 'petCouriers' && <PetCouriersHome />}
         {view === 'crimesAuto' && <CrimesAutoHome />}
-        {view === 'arenaAuto' && <ArenaAutoHome />}
         {view === 'settings' && <Settings />}
       </main>
 

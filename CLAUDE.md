@@ -64,7 +64,7 @@ async function runGuarded(...): Promise<...> {
 
 Route **every** entry point for that feature (each alarm handler, any manual
 trigger, any config-change-driven immediate check) through the same guarded
-function — see `arena/runner.ts`'s `runGuarded`, `streetIntel/actionRunner.ts`
+function — see `arena/watcher.ts`'s `checkInFlight`, `streetIntel/actionRunner.ts`
 or `crimesAuto/runner.ts`'s `cycleInFlight`, or `smuggling/petCourier.ts`'s
 `activeRun` (a `Promise`-based variant, for when a caller needs the actual
 result rather than just a skip) for the exact shape already in the codebase.
