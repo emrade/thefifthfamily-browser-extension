@@ -7,13 +7,14 @@ import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import {
   foldFight,
   isRecommended,
+  recordFight,
   profileFromPreview,
   sampleFromAttack,
   verdictFor,
   type ArenaOpponentCard,
   type ArenaVerdict,
 } from '@/shared/arenaCombat';
-import type { ArenaMyProfile } from '@/shared/types';
+import type { ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 
 /**
@@ -96,7 +97,16 @@ const CSS = `
 #${BANNER_ID} .ff-arv-warn { color: #f87171; font-weight: 700; }
 `;
 
+/** How long a result that went against its verdict stays in the banner. */
+const SURPRISE_SHOW_MS = 24 * 60 * 60_000;
+
 let profile: ArenaMyProfile | null = null;
+let trackRecord: ArenaTrackRecord | null = null;
+/** The verdict each opponent's card showed at its latest paint, by name, so
+ *  a fight's result can be scored against what the player saw before
+ *  attacking. Never cleared on repaint: the game reloads the page right
+ *  after an attack, and the result must still find its verdict. */
+const shownVerdicts = new Map<string, ArenaVerdict>();
 /** The boss's quoted % from the latest `open_next_page` (never rendered by
  *  the game), keyed by name so a stale value never lands on a new boss. */
 let bossQuote: { name: string; pct: number } | null = null;
@@ -114,6 +124,19 @@ async function saveProfile(next: ArenaMyProfile): Promise<void> {
   profile = next;
   await storage.setArenaMyProfile(next);
   schedulePaint();
+}
+
+/** Scores one fight against the verdict its card showed beforehand. Fights
+ *  with no shown verdict (no season numbers yet, or the advisor switched
+ *  off) aren't counted. */
+async function scoreFight(data: any): Promise<void> {
+  const name = typeof data?.defender === 'string' ? data.defender : null;
+  const verdict = name ? shownVerdicts.get(name) : undefined;
+  if (!name || !verdict || typeof data.won !== 'boolean' || typeof data.att_max_hp !== 'number') return;
+  shownVerdicts.delete(name);
+  const prev = trackRecord ?? (await storage.getArenaTrackRecord());
+  trackRecord = recordFight(prev, { name, verdict, won: data.won, maxHp: data.att_max_hp, at: Date.now() });
+  await storage.setArenaTrackRecord(trackRecord);
 }
 
 export function handleCapturedRequest(req: CapturedRequest): void {
@@ -152,6 +175,7 @@ export function handleCapturedRequest(req: CapturedRequest): void {
     }
 
     if (action === 'attack') {
+      await scoreFight(data);
       const sample = sampleFromAttack(data);
       if (!sample) {
         recordParseFailure(FEATURE_KEY);
@@ -255,7 +279,8 @@ function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void 
     `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
     `<span class="ff-arv-detail">${verdictDetail(v)}</span>`;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
-  const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile };
+  shownVerdicts.set(c.card.name, v);
+  const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord };
   const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
   if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) {
     details.set(existing, detail);
@@ -368,6 +393,15 @@ function paint(): void {
     );
   }
 
+  const surprise = trackRecord?.surprise;
+  if (surprise && Date.now() - surprise.at < SURPRISE_SHOW_MS) {
+    lines.push(
+      surprise.kind === 'beatable'
+        ? `<div class="ff-arv-line"><span class="ff-arv-label ff-arv-warn">Heads-up</span><span class="ff-arv-text">You lost to ${escapeHtml(surprise.name)}, who was marked <b>Beatable</b> (score ${surprise.score > 3 ? '3+' : surprise.score.toFixed(2)}). One loss can be bad luck; if it happens again, the game’s numbers may have changed. Click a badge to see this season’s record.</span></div>`
+        : `<div class="ff-arv-line"><span class="ff-arv-label">Note</span><span class="ff-arv-text">You beat ${escapeHtml(surprise.name)}, who was marked <b>Avoid</b> (score ${surprise.score > 3 ? '3+' : surprise.score.toFixed(2)}). About 1 in 20 Avoid fights has been a win.</span></div>`,
+    );
+  }
+
   const lockedHp = readLockedMaxHp();
   const stale = lockedHp !== null && lockedHp !== profile.maxHp;
   const source =
@@ -384,7 +418,7 @@ function paint(): void {
   document.getElementById(BANNER_ID)?.querySelectorAll<HTMLElement>('.ff-arv-chip[data-ff-order]').forEach((chip) => {
     const i = Number(chip.dataset.ffOrder) - 1;
     const x = live[i];
-    if (x) details.set(chip, { card: x.c.card, familyLabel: x.c.familyLabel, verdict: x.v, order: i + 1, profile: profile! });
+    if (x) details.set(chip, { card: x.c.card, familyLabel: x.c.familyLabel, verdict: x.v, order: i + 1, profile: profile!, record: trackRecord });
   });
 }
 
@@ -435,21 +469,27 @@ export function initArenaFightAdvisor(): void {
   injectStyleOnce(STYLE_ID, CSS);
   injectDetailStyles();
   wireDetailEvents();
-  storage
-    .getArenaMyProfile()
-    .then((p) => {
+  Promise.all([storage.getArenaMyProfile(), storage.getArenaTrackRecord()])
+    .then(([p, r]) => {
       profile = p;
+      trackRecord = r;
       schedulePaint();
     })
-    .catch((err) => console.error(LOG_PREFIX, 'arena advisor profile read failed', err));
+    .catch((err) => console.error(LOG_PREFIX, 'arena advisor storage read failed', err));
 
   const observer = new MutationObserver(() => schedulePaint());
   observer.observe(document.body ?? document.documentElement, { childList: true, subtree: true });
 
   // Another tab (or this one's capture path) updating the profile.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(STORAGE_KEYS.ARENA_MY_PROFILE in changes)) return;
-    profile = (changes[STORAGE_KEYS.ARENA_MY_PROFILE].newValue as ArenaMyProfile | undefined) ?? null;
-    schedulePaint();
+    if (area !== 'local') return;
+    if (STORAGE_KEYS.ARENA_MY_PROFILE in changes) {
+      profile = (changes[STORAGE_KEYS.ARENA_MY_PROFILE].newValue as ArenaMyProfile | undefined) ?? null;
+      schedulePaint();
+    }
+    if (STORAGE_KEYS.ARENA_TRACK_RECORD in changes) {
+      trackRecord = (changes[STORAGE_KEYS.ARENA_TRACK_RECORD].newValue as ArenaTrackRecord | undefined) ?? null;
+      schedulePaint();
+    }
   });
 }

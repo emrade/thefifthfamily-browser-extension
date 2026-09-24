@@ -1,6 +1,15 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
-import { SCORE_AVOID, SCORE_BEATABLE, type ArenaOpponentCard, type ArenaVerdict } from '@/shared/arenaCombat';
-import type { ArenaMyProfile } from '@/shared/types';
+import {
+  ARENA_BASELINE_SINCE,
+  ARENA_BASELINE_TALLY,
+  SCORE_AVOID,
+  SCORE_BEATABLE,
+  addTallies,
+  emptyTally,
+  type ArenaOpponentCard,
+  type ArenaVerdict,
+} from '@/shared/arenaCombat';
+import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictCount } from '@/shared/types';
 
 /**
  * The fight advisor's detail views: a small styled hover card on each
@@ -16,19 +25,20 @@ export interface FightDetail {
   /** Attack-order position, or null (the boss). */
   order: number | null;
   profile: ArenaMyProfile;
+  record: ArenaTrackRecord | null;
 }
 
 const STYLE_ID = 'ff-arena-details-style';
 const HOVER_ID = 'ff-arv-hover';
 const MODAL_ID = 'ff-arv-modal';
 
-/** Record behind each verdict, from docs/arena-combat-mechanics.md (184
- *  fights). Update together with that doc. */
-const TRACK_RECORD = [
-  { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+`, record: '85 of 85 won' },
-  { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE}`, record: '29 of 59 won' },
-  { kind: 'avoid', label: 'Avoid', range: `under ${SCORE_AVOID}`, record: '2 of 40 won' },
+const VERDICT_ROWS = [
+  { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+` },
+  { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE}` },
+  { kind: 'avoid', label: 'Avoid', range: `under ${SCORE_AVOID}` },
 ] as const;
+
+const countText = (c: ArenaVerdictCount) => (c.fights === 0 ? '—' : `${c.won} of ${c.fights} won`);
 
 const CSS = `
 #${HOVER_ID} {
@@ -89,8 +99,10 @@ const CSS = `
 #${MODAL_ID} ul { margin: 0; padding-left: 18px; }
 #${MODAL_ID} li { margin: 4px 0; }
 #${MODAL_ID} .ff-arv-m-quoted { color: #c9bfa6; }
-#${MODAL_ID} .ff-arv-m-legend { display: grid; grid-template-columns: auto auto 1fr; gap: 6px 12px; font-size: 12px; align-items: center; }
-#${MODAL_ID} .ff-arv-m-legend .ff-arv-m-record { text-align: right; color: #c9bfa6; }
+#${MODAL_ID} .ff-arv-m-legend { display: grid; grid-template-columns: auto auto 1fr 1fr; gap: 6px 12px; font-size: 12px; align-items: center; }
+#${MODAL_ID} .ff-arv-m-legend .ff-arv-m-record { text-align: right; color: #c9bfa6; font-variant-numeric: tabular-nums; }
+#${MODAL_ID} .ff-arv-m-legend .ff-arv-m-colh { text-align: right; font-size: 10.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: #8b8578; }
+#${MODAL_ID} .ff-arv-m-legend-note { margin-top: 8px; font-size: 11px; color: #8b8578; }
 #${MODAL_ID} .ff-arv-m-legend .ff-arv-m-range { color: #8b8578; }
 #${MODAL_ID} .ff-arv-m-legend .ff-arv-m-cur { outline: 1px solid currentColor; outline-offset: 2px; border-radius: 3px; }
 #${MODAL_ID} .ff-arv-m-foot { padding: 14px 20px 18px; color: #6b6455; font-size: 11px; }
@@ -229,12 +241,19 @@ export function openModal(d: FightDetail): void {
       : `${fmt(card.strength - v.maxStrength)} STR over your limit`;
 
   const noteItems = notes(d);
-  const legend = TRACK_RECORD.map(
-    (t) =>
-      `<span class="ff-arv-${t.kind}-t${t.kind === kind ? ' ff-arv-m-cur' : ''}" style="font-weight:800;text-transform:uppercase;letter-spacing:1px;font-size:11px">${t.label}</span>` +
-      `<span class="ff-arv-m-range">score ${t.range}</span>` +
-      `<span class="ff-arv-m-record">${t.record}</span>`,
-  ).join('');
+  const allTime = addTallies(ARENA_BASELINE_TALLY, d.record?.live ?? emptyTally());
+  const season = d.record?.season && d.record.season.maxHp === me.maxHp ? d.record.season.tally : emptyTally();
+  const liveCount = d.record ? d.record.live.beatable.fights + d.record.live.coinflip.fights + d.record.live.avoid.fights : 0;
+  const legend =
+    '<span></span><span></span><span class="ff-arv-m-colh">All-time</span><span class="ff-arv-m-colh">This season</span>' +
+    VERDICT_ROWS.map(
+      (t) =>
+        `<span class="ff-arv-${t.kind}-t${t.kind === kind ? ' ff-arv-m-cur' : ''}" style="font-weight:800;text-transform:uppercase;letter-spacing:1px;font-size:11px">${t.label}</span>` +
+        `<span class="ff-arv-m-range">score ${t.range}</span>` +
+        `<span class="ff-arv-m-record">${countText(allTime[t.kind])}</span>` +
+        `<span class="ff-arv-m-record">${countText(season[t.kind])}</span>`,
+    ).join('');
+  const legendNote = `All-time: 184 fights from your archive (since ${ARENA_BASELINE_SINCE}) plus ${liveCount} judged live on this computer. Fights on your phone aren’t counted.`;
 
   const overlay = document.createElement('div');
   overlay.id = MODAL_ID;
@@ -283,6 +302,7 @@ export function openModal(d: FightDetail): void {
       <div class="ff-arv-m-sec">
         <div class="ff-arv-m-h">What the verdicts have meant</div>
         <div class="ff-arv-m-legend">${legend}</div>
+        <div class="ff-arv-m-legend-note">${legendNote}</div>
       </div>
 
       <div class="ff-arv-m-foot">Your numbers: ${fmt(me.maxHp)} HP · ~${fmt(me.baseDamage)} damage · ~${fmt(me.reduction)} armour (${

@@ -1,4 +1,4 @@
-import type { ArenaMyProfile } from './types';
+import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './types';
 
 /**
  * The Arena V2 kill-race model from docs/arena-combat-mechanics.md, as pure
@@ -230,4 +230,50 @@ export function bossStrengthBreakEven(me: ArenaMyProfile, bossLevel = 106): numb
     agility: 0, dexterity: 0, passive: false, quotedPct: null, family: null,
   };
   return verdictFor(card, me).maxStrength;
+}
+
+// ---------------------------------------------------------------------------
+// Track record
+// ---------------------------------------------------------------------------
+
+/** The record behind each verdict from the archive analysis (184 fights,
+ *  2026-09-09 → 09-24, verify_combat_rule.py). Live fights add to this for
+ *  the all-time figures. */
+export const ARENA_BASELINE_TALLY: ArenaVerdictTally = {
+  beatable: { fights: 85, won: 85 },
+  coinflip: { fights: 59, won: 29 },
+  avoid: { fights: 40, won: 2 },
+};
+export const ARENA_BASELINE_SINCE = '9 Sep';
+
+export function emptyTally(): ArenaVerdictTally {
+  return { beatable: { fights: 0, won: 0 }, coinflip: { fights: 0, won: 0 }, avoid: { fights: 0, won: 0 } };
+}
+
+export function addTallies(a: ArenaVerdictTally, b: ArenaVerdictTally): ArenaVerdictTally {
+  const add = (k: ArenaVerdictKind) => ({ fights: a[k].fights + b[k].fights, won: a[k].won + b[k].won });
+  return { beatable: add('beatable'), coinflip: add('coinflip'), avoid: add('avoid') };
+}
+
+/** Folds one judged fight into the record. `maxHp` is the player's locked
+ *  max HP for that fight; a change means a new season's loadout. */
+export function recordFight(
+  prev: ArenaTrackRecord | null,
+  fight: { name: string; verdict: ArenaVerdict; won: boolean; maxHp: number; at: number },
+): ArenaTrackRecord {
+  const bump = (t: ArenaVerdictTally): ArenaVerdictTally => ({
+    ...t,
+    [fight.verdict.kind]: { fights: t[fight.verdict.kind].fights + 1, won: t[fight.verdict.kind].won + (fight.won ? 1 : 0) },
+  });
+  const seasonTally = prev?.season && prev.season.maxHp === fight.maxHp ? prev.season.tally : emptyTally();
+  const k = fight.verdict.kind;
+  const against = (k === 'beatable' && !fight.won) || (k === 'avoid' && fight.won);
+  return {
+    live: bump(prev?.live ?? emptyTally()),
+    season: { maxHp: fight.maxHp, tally: bump(seasonTally) },
+    surprise: against
+      ? { name: fight.name, kind: k as 'beatable' | 'avoid', won: fight.won, score: fight.verdict.score, at: fight.at }
+      : (prev?.surprise ?? null),
+    startedAt: prev?.startedAt ?? fight.at,
+  };
 }

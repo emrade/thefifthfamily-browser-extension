@@ -1384,3 +1384,30 @@ export interface ArenaMyProfile {
   lockedStats: { strength: number; defence: number; agility: number; dexterity: number } | null;
   updatedAt: number;
 }
+
+export interface ArenaVerdictCount {
+  fights: number;
+  won: number;
+}
+
+export interface ArenaVerdictTally {
+  beatable: ArenaVerdictCount;
+  coinflip: ArenaVerdictCount;
+  avoid: ArenaVerdictCount;
+}
+
+/** How the fight advisor's verdicts have actually turned out, recorded live
+ *  from each captured `attack` response against the verdict that was on the
+ *  card before the fight (see fightAdvisor.ts). Added to the archive baseline
+ *  in shared/arenaCombat.ts for the all-time figures. */
+export interface ArenaTrackRecord {
+  /** Every fight judged live since recording started. */
+  live: ArenaVerdictTally;
+  /** The current season only, keyed by the locked max HP (a new loadout
+   *  resets it). */
+  season: { maxHp: number; tally: ArenaVerdictTally } | null;
+  /** The latest result that went against its verdict: a Beatable loss or an
+   *  Avoid win. */
+  surprise: { name: string; kind: 'beatable' | 'avoid'; won: boolean; score: number; at: number } | null;
+  startedAt: number;
+}

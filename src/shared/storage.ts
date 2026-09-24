@@ -1,5 +1,6 @@
 import type {
   ArenaMyProfile,
+  ArenaTrackRecord,
   ArenaWatchStatus,
   CareerAutoConfig,
   CareerAutoStatus,
@@ -226,6 +227,11 @@ export const storage = {
   // `attack` responses; `null` until one of those has been seen.
   getArenaMyProfile: () => get<ArenaMyProfile | null>(STORAGE_KEYS.ARENA_MY_PROFILE, null),
   setArenaMyProfile: (v: ArenaMyProfile) => set(STORAGE_KEYS.ARENA_MY_PROFILE, v),
+
+  // Live verdict-vs-result record, written by the fight advisor; `null`
+  // until its first judged fight.
+  getArenaTrackRecord: () => get<ArenaTrackRecord | null>(STORAGE_KEYS.ARENA_TRACK_RECORD, null),
+  setArenaTrackRecord: (v: ArenaTrackRecord) => set(STORAGE_KEYS.ARENA_TRACK_RECORD, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

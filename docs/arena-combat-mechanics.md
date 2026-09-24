@@ -334,7 +334,11 @@ history.
   attack-order chip) shows the verdict and its main reason; clicking opens a
   breakdown (`fightDetails.ts`): HP, damage per hit and hits to finish for
   both sides, their STR against your limit, notes, the game's quoted %, and
-  what each verdict has meant so far. A coin-flip leans win when the opponent is Passive, or quoted
+  what each verdict has meant so far. That record is live
+  (`ArenaTrackRecord`): the 184 archived fights plus every desktop fight
+  scored against the verdict its card showed before the attack, all-time
+  and for this season. Losing a Beatable fight (or beating an Avoid) puts a
+  Heads-up line in the banner for 24 hours. A coin-flip leans win when the opponent is Passive, or quoted
   ≥ 51% (regular), or scores ≥ 1.0 (boss). Your numbers come from the
   captured `preview_loadout` (an estimate), then the season medians of your
   logged fights. Replaying every archived fight in order, with the numbers
