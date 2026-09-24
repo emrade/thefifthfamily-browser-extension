@@ -330,9 +330,11 @@ history.
   boss **✅ Beatable / ⚖️ Coin-flip (lean win or loss) / ⛔ Avoid**, numbers
   the attack order riskiest first, and adds a plan line above the cards:
   the order, whether to fight the boss or bank and skip it, and a Refresh
-  tip when 2+ opponents are Avoid before any fight. Hover a badge for the
-  score, the STR limit at that level, the Passive note, and the game's
-  quoted %. A coin-flip leans win when the opponent is Passive, or quoted
+  tip when 2+ opponents are Avoid before any fight. Hovering a badge (or an
+  attack-order chip) shows the verdict and its main reason; clicking opens a
+  breakdown (`fightDetails.ts`): HP, damage per hit and hits to finish for
+  both sides, their STR against your limit, notes, the game's quoted %, and
+  what each verdict has meant so far. A coin-flip leans win when the opponent is Passive, or quoted
   ≥ 51% (regular), or scores ≥ 1.0 (boss). Your numbers come from the
   captured `preview_loadout` (an estimate), then the season medians of your
   logged fights. Replaying every archived fight in order, with the numbers

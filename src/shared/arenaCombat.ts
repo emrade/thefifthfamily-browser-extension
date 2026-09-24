@@ -63,6 +63,14 @@ export interface ArenaVerdict {
   /** True when the player's base damage gets past this card's DEF, i.e.
    *  real damage instead of the minimum-damage floor. */
   breaksThrough: boolean;
+  /** True when their base damage gets past the player's armour. */
+  theyBreakThrough: boolean;
+  /** Expected damage per landed hit, each way. */
+  myHit: number;
+  theirHit: number;
+  /** Hits each side needs to finish the other (the "kill race"). */
+  hitsToKillThem: number;
+  hitsToKillMe: number;
 }
 
 /** Card STR → mean base damage per hit (misses excluded). Regular:
@@ -97,6 +105,8 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
   const score = killRaceScore(card, me);
   const hp = opponentHp(card);
   const mine = myHitOn(card, me);
+  const base = opponentBase(card);
+  const theirHit = Math.max(FLOOR_FRACTION * base, base - me.reduction);
   // Score = 1 with their hits on the floor: base = myHp·mine / (floor·theirHp).
   const breakEvenBase = (me.maxHp * mine) / (FLOOR_FRACTION * hp);
   const kind: ArenaVerdictKind = score >= SCORE_BEATABLE ? 'beatable' : score < SCORE_AVOID ? 'avoid' : 'coinflip';
@@ -111,6 +121,11 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
     maxStrength: Math.max(0, Math.round(strengthForBase(breakEvenBase, card.isBoss))),
     opponentHp: Math.round(hp),
     breaksThrough: me.baseDamage > card.defence,
+    theyBreakThrough: base > me.reduction,
+    myHit: mine,
+    theirHit,
+    hitsToKillThem: hp / mine,
+    hitsToKillMe: me.maxHp / theirHit,
   };
 }
 

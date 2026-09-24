@@ -14,6 +14,7 @@ import {
   type ArenaVerdict,
 } from '@/shared/arenaCombat';
 import type { ArenaMyProfile } from '@/shared/types';
+import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 
 /**
  * The Arena fight advisor: badges every live opponent and the boss
@@ -46,8 +47,10 @@ const CSS = `
   display: flex; align-items: center; gap: 8px;
   margin: 12px 0 10px; padding: 7px 10px;
   border-radius: 6px; border: 1px solid; border-left-width: 3px;
-  font-size: 0.68rem; line-height: 1; cursor: help;
+  font-size: 0.68rem; line-height: 1; cursor: pointer;
+  transition: filter 0.12s;
 }
+.${BADGE_CLASS}:hover, .${BADGE_CLASS}:focus-visible { filter: brightness(1.25); outline: none; }
 .${BADGE_CLASS} .ff-arv-verdict {
   font-weight: 800; text-transform: uppercase; letter-spacing: 1.4px;
 }
@@ -82,6 +85,7 @@ const CSS = `
   display: inline-flex; align-items: center; gap: 6px;
   padding: 3px 9px 3px 4px; border-radius: 999px; border: 1px solid; font-weight: 700;
 }
+#${BANNER_ID} .ff-arv-chip { cursor: pointer; }
 #${BANNER_ID} .ff-arv-chip .ff-arv-name { color: #f1ede2; }
 #${BANNER_ID} .ff-arv-arrow { color: #6b6455; }
 #${BANNER_ID} .ff-arv-word { font-weight: 800; }
@@ -98,6 +102,9 @@ let profile: ArenaMyProfile | null = null;
 let bossQuote: { name: string; pct: number } | null = null;
 let enabled = false;
 let paintQueued = false;
+/** Detail behind each strip and attack-order chip, for the hover card and
+ *  the click-through modal (fightDetails.ts). */
+const details = new WeakMap<Element, FightDetail>();
 
 // ---------------------------------------------------------------------------
 // Capture
@@ -240,32 +247,20 @@ function verdictDetail(v: ArenaVerdict): string {
   return v.kind === 'coinflip' ? `leans ${v.leansWin ? 'win' : 'loss'} · ${score}` : score;
 }
 
-function tooltip(c: CardOnPage, v: ArenaVerdict): string {
-  const lines = [
-    `Kill-race score ${v.score.toFixed(2)} (1.2+ beatable, under 0.8 avoid)`,
-    `STR ${fmt(c.card.strength)} at level ${c.card.level} (~${fmt(v.opponentHp)} HP). Your limit at this level and DEF: ~${fmt(v.maxStrength)} STR.`,
-  ];
-  if (v.breaksThrough) lines.push(`Your hits get past their DEF ${fmt(c.card.defence)}, so you deal real damage, not the minimum.`);
-  if (c.card.passive) lines.push('Passive: they haven’t fought this season, so they fight weaker than the card shows.');
-  if (c.card.isBoss) {
-    if (c.familyLabel) lines.push(`${c.familyLabel} boss.${c.card.family === 'iron_river' ? ' Iron River bosses are built on STR.' : ''}`);
-    lines.push('Losing to the boss forfeits your unbanked pot.');
-  }
-  lines.push(c.card.quotedPct !== null ? `Game’s quoted chance: ${c.card.quotedPct}%` : 'Game’s quoted chance: not seen for this boss');
-  return lines.join('\n');
-}
-
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
   const meta = c.el.querySelector('.ar-opp-meta');
-  if (!meta) return;
-  const title = tooltip(c, v);
+  if (!meta || !profile) return;
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
     `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
     `<span class="ff-arv-detail">${verdictDetail(v)}</span>`;
-  const sig = `${v.kind}|${inner}|${title}`;
+  const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
+  const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile };
   const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
-  if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) return;
+  if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) {
+    details.set(existing, detail);
+    return;
+  }
   existing?.remove();
 
   // Its own full-width strip just above the bounty/chance row, so it never
@@ -273,7 +268,9 @@ function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void 
   const strip = document.createElement('div');
   strip.className = `${BADGE_CLASS} ff-arv-${v.kind}`;
   strip.dataset.sig = sig;
-  strip.title = title;
+  strip.setAttribute('role', 'button');
+  strip.tabIndex = 0;
+  details.set(strip, detail);
   strip.innerHTML = inner;
   meta.parentElement?.insertBefore(strip, meta);
 }
@@ -346,7 +343,7 @@ function paint(): void {
     const order = live
       .map(
         ({ c, v }, i) =>
-          `<span class="ff-arv-chip ff-arv-${v.kind}" title="${verdictWord(v)} · ${verdictDetail(v)}"><span class="ff-arv-order">${i + 1}</span><span class="ff-arv-name">${escapeHtml(c.card.name)}</span></span>`,
+          `<span class="ff-arv-chip ff-arv-${v.kind}" data-ff-order="${i + 1}"><span class="ff-arv-order">${i + 1}</span><span class="ff-arv-name">${escapeHtml(c.card.name)}</span></span>`,
       )
       .join('<span class="ff-arv-arrow">→</span>');
     lines.push(`<div class="ff-arv-line"><span class="ff-arv-label">Attack order</span>${order}</div>`);
@@ -384,6 +381,11 @@ function paint(): void {
   );
 
   setBanner(root, lines.join(''));
+  document.getElementById(BANNER_ID)?.querySelectorAll<HTMLElement>('.ff-arv-chip[data-ff-order]').forEach((chip) => {
+    const i = Number(chip.dataset.ffOrder) - 1;
+    const x = live[i];
+    if (x) details.set(chip, { card: x.c.card, familyLabel: x.c.familyLabel, verdict: x.v, order: i + 1, profile: profile! });
+  });
 }
 
 function schedulePaint(): void {
@@ -392,9 +394,47 @@ function schedulePaint(): void {
   requestAnimationFrame(paint);
 }
 
+function detailTarget(e: Event): HTMLElement | null {
+  const t = (e.target as Element | null)?.closest?.(`.${BADGE_CLASS}, #${BANNER_ID} .ff-arv-chip`);
+  return t instanceof HTMLElement && details.has(t) ? t : null;
+}
+
+function wireDetailEvents(): void {
+  document.addEventListener('mouseover', (e) => {
+    const t = detailTarget(e);
+    if (t) showHover(t, details.get(t)!);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const t = detailTarget(e);
+    if (t && !t.contains(e.relatedTarget as Node | null)) hideHover();
+  });
+  document.addEventListener('scroll', hideHover, true);
+  // Capture phase, so the game's own card handlers never see the click.
+  document.addEventListener(
+    'click',
+    (e) => {
+      const t = detailTarget(e);
+      if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openModal(details.get(t)!);
+    },
+    true,
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = detailTarget(e);
+    if (!t) return;
+    e.preventDefault();
+    openModal(details.get(t)!);
+  });
+}
+
 export function initArenaFightAdvisor(): void {
   enabled = true;
   injectStyleOnce(STYLE_ID, CSS);
+  injectDetailStyles();
+  wireDetailEvents();
   storage
     .getArenaMyProfile()
     .then((p) => {
