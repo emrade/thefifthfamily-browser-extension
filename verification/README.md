@@ -9,3 +9,7 @@ it.
 - **`street-intel/`** — checks the claims in
   `docs/street-intel-estimate-calculation.md` against a
   `fifth-family-archive-*.ndjson.gz` request archive.
+- **`street-racing/`** — `verify_manual_accuracy.py` (real manual mini-game
+  accuracy, for the automation's accuracy constants) and
+  `verify_leaderboard_speed.py` (checks `docs/street-racing-leaderboard.md`:
+  the Street Kings `avg_speed` formula and the 11:00/23:00 UTC weather slots).

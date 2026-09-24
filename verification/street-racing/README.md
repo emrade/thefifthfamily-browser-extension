@@ -25,6 +25,22 @@ just the newest.
 
 ## What it checks
 
+**`verify_leaderboard_speed.py`** (added 2026-09-24) — checks
+`docs/street-racing-leaderboard.md`. Replays every `attempt_race` result per
+board day (23:00 UTC reset) and compares the predicted `avg_speed`
+(`round2(effective_top_speed × (0.7 + 0.3 × accuracy/100))`, averaged, shown
+half-up at 1 dp) against every distinct snapshot of the account's own row in
+`get_all`'s `leaderboard[]`, under both "losses excluded" and "losses
+included". Also buckets every `weather` observation into 12-hour slots on
+the 11:00 / 23:00 UTC boundaries and reports any slot showing two weathers.
+First run: 40/41 snapshots match under each hypothesis (each one's single
+miss is the other's match; see the doc's open question), 50 slots with 0
+conflicts. Takes ~40 s over the full archive set.
+
+```
+python3 verification/street-racing/verify_leaderboard_speed.py [--archive PATH ...]
+```
+
 **`verify_manual_accuracy.py`** — finds every real, manually-played
 `attempt_race` call (`origin: "page"` — the game's own client, not this
 extension's automated `background`-origin attempts) across the given
