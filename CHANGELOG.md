@@ -9,6 +9,54 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.32.0] - 2026-09-24
+
+### Added
+- Arena Fight Advisor: every opponent and the boss on the Arena page gets a
+  Beatable / Coin-flip / Avoid strip, numbered in attack order (riskiest
+  first). It works from the stats already on the card, because the game's
+  own "% CHANCE" is just the opponent's Combat Power on a curve and can't
+  tell a STR build from a DEX or AGI one. Checked against 184 archived
+  fights: Beatable won 85 of 85, Avoid won 2 of 40. A line above the cards
+  gives the order, says whether to fight the boss or bank and skip it
+  (Iron River bosses are built on STR and caused every boss loss), and
+  points out the free Refresh when 2 or more opponents are Avoid. Your own
+  numbers come from the season lock-in, then from your fights; one fight on
+  desktop is enough.
+- Hovering a strip shows the verdict and its main reason. Clicking opens a
+  breakdown: HP, damage per hit and hits to finish for both sides, their STR
+  against your limit, notes (Passive, armour, boss pot risk), and the
+  game's quoted %.
+- A live win/loss record for each verdict, all-time and for this season,
+  shown in the breakdown. Losing a fight marked Beatable (or beating one
+  marked Avoid) adds a Heads-up line above the cards for 24 hours.
+
+### Changed
+- The Arena page reminder now also reminds you about a page you opened but
+  haven't banked (fights left, boss unlocked, or pot unbanked), every 15
+  minutes until it's banked. Before, it went quiet as soon as a page was
+  opened. Each reminder replaces the last one, and clicking it brings the
+  game tab forward. In Firefox, set the macOS notification style to
+  Persistent to keep it on screen.
+- The Arena panel now shows the reminder toggle and state, your season
+  numbers, and the STR limits they give.
+- Street Racing automation sends higher accuracy (mean 96.5, range 92–99;
+  hard races mean 97, previously 93 and 85–97), to compete on the Street
+  Kings leaderboard's average-speed tiebreak. Other players' averages show
+  the game accepts accuracy above 97.
+
+### Removed
+- Arena Auto-Attack, with its popup page, in-page toggle, boss threshold
+  and "Arena Auto Stopped" notification. It won 16 of 38 fights and never
+  fought a boss, because every boss is quoted under its 50% threshold. Its
+  old settings are cleared on update.
+- The Arena Boss Odds badge, replaced by the Fight Advisor.
+
+### Fixed
+- The Arena reminder no longer goes silent after the daily reset. The
+  game's "Open The Gates" screen for a new day's first page was being read
+  as "today's pages are done".
+
 ## [0.31.2] - 2026-09-23
 
 ### Fixed
