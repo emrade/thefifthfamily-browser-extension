@@ -37,33 +37,59 @@ import type { ArenaMyProfile } from '@/shared/types';
 const FEATURE_KEY = 'arena';
 const STYLE_ID = 'ff-arena-advisor-style';
 const BANNER_ID = 'ff-arv-banner';
-const BADGE_CLASS = 'ff-arv-badge';
+const BADGE_CLASS = 'ff-arv-strip';
 
+// Colours follow the game's own palette: green/amber/red accents on a dark
+// tinted fill, uppercase spaced labels like its BOUNTY / PASSIVE tags.
 const CSS = `
 .${BADGE_CLASS} {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 7px; margin-left: 6px; border-radius: 4px;
-  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.3px; white-space: nowrap;
-  border: 1px solid transparent; cursor: help;
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0 10px; padding: 7px 10px;
+  border-radius: 6px; border: 1px solid; border-left-width: 3px;
+  font-size: 0.68rem; line-height: 1; cursor: help;
 }
-.${BADGE_CLASS} .ff-arv-order {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 15px; height: 15px; border-radius: 50%;
-  background: rgba(0,0,0,0.45); color: #fff; font-size: 0.58rem;
+.${BADGE_CLASS} .ff-arv-verdict {
+  font-weight: 800; text-transform: uppercase; letter-spacing: 1.4px;
 }
-.ff-arv-beatable { color: #86efac; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.45); }
-.ff-arv-coinflip { color: #fcd34d; background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.45); }
-.ff-arv-avoid    { color: #fca5a5; background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.45); }
+.${BADGE_CLASS} .ff-arv-detail {
+  margin-left: auto; color: #a8a098; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap;
+}
+.ff-arv-order {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid currentColor; font-size: 0.62rem; font-weight: 800;
+}
+.ff-arv-beatable { color: #4ade80; background: rgba(34,197,94,0.08); border-color: rgba(74,222,128,0.35); }
+.ff-arv-coinflip { color: #fbbf24; background: rgba(245,158,11,0.08); border-color: rgba(251,191,36,0.35); }
+.ff-arv-avoid    { color: #f87171; background: rgba(239,68,68,0.08); border-color: rgba(248,113,113,0.35); }
+.${BADGE_CLASS}.ff-arv-beatable { border-left-color: #4ade80; }
+.${BADGE_CLASS}.ff-arv-coinflip { border-left-color: #fbbf24; }
+.${BADGE_CLASS}.ff-arv-avoid    { border-left-color: #f87171; }
+
 #${BANNER_ID} {
-  margin: 0 0 12px; padding: 10px 14px; border-radius: 10px;
-  background: linear-gradient(90deg, rgba(212,175,55,0.10), rgba(10,10,15,0.6));
-  border: 1px solid rgba(212,175,55,0.30);
-  font-size: 0.74rem; line-height: 1.55; color: #e7dcc0;
+  margin: 0 0 14px; padding: 12px 16px; border-radius: 10px;
+  background: linear-gradient(90deg, rgba(212,175,55,0.08), rgba(10,10,15,0.55));
+  border: 1px solid rgba(212,175,55,0.28);
+  font-size: 0.78rem; line-height: 1.5; color: #e7dcc0;
 }
-#${BANNER_ID} b { color: #fbbf24; }
-#${BANNER_ID} .ff-arv-line { margin: 2px 0; }
-#${BANNER_ID} .ff-arv-note { color: #a8a098; font-size: 0.66rem; margin-top: 4px; }
-#${BANNER_ID} .ff-arv-warn { color: #fca5a5; }
+#${BANNER_ID} .ff-arv-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 3px 0; }
+#${BANNER_ID} .ff-arv-label {
+  color: #fbbf24; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; font-size: 0.66rem;
+  min-width: 96px;
+}
+#${BANNER_ID} .ff-arv-text { flex: 1 1 320px; min-width: 0; }
+#${BANNER_ID} .ff-arv-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px 3px 4px; border-radius: 999px; border: 1px solid; font-weight: 700;
+}
+#${BANNER_ID} .ff-arv-chip .ff-arv-name { color: #f1ede2; }
+#${BANNER_ID} .ff-arv-arrow { color: #6b6455; }
+#${BANNER_ID} .ff-arv-word { font-weight: 800; }
+#${BANNER_ID} .ff-arv-word.ff-arv-beatable,
+#${BANNER_ID} .ff-arv-word.ff-arv-coinflip,
+#${BANNER_ID} .ff-arv-word.ff-arv-avoid { background: none; }
+#${BANNER_ID} .ff-arv-note { color: #8b8578; font-size: 0.68rem; margin-top: 6px; }
+#${BANNER_ID} .ff-arv-warn { color: #f87171; font-weight: 700; }
 `;
 
 let profile: ArenaMyProfile | null = null;
@@ -204,10 +230,14 @@ function readLockedMaxHp(): number | null {
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
-function verdictLabel(v: ArenaVerdict): string {
-  if (v.kind === 'beatable') return '✅ Beatable';
-  if (v.kind === 'avoid') return '⛔ Avoid';
-  return `⚖️ Coin-flip · lean ${v.leansWin ? 'win' : 'loss'}`;
+function verdictWord(v: ArenaVerdict): string {
+  return v.kind === 'beatable' ? 'Beatable' : v.kind === 'avoid' ? 'Avoid' : 'Coin-flip';
+}
+
+/** Short right-hand detail on a card's strip. */
+function verdictDetail(v: ArenaVerdict): string {
+  const score = v.score > 3 ? 'score 3+' : `score ${v.score.toFixed(2)}`;
+  return v.kind === 'coinflip' ? `leans ${v.leansWin ? 'win' : 'loss'} · ${score}` : score;
 }
 
 function tooltip(c: CardOnPage, v: ArenaVerdict): string {
@@ -228,19 +258,24 @@ function tooltip(c: CardOnPage, v: ArenaVerdict): string {
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
   const meta = c.el.querySelector('.ar-opp-meta');
   if (!meta) return;
-  const text = verdictLabel(v);
   const title = tooltip(c, v);
-  const sig = `${order ?? ''}|${text}|${title}`;
-  const existing = meta.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
-  if (existing?.dataset.sig === sig) return;
+  const inner =
+    (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
+    `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
+    `<span class="ff-arv-detail">${verdictDetail(v)}</span>`;
+  const sig = `${v.kind}|${inner}|${title}`;
+  const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
+  if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) return;
   existing?.remove();
 
-  const span = document.createElement('span');
-  span.className = `${BADGE_CLASS} ff-arv-${v.kind}`;
-  span.dataset.sig = sig;
-  span.title = title;
-  span.innerHTML = `${order !== null ? `<span class="ff-arv-order">${order}</span>` : ''}${text}`;
-  meta.appendChild(span);
+  // Its own full-width strip just above the bounty/chance row, so it never
+  // competes with the game's own tags for space.
+  const strip = document.createElement('div');
+  strip.className = `${BADGE_CLASS} ff-arv-${v.kind}`;
+  strip.dataset.sig = sig;
+  strip.title = title;
+  strip.innerHTML = inner;
+  meta.parentElement?.insertBefore(strip, meta);
 }
 
 function clearBadges(root: ParentNode): void {
@@ -286,7 +321,7 @@ function paint(): void {
     clearBadges(root);
     setBanner(
       root,
-      '<div class="ff-arv-line"><b>Fight Advisor</b> is waiting for your season stats. They’re read from the season lock-in screen, or from your first fight.</div>',
+      '<div class="ff-arv-line"><span class="ff-arv-label">Fight Advisor</span><span class="ff-arv-text">Waiting for your season stats. Fight any one opponent on this computer (or lock in here) and the badges appear.</span></div>',
     );
     return;
   }
@@ -308,17 +343,23 @@ function paint(): void {
   // --- the plan line -------------------------------------------------------
   const lines: string[] = [];
   if (live.length > 0) {
-    const order = live.map(({ c, v }, i) => `${i + 1}. ${escapeHtml(c.card.name)} ${verdictLabel(v).split(' ')[0]}`).join(' → ');
-    lines.push(`<div class="ff-arv-line"><b>Attack order</b> (riskiest first): ${order}</div>`);
+    const order = live
+      .map(
+        ({ c, v }, i) =>
+          `<span class="ff-arv-chip ff-arv-${v.kind}" title="${verdictWord(v)} · ${verdictDetail(v)}"><span class="ff-arv-order">${i + 1}</span><span class="ff-arv-name">${escapeHtml(c.card.name)}</span></span>`,
+      )
+      .join('<span class="ff-arv-arrow">→</span>');
+    lines.push(`<div class="ff-arv-line"><span class="ff-arv-label">Attack order</span>${order}</div>`);
   }
 
   if (boss && bossVerdict) {
     const fam = boss.familyLabel ? `${escapeHtml(boss.familyLabel)}, ` : '';
+    const word = `<span class="ff-arv-word ff-arv-${bossVerdict.kind}">${verdictWord(bossVerdict)}</span>`;
     const what = isRecommended(bossVerdict)
-      ? `${verdictLabel(bossVerdict)}: fight it${boss.bossLocked ? ' once it unlocks' : ''}.`
-      : `${verdictLabel(bossVerdict)}: <span class="ff-arv-warn">bank and skip it</span>. A boss loss forfeits the whole pot.`;
+      ? `${word} — fight it${boss.bossLocked ? ' once it unlocks' : ''}.`
+      : `${word} — <span class="ff-arv-warn">bank and skip it</span>. A boss loss forfeits the whole pot.`;
     lines.push(
-      `<div class="ff-arv-line"><b>Boss</b> (${fam}STR ${fmt(boss.card.strength)}, break-even ~${fmt(bossVerdict.maxStrength)}): ${what}</div>`,
+      `<div class="ff-arv-line"><span class="ff-arv-label">Boss</span><span class="ff-arv-text">${escapeHtml(boss.card.name)} (${fam}STR ${fmt(boss.card.strength)}, your break-even ~${fmt(bossVerdict.maxStrength)}): ${what}</span></div>`,
     );
   }
 
@@ -326,7 +367,7 @@ function paint(): void {
   const avoidCount = live.filter(({ v }) => v.kind === 'avoid').length;
   if (noneFoughtYet && avoidCount >= 2 && freeRefreshAvailable()) {
     lines.push(
-      `<div class="ff-arv-line"><b>Tip:</b> ${avoidCount} opponents are Avoid. The free Refresh re-rolls all four opponents (not the boss), and it locks once you attack.</div>`,
+      `<div class="ff-arv-line"><span class="ff-arv-label">Tip</span><span class="ff-arv-text">${avoidCount} opponents are Avoid. The free Refresh re-rolls all four opponents (not the boss), and it locks once you attack.</span></div>`,
     );
   }
 
