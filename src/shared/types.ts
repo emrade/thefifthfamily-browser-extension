@@ -586,9 +586,10 @@ export interface CrimesAutoStatus {
   cashEarned: number;
   xpEarned: number;
   /** Times bail was paid to clear a real jail sentence from a bust, and the
-   *  total spent doing it — computed from the account's own cash balance
-   *  immediately before/after each bail call, not a formula, since the
-   *  game's own bail cost isn't exposed anywhere the automation reads. */
+   *  cash-on-hand spent doing it (cash immediately before/after each bail
+   *  call). The game takes whatever cash doesn't cover straight from the
+   *  bank (see crimesAuto/runner.ts's `payBail`), and that bank part isn't
+   *  counted here, so this undercounts the real bail cost. */
   bailsPaid: number;
   bailCashSpent: number;
   /** Same idea as the bail pair above, for heat-cap bribes. */

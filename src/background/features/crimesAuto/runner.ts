@@ -100,16 +100,9 @@ async function pause(message: string): Promise<void> {
 
 type MoneyActionResult = { kind: 'ok'; spent: number } | { kind: 'rejected'; message: string } | { kind: 'blocked' } | { kind: 'error'; message: string };
 
-/** Confirmed real capture: a heat-capped `action=bribe` rejects with
- *  `"You need $48,500 to bribe."`. `bail`'s own insufficient-cash wording
- *  hasn't been captured, but the game reuses this same "You need $X ..."
- *  prefix elsewhere for unrelated shortfalls (see
- *  docs/trade-assistant-plan.md's taxi example) with only the trailing
- *  clause differing, so this matches on the prefix alone rather than
- *  hardcoding "to bribe"/"to bail". If bail's wording doesn't follow this
- *  shape, this simply never matches and bail falls back to today's
- *  behavior (an ordinary rejection) — it can't misfire on a difference in
- *  the trailing words. */
+/** A bribe short of cash on hand rejects with `"You need $48,500 to
+ *  bribe."` (26 real rejections in the archives, 2026-08-10 → 09-24). Only
+ *  `payBribe` uses this: bail never produces it (see `payBail`). */
 const INSUFFICIENT_CASH_RE = /you need \$([\d,]+)/i;
 
 /** Withdraws exactly the shortfall between what a rejection just said was
@@ -130,37 +123,26 @@ async function withdrawShortfall(neededCash: number, cashOnHand: number): Promis
 }
 
 /** `cashBefore` comes from whichever live read is freshest at the call site
- *  (a pre-flight `fetchLiveStatus`, or a commit response's own `stats.cash`)
- *  — the bail/bribe response only reports the *resulting* balance, not what
- *  it actually cost, so the spend is derived by diffing the two rather than
- *  parsed from anywhere the game exposes directly.
+ *  (a pre-flight `fetchLiveStatus`, or a commit response's own `stats.cash`).
+ *  The bail response only reports the *resulting* cash, not what it cost, so
+ *  the spend is derived by diffing the two.
  *
- *  On an insufficient-cash rejection (see `INSUFFICIENT_CASH_RE`), withdraws
- *  the shortfall from the bank and retries exactly once — same "one top-up,
- *  one retry" recovery `petCourier.ts` already uses for the same situation.
- *  `spent` is then measured against `cashBefore` plus whatever got
- *  withdrawn, so the stored stat reflects the real total cost regardless of
- *  whether it came from cash-on-hand or the bank. */
+ *  **Bail never needs a bank withdrawal.** The game pays bail from cash on
+ *  hand first and takes any remainder straight from the bank. Verified
+ *  against every archived bail (157, 2026-08-10 → 09-24): none was ever
+ *  rejected, 80 were paid with less cash than the bail cost (often $0), and
+ *  in 56 of those the bank dropped by exactly `bail − cash on hand` (e.g.
+ *  $0 on hand, $38,000 bail: bank 20,418,654 → 20,380,654). So there is no
+ *  insufficient-cash retry here, unlike `payBribe`.
+ *
+ *  Because part of the cost can come from the bank, `spent` (cash before −
+ *  cash after) can undercount the real bail cost. It counts cash on hand
+ *  only. */
 async function payBail(cashBefore: number): Promise<MoneyActionResult> {
   try {
-    let resp = await postAction('/api/emergency.php', { action: 'bail' });
-    let cashBaseline = cashBefore;
-
-    if (resp?.ok === false && typeof resp.error === 'string') {
-      const match = resp.error.match(INSUFFICIENT_CASH_RE);
-      if (match) {
-        const needed = Number(match[1].replace(/,/g, ''));
-        const withdrawal = await withdrawShortfall(needed, cashBefore);
-        if (!withdrawal.ok) {
-          return { kind: 'rejected', message: `${resp.error} (withdrawing the shortfall from the bank also failed: ${withdrawal.message})` };
-        }
-        cashBaseline = cashBefore + withdrawal.withdrawn;
-        resp = await postAction('/api/emergency.php', { action: 'bail' });
-      }
-    }
-
+    const resp = await postAction('/api/emergency.php', { action: 'bail' });
     if (resp?.ok === true) {
-      return { kind: 'ok', spent: Math.max(0, cashBaseline - (Number(resp.stats?.cash) || cashBaseline)) };
+      return { kind: 'ok', spent: Math.max(0, cashBefore - (Number(resp.stats?.cash) || cashBefore)) };
     }
     return { kind: 'rejected', message: typeof resp?.error === 'string' ? resp.error : 'Bail request was rejected.' };
   } catch (err) {
@@ -169,8 +151,12 @@ async function payBail(cashBefore: number): Promise<MoneyActionResult> {
   }
 }
 
-/** Same shape as `payBail` — see its doc comment, including the
- *  withdraw-shortfall-and-retry-once recovery. No `quote=1` preview call
+/** Unlike bail, **a bribe must be paid from cash on hand**: the game does
+ *  not fall back to the bank, and rejects with "You need $X to bribe."
+ *  (see `INSUFFICIENT_CASH_RE`). On that rejection this withdraws exactly
+ *  the shortfall and retries once (same "one top-up, one retry" recovery
+ *  `petCourier.ts` uses). `spent` is measured against `cashBefore` plus the
+ *  withdrawal, so it's the real total cost. No `quote=1` preview call
  *  first: a real capture confirmed that's purely informational for the
  *  page's own UI, not a precondition the actual `action=bribe` call needs. */
 async function payBribe(cashBefore: number): Promise<MoneyActionResult> {
