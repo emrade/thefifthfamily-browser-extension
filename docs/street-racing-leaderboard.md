@@ -141,7 +141,8 @@ All races must finish before 23:00 UTC. That's both the payout and the
 reset, so a slot-B run can't be pushed past it.
 
 The automation currently races right after the 23:00 reset, i.e. always
-slot A.
+slot A. There is no forecast, so waiting for slot B is a bet on the slot
+frequencies above, not a prediction. It hasn't been automated.
 
 ---
 
@@ -210,4 +211,16 @@ From 2026-09-14 ~23:00 to 2026-09-17, automated races were sent without
 silently treated each one as accuracy 50 (see `CLAUDE.md`). On this board
 that meant every race scored 85% of top speed. Those are the flat **221.9**
 days (261 × 0.85) and the 247.4 day, far below what the same weather
-would have scored at the automation's normal ~93 accuracy.
+would have scored at the automation's normal accuracy.
+
+## Automation accuracy (2026-09-24)
+
+To compete on the speed tiebreak, the automation's accuracy was raised from
+mean 93 / range 85–97 (realized ~92.7) to **mean 96.5 / stddev 1.5 / range
+92–99** (realized ~96.5, ~285.9 on an overcast day). Hard races were raised
+to mean 97. The ceiling went above the account's manual all-time high of 97
+because other players' averages prove the game accepts, and players reach,
+accuracy above 97. Taking the fastest dealer car and the best weather
+available that day, TheCouchPotato needed ≥97.1 average over 19 wins, and
+ZeeZee averaged exactly 248.0 over 10 wins in snow (accuracy 100 on every
+race). See `STREET_RACING_ACCURACY_*` in `src/shared/constants.ts`.

@@ -340,16 +340,33 @@ export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // widened) — with MEAN=93 that puts P(sampleClampedNormal clamps to
 // MIN=85) at ~2.3%, confirmed acceptable directly by the account owner
 // (who'd assumed it was closer to 30%+ before checking).
-export const STREET_RACING_ACCURACY_MEAN = 93;
-export const STREET_RACING_ACCURACY_STDDEV = 4;
-export const STREET_RACING_ACCURACY_MIN = 85;
+// Revised 2026-09-24, per the account owner directly, to compete on the
+// Street Kings leaderboard's `avg_speed` tiebreak (see
+// docs/street-racing-leaderboard.md — speed = effective top speed ×
+// (0.7 + 0.3 × accuracy/100), so accuracy is the only speed lever left once
+// the car is maxed). The 19-win players just above the account were
+// averaging ~96 accuracy on the same car and weather, vs ~92.7 realized
+// from the previous 93/4/85/97 settings. MEAN 96.5 / STDDEV 1.5 / MIN 92 /
+// MAX 99 realizes ~96.5 (~285.9 on an overcast day, vs 285.5 for the
+// top 19-win player that day), and clamps to MAX only ~9% of the time.
+// This deliberately departs from the account's own manual-play stats
+// above.
+export const STREET_RACING_ACCURACY_MEAN = 96.5;
+export const STREET_RACING_ACCURACY_STDDEV = 1.5;
+export const STREET_RACING_ACCURACY_MIN = 92;
 // 97, not 98 — the 2026-09-20 re-verification found a real all-time high of
 // 97 across the full 149-attempt sample (previously assumed to be 96, with
 // 98 picked as a one-above-ceiling cushion). Set to the account's actual
 // verified ATH rather than a cushion above it, per the account owner
 // directly. Shared as the ceiling for the hard-race distribution below too,
 // though that one hasn't been re-verified against this same archive set.
-export const STREET_RACING_ACCURACY_MAX = 97;
+// Raised to 99 on 2026-09-24, per the account owner, once leaderboard data
+// showed other players' daily averages can't be reached without accuracy
+// above 97 (assuming the 275 Zenith One, the fastest dealer car, and the
+// best weather available that day): e.g. TheCouchPotato ≥97.1 over 19
+// wins, and ZeeZee exactly 100 on every one of 10 wins. So 98–100 are
+// values real players send.
+export const STREET_RACING_ACCURACY_MAX = 99;
 
 // A race whose own `odds_pct` (from the race catalog) is under 100% can only
 // ever gain up to `(accuracy-50)*0.1` percentage points of win chance from
@@ -362,7 +379,9 @@ export const STREET_RACING_ACCURACY_MAX = 97;
 // naturally focusing harder on a race that isn't already guaranteed is a
 // plausible reason to skew high, but always sending an identical value on
 // every hard race would be its own tell.
-export const STREET_RACING_ACCURACY_HARD_RACE_MEAN = 96;
+// Raised 96 -> 97 on 2026-09-24 alongside the general MEAN's move to 96.5,
+// so hard races still skew at or above the general distribution.
+export const STREET_RACING_ACCURACY_HARD_RACE_MEAN = 97;
 export const STREET_RACING_ACCURACY_HARD_RACE_STDDEV = 1.5;
 export const STREET_RACING_ACCURACY_HARD_RACE_MIN = 92;
 
