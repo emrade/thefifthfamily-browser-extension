@@ -42,9 +42,12 @@ const FEATURE_KEY = 'arena';
  * - **day-complete**: today's 6 pages are used. Check again on the fallback
  *   cadence; no reminder.
  *
- * Each reminder uses one fixed notification id with `requireInteraction`,
- * cleared before it's re-created: it stays on screen until the player acts
- * on it, never piles up, and still pops (and sounds) again on each repeat.
+ * Each reminder uses one fixed notification id, cleared before it's
+ * re-created: it never piles up, and still pops (and sounds) again on each
+ * repeat. It's a plain banner: `requireInteraction` isn't in Firefox's
+ * notifications schema, and Firefox rejects the whole `create` call over it
+ * (`Unexpected property`). That silently broke every reminder from
+ * 2026-09-24 to 2026-09-29.
  *
  * No kill switch of its own (same "no gameplay action" posture as the stock
  * market poller). The player silences it with the `arenaPageUnlocked`
@@ -80,6 +83,11 @@ export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   checkInFlight = true;
   try {
     await runCheck();
+  } catch (err) {
+    // A failed check must not end the reminder: the alarm is one-shot, so
+    // without this the watcher stays dead until the next Arena page view.
+    scheduleNextCheck(null);
+    throw err;
   } finally {
     checkInFlight = false;
   }
@@ -94,7 +102,6 @@ async function remind(title: string, message: string): Promise<void> {
       iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title,
       message,
-      requireInteraction: true,
     },
     ARENA_REMINDER_NOTIFICATION_ID,
   );
