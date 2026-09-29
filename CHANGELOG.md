@@ -9,6 +9,19 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.34.0] - 2026-09-29
+
+### Changed
+- Inventory quick-sell total: tapping $ on one item now prices every copy
+  of it (same name) with that exact quote, instead of only the item you
+  tapped. The copies switch from the "≈" 20% estimate (or the 2–10% range
+  for Crime Req items) to the exact amount and count as exact in the total.
+  An item's own quote still takes priority. Upgrade level doesn't change
+  the price: copies at different levels (e.g. +0 and +5) carry the same
+  shop price in the archives, and every copy quoted got the same amount.
+  Quotes tapped on 0.33.0 only priced that one item; tap $ on any copy
+  again to price the rest.
+
 ## [0.33.0] - 2026-09-29
 
 ### Added
