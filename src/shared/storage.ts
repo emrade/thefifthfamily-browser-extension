@@ -12,6 +12,7 @@ import type {
   FightClubFilterPrefs,
   FightClubHeroStats,
   ItemMarketSortPrefs,
+  QuickSellPriceBook,
   PendingCourierReturn,
   PendingTravel,
   PlayerStatsSnapshot,
@@ -105,6 +106,10 @@ export const storage = {
   // as Fight Club's filter prefs above.
   getItemMarketSortPrefs: () => get<ItemMarketSortPrefs>(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, { sortByVolume: false, hideConsumables: false }),
   setItemMarketSortPrefs: (v: ItemMarketSortPrefs) => set(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, v),
+
+  getQuickSellPriceBook: () =>
+    get<QuickSellPriceBook>(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, { shopByInv: {}, shopByName: {}, quotes: {} }),
+  setQuickSellPriceBook: (v: QuickSellPriceBook) => set(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, v),
 
   // Merged with the defaults rather than returned as-is: a notification type added
   // in a later version won't exist yet in an existing install's stored object, and

@@ -123,6 +123,25 @@ export interface ItemMarketSortPrefs {
 }
 
 /**
+ * What the inventory's quick-sell total prices items from. The inventory page
+ * itself carries no price at all: the game only asks for one
+ * (`POST /actions/shops_v2.php action=dispose_quote`) when the player taps an
+ * item's $ button. So this is filled passively, with no requests of its own:
+ *
+ * - `shopByInv`/`shopByName`: `data-shop-price` off the Item Market's
+ *   "List an Item for Sale" cards, every time that grid is on screen. Keyed
+ *   by `data-inv` (the same id as the inventory card) first, with the
+ *   lowercased `data-name` as the fallback for an item not seen there yet.
+ * - `quotes`: the real payout from every `dispose_quote` the game itself
+ *   sends, keyed by inventory id. Exact, so it always wins over an estimate.
+ */
+export interface QuickSellPriceBook {
+  shopByInv: Record<string, { price: number; at: number }>;
+  shopByName: Record<string, { price: number; at: number }>;
+  quotes: Record<string, { cash: number; at: number }>;
+}
+
+/**
  * `GET /actions/attack.php?type=recon&target_id=X` — the game's own pre-attack
  * scouting read. Confirmed real (captured 2026-09): the server already computes
  * a win-probability estimate, a categorical threat/steal read, and a same-day

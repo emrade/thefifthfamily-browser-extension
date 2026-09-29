@@ -26,10 +26,9 @@ import { storage } from '@/shared/storage';
  *    with no signal behind it: an item with neither active listings nor
  *    recent sales gets an explicit "not enough data" note instead of a guess.
  *
- * Deliberately does *not* try to reproduce the quicksell payout (confirmed
- * real: quicksell ≈ shop-price ÷ 5, halved again for capstone-linked items
- * like The Iron Curtain) — that would be a guess dressed up as a number, and
- * the existing Quick Sell button already shows the real one on demand.
+ * Doesn't show a quick-sell payout here; the Inventory page's quick-sell
+ * total does that (content/features/inventory/quickSellTotal.ts), using the
+ * `data-shop-price` values from this same grid.
  *
  * A third piece: a small toolbar above the grid with two toggles.
  * "Sort: Best Sellers/wk" reorders `.sell-item` cards by `data-vol-7d`

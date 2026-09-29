@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   ARENA_WATCH_STATUS: 'ff_arena_watch_status',
   ARENA_MY_PROFILE: 'ff_arena_my_profile',
   ARENA_TRACK_RECORD: 'ff_arena_track_record',
+  QUICK_SELL_PRICE_BOOK: 'ff_quick_sell_price_book',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack
