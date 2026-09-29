@@ -9,6 +9,39 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.33.0] - 2026-09-29
+
+### Added
+- Inventory quick-sell total: a bar under the Inventory search box adds up
+  what every item currently shown would quick-sell for, following the tab,
+  filter chips, rarity and search you've picked, and each card gets its own
+  price tag. The game only prices an item when you tap its $ button, so
+  prices are estimated at 20% of the item's shop price (this matched 42 of
+  the 44 captured quotes for normal items; upgrade level doesn't change it),
+  using shop prices read from the Item Market's "List an Item for Sale"
+  grid. Open the Item Market once to fill them in. Any item you've tapped $
+  on uses the game's exact quote instead. No extra requests are sent. Crime
+  Req items are totalled on their own line as a 2–10% of shop price range,
+  since the game cuts their price and your crimes may need them. Locked
+  items and consumables aren't counted. Can be turned off in Settings
+  ("Inventory Quick-Sell Total").
+
+### Fixed
+- Arena page reminder: since 0.32.0 no reminder was ever shown, and the
+  reminder stopped checking after every "page ready" or "page unfinished"
+  check until you next opened the Arena page. It asked Firefox to keep the
+  notification on screen (`requireInteraction`), an option Firefox doesn't
+  support, so Firefox rejected every reminder. It's a normal notification
+  again (still repeating every 15 minutes until the page is banked), and a
+  failed check now always schedules the next one.
+
+### Changed
+- Crimes Auto: paying bail no longer withdraws from the bank and retries
+  when you're short on cash, because the game already takes bail from your
+  bank automatically. The "bail spent"
+  figure only counts cash on hand, so it can read lower than what bail
+  actually cost.
+
 ## [0.32.0] - 2026-09-24
 
 ### Added
