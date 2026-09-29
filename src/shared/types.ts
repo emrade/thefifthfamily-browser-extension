@@ -134,11 +134,17 @@ export interface ItemMarketSortPrefs {
  *   lowercased `data-name` as the fallback for an item not seen there yet.
  * - `quotes`: the real payout from every `dispose_quote` the game itself
  *   sends, keyed by inventory id. Exact, so it always wins over an estimate.
+ * - `quotesByName`: the same payouts keyed by lowercased item name, so one
+ *   quote also prices every other copy of that item. Upgrade level doesn't
+ *   change the price: every copy quoted in the archives got the same
+ *   amount, and copies at different levels (Omertà Medallion +0/+5, Plated
+ *   Hard Hat +0/+5, Safecracker's Tools +3/+5) carry the same shop price.
  */
 export interface QuickSellPriceBook {
   shopByInv: Record<string, { price: number; at: number }>;
   shopByName: Record<string, { price: number; at: number }>;
   quotes: Record<string, { cash: number; at: number }>;
+  quotesByName: Record<string, { cash: number; at: number }>;
 }
 
 /**

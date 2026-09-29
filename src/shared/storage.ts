@@ -107,8 +107,12 @@ export const storage = {
   getItemMarketSortPrefs: () => get<ItemMarketSortPrefs>(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, { sortByVolume: false, hideConsumables: false }),
   setItemMarketSortPrefs: (v: ItemMarketSortPrefs) => set(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, v),
 
-  getQuickSellPriceBook: () =>
-    get<QuickSellPriceBook>(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, { shopByInv: {}, shopByName: {}, quotes: {} }),
+  // Merged with the empty book so a book stored before a map was added
+  // (0.33.0 had no `quotesByName`) still reads with every map present.
+  getQuickSellPriceBook: async (): Promise<QuickSellPriceBook> => {
+    const stored = await get<Partial<QuickSellPriceBook>>(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, {});
+    return { shopByInv: {}, shopByName: {}, quotes: {}, quotesByName: {}, ...stored };
+  },
   setQuickSellPriceBook: (v: QuickSellPriceBook) => set(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, v),
 
   // Merged with the defaults rather than returned as-is: a notification type added

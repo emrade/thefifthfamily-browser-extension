@@ -26,7 +26,8 @@ import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
  *   nothing found so far; shop prices also drift over time (Enforcer's
  *   Chain Belt went 800k → 950k), so an estimate is shown with "≈".
  * - **Real quotes.** Every `dispose_quote` the game sends is kept and wins
- *   over the estimate for that item.
+ *   over the estimate, for that item and for every other copy of it (same
+ *   name; upgrade level doesn't change the price).
  *
  * Crime Req items (`data-crime="1"`) get their quote cut when they're tied
  * to a crime the player needs (`capstone_warning` in the quote): 2% of shop
@@ -55,7 +56,7 @@ const CRIME_SHARE_HIGH = 0.1;
 // this account's ~460 inventory items.
 const MAX_ENTRIES_PER_MAP = 4000;
 
-let book: QuickSellPriceBook = { shopByInv: {}, shopByName: {}, quotes: {} };
+let book: QuickSellPriceBook = { shopByInv: {}, shopByName: {}, quotes: {}, quotesByName: {} };
 
 // One read-modify-write at a time, so an Item Market harvest and a quote
 // landing together can't overwrite each other's entries.
@@ -77,6 +78,7 @@ function updateBook(mutate: (b: QuickSellPriceBook) => boolean): void {
         shopByInv: prune(current.shopByInv),
         shopByName: prune(current.shopByName),
         quotes: prune(current.quotes),
+        quotesByName: prune(current.quotesByName),
       };
       await storage.setQuickSellPriceBook(book);
     })
@@ -101,10 +103,19 @@ export function handleCapturedRequest(req: CapturedRequest): void {
   if (data?.ok !== true || typeof data.cash !== 'number') return;
 
   const cash = data.cash;
+  const name = typeof data.name === 'string' ? data.name.toLowerCase() : '';
   updateBook((b) => {
-    if (b.quotes[invId]?.cash === cash) return false;
-    b.quotes[invId] = { cash, at: Date.now() };
-    return true;
+    const now = Date.now();
+    let changed = false;
+    if (b.quotes[invId]?.cash !== cash) {
+      b.quotes[invId] = { cash, at: now };
+      changed = true;
+    }
+    if (name && b.quotesByName[name]?.cash !== cash) {
+      b.quotesByName[name] = { cash, at: now };
+      changed = true;
+    }
+    return changed;
   });
 }
 
@@ -141,6 +152,7 @@ function harvestShopPrices(): void {
 
 type CardPrice =
   | { kind: 'quote'; cash: number }
+  | { kind: 'shared-quote'; cash: number }
   | { kind: 'estimate'; cash: number }
   | { kind: 'crime-range'; low: number; high: number }
   | { kind: 'unknown' };
@@ -149,8 +161,11 @@ function priceFor(card: Element): CardPrice {
   const inv = card.getAttribute('data-inv') ?? '';
   const quote = book.quotes[inv];
   if (quote) return { kind: 'quote', cash: quote.cash };
+  const name = card.getAttribute('data-name') ?? '';
+  const sharedQuote = book.quotesByName[name];
+  if (sharedQuote) return { kind: 'shared-quote', cash: sharedQuote.cash };
 
-  const shop = book.shopByInv[inv] ?? book.shopByName[card.getAttribute('data-name') ?? ''];
+  const shop = book.shopByInv[inv] ?? book.shopByName[name];
   if (!shop) return { kind: 'unknown' };
   if (card.getAttribute('data-crime') === '1') {
     return { kind: 'crime-range', low: Math.round(shop.price * CRIME_SHARE_LOW), high: Math.round(shop.price * CRIME_SHARE_HIGH) };
@@ -174,6 +189,12 @@ function tagFor(price: CardPrice): { text: string; title: string; kind: string }
   switch (price.kind) {
     case 'quote':
       return { text: `Quick sell ${compactMoney(price.cash)}`, title: `${money(price.cash)}, the game's own quote for this item.`, kind: 'exact' };
+    case 'shared-quote':
+      return {
+        text: `Quick sell ${compactMoney(price.cash)}`,
+        title: `${money(price.cash)}, the game's own quote for another copy of this item (every copy sells for the same).`,
+        kind: 'exact',
+      };
     case 'estimate':
       return { text: `Quick sell ≈ ${compactMoney(price.cash)}`, title: `About ${money(price.cash)}: 20% of this item's shop price. Tap $ for the exact amount.`, kind: 'estimate' };
     case 'crime-range':
@@ -240,7 +261,7 @@ function recompute(): void {
     }
     if (card.getAttribute('data-crime') === '1') {
       t.crimeCount++;
-      if (price.kind === 'quote') {
+      if (price.kind === 'quote' || price.kind === 'shared-quote') {
         t.crimeLow += price.cash;
         t.crimeHigh += price.cash;
       } else if (price.kind === 'crime-range') {
@@ -252,8 +273,8 @@ function recompute(): void {
       continue;
     }
     t.count++;
-    if (price.kind === 'quote' || price.kind === 'estimate') t.total += price.cash;
-    if (price.kind === 'quote') t.exactCount++;
+    if (price.kind === 'quote' || price.kind === 'shared-quote' || price.kind === 'estimate') t.total += price.cash;
+    if (price.kind === 'quote' || price.kind === 'shared-quote') t.exactCount++;
     if (price.kind === 'unknown') t.unknownCount++;
   }
 
