@@ -186,7 +186,12 @@ function money(n: number): string {
 }
 
 function compactMoney(n: number): string {
-  const trim = (v: number) => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(/\.?0+$/, '');
+  // Only zeros after a decimal point are trimmed: "990" (from 990K) must
+  // stay "990", not lose its last digit and read as 99K.
+  const trim = (v: number) => {
+    const s = v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
+  };
   if (n >= 1e9) return `$${trim(n / 1e9)}B`;
   if (n >= 1e6) return `$${trim(n / 1e6)}M`;
   if (n >= 1e3) return `$${trim(n / 1e3)}K`;
