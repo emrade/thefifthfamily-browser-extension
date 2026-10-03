@@ -9,6 +9,17 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.35.1] - 2026-10-03
+
+### Fixed
+- Inventory quick-sell tags showed some prices 10× or 100× too low: the
+  short form dropped trailing zeros from whole numbers, so a $990,000 item
+  was tagged "$99K" and a $100,000 one "$1K". Affected any price whose
+  short form was 100–999 ending in 0 (e.g. $100K–$990K, $100M–$990M). The
+  bar's totals, the tags' hover text and the Auto-Sell panel always showed
+  the full, correct amount, and Auto-Sell's price cap checks the game's own
+  quote, so nothing was ever sold on the wrong figure.
+
 ## [0.35.0] - 2026-10-03
 
 ### Added
