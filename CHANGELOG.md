@@ -9,6 +9,33 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.35.0] - 2026-10-03
+
+### Added
+- Inventory Auto-Sell & Crime Locks: a panel under the Inventory search box
+  (and the Quick Sell bar, when that's on) with two confirm-first tools.
+  - **Crime locks.** Every Crime Req item you own with no locked copy is
+    tagged "Crime item · none locked" on its cards and listed in the panel.
+    "Lock one of each" locks the highest-upgrade copy of each, so the copy
+    your crimes need can't be sold by accident.
+  - **Auto-sell.** Pick one or more rarities (required), and optionally
+    slots, a highest upgrade level, a price cap and never-sell item names.
+    A live preview lists every item that would go and what it should fetch.
+    On Confirm, each item is sold in turn the way the game's own $ button
+    does it (a quote, then the sale), with gaps between calls based on your
+    own past manual sales. A progress bar and Stop button show while it
+    runs, and a summary appears at the end. Criteria are remembered.
+  - Crime Req items always keep one copy: a locked copy if you have one,
+    otherwise the best unlocked copy is held back and only the extras sell.
+  - Every quote is checked before the sale. The batch stops on a name that
+    doesn't match the card, a crime tie on an item not marked Crime Req,
+    any rejection or unrecognized response, or leaving the inventory page.
+    An item quoted over your price cap is kept, and its quote is saved so
+    the next preview already knows. Only one batch runs at a time, across
+    tabs too. The inventory reloads when a batch finishes.
+  - Toggle under Settings → page features ("Inventory Auto-Sell & Crime
+    Locks"). Nothing is sold or locked until you press Confirm.
+
 ## [0.34.0] - 2026-09-29
 
 ### Changed
