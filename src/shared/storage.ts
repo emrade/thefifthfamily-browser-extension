@@ -12,6 +12,7 @@ import type {
   FightClubFilterPrefs,
   FightClubHeroStats,
   ItemMarketSortPrefs,
+  InventoryAutoSellCriteria,
   QuickSellPriceBook,
   PendingCourierReturn,
   PendingTravel,
@@ -114,6 +115,12 @@ export const storage = {
     return { shopByInv: {}, shopByName: {}, quotes: {}, quotesByName: {}, ...stored };
   },
   setQuickSellPriceBook: (v: QuickSellPriceBook) => set(STORAGE_KEYS.QUICK_SELL_PRICE_BOOK, v),
+
+  getInventoryAutoSellCriteria: async (): Promise<InventoryAutoSellCriteria> => {
+    const stored = await get<Partial<InventoryAutoSellCriteria>>(STORAGE_KEYS.INVENTORY_AUTO_SELL_CRITERIA, {});
+    return { rarities: [], slots: [], maxUpgrade: null, maxPrice: null, neverSell: [], ...stored };
+  },
+  setInventoryAutoSellCriteria: (v: InventoryAutoSellCriteria) => set(STORAGE_KEYS.INVENTORY_AUTO_SELL_CRITERIA, v),
 
   // Merged with the defaults rather than returned as-is: a notification type added
   // in a later version won't exist yet in an existing install's stored object, and

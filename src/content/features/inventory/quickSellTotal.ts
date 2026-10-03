@@ -102,8 +102,14 @@ export function handleCapturedRequest(req: CapturedRequest): void {
   }
   if (data?.ok !== true || typeof data.cash !== 'number') return;
 
-  const cash = data.cash;
-  const name = typeof data.name === 'string' ? data.name.toLowerCase() : '';
+  recordQuote(invId, typeof data.name === 'string' ? data.name : '', data.cash);
+}
+
+/** Stores one real `dispose_quote` payout in the price book. Also called by
+ *  the Auto-Sell panel for quotes background sends on its behalf, which
+ *  never pass through the page's own network hook. */
+export function recordQuote(invId: string, itemName: string, cash: number): void {
+  const name = itemName.toLowerCase();
   updateBook((b) => {
     const now = Date.now();
     let changed = false;
@@ -150,22 +156,24 @@ function harvestShopPrices(): void {
   });
 }
 
-type CardPrice =
+export type CardPrice =
   | { kind: 'quote'; cash: number }
   | { kind: 'shared-quote'; cash: number }
   | { kind: 'estimate'; cash: number }
   | { kind: 'crime-range'; low: number; high: number }
   | { kind: 'unknown' };
 
-function priceFor(card: Element): CardPrice {
+/** What `card` should quick-sell for, from `b` (this module's own copy of
+ *  the price book unless another feature passes its own). */
+export function priceFor(card: Element, b: QuickSellPriceBook = book): CardPrice {
   const inv = card.getAttribute('data-inv') ?? '';
-  const quote = book.quotes[inv];
+  const quote = b.quotes[inv];
   if (quote) return { kind: 'quote', cash: quote.cash };
   const name = card.getAttribute('data-name') ?? '';
-  const sharedQuote = book.quotesByName[name];
+  const sharedQuote = b.quotesByName[name];
   if (sharedQuote) return { kind: 'shared-quote', cash: sharedQuote.cash };
 
-  const shop = book.shopByInv[inv] ?? book.shopByName[name];
+  const shop = b.shopByInv[inv] ?? b.shopByName[name];
   if (!shop) return { kind: 'unknown' };
   if (card.getAttribute('data-crime') === '1') {
     return { kind: 'crime-range', low: Math.round(shop.price * CRIME_SHARE_LOW), high: Math.round(shop.price * CRIME_SHARE_HIGH) };

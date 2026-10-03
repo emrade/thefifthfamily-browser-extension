@@ -147,6 +147,37 @@ export interface QuickSellPriceBook {
   quotesByName: Record<string, { cash: number; at: number }>;
 }
 
+/** The Inventory Auto-Sell panel's last-used criteria, saved so the next
+ *  visit starts where the player left off. Every list is matched against the
+ *  inventory card's own attributes: `rarities` against `data-quality`
+ *  (`grey`, `purple`, `underworld_epic`, …), `slots` against `data-type`,
+ *  `neverSell` against `data-name` (lowercased, no `+N`). An empty `slots`
+ *  means every slot; an empty `rarities` matches nothing, so a fresh install
+ *  can't sell anything until a rarity is picked. */
+export interface InventoryAutoSellCriteria {
+  rarities: string[];
+  slots: string[];
+  /** Highest upgrade level (`+N`) still sold; `null` = any level. */
+  maxUpgrade: number | null;
+  /** Items whose quick-sell price is above this are kept; `null` = no cap.
+   *  Checked against the game's own quote right before each sale, not just
+   *  the estimate shown in the preview. */
+  maxPrice: number | null;
+  neverSell: string[];
+}
+
+/** One item through `dispose_quote` → `quicksell`. `stopped` means the batch
+ *  must end: a rejection, an unrecognized response, or a quote that doesn't
+ *  match the card it was sent for. `stopAfter` is the same for a sale that
+ *  went through but came back looking wrong (paid something other than the
+ *  quote, or left copies behind): counted as sold, and the batch still ends. */
+export type InventorySellResult =
+  | { status: 'sold'; payout: number; message: string; stopAfter?: string }
+  | { status: 'over-price'; cash: number }
+  | { status: 'stopped'; error: string };
+
+export type InventoryLockResult = { status: 'locked' } | { status: 'stopped'; error: string };
+
 /**
  * `GET /actions/attack.php?type=recon&target_id=X` — the game's own pre-attack
  * scouting read. Confirmed real (captured 2026-09): the server already computes

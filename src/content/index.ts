@@ -22,6 +22,7 @@ import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
 import { initArenaOverlay } from './features/arena/overlay';
 import { handleCapturedRequest as handleArenaFightAdvisor, initArenaFightAdvisor } from './features/arena/fightAdvisor';
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
+import { initInventoryAutoSell } from './features/inventory/autoSell';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -148,6 +149,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.inventoryQuickSell) {
       initInventoryQuickSell();
+    }
+    if (prefs.inventoryAutoSell) {
+      initInventoryAutoSell();
     }
     if (prefs.garageBulkOps) {
       initGarageOverlay();

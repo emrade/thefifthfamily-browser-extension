@@ -28,6 +28,7 @@ import {
   sellBody as sellGarageBody,
   stripVehicle as stripGarageVehicle,
 } from './features/garage';
+import { lockItem as lockInventoryItem, releaseLease as releaseInventoryLease, sellItem as sellInventoryItem } from './features/inventory';
 import { claimLine as claimAchievementLine, fetchCategory as fetchAchievementCategory } from './features/achievements';
 import {
   getStatus as getArenaStatus,
@@ -253,6 +254,21 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // install instead of a paid `install`.
   if (msg.type === 'garage-migrate-requested') {
     return migrateGarageVehicle(msg.carId);
+  }
+
+  // One item per message, called in a loop by the Inventory Auto-Sell
+  // panel's confirmed batches — see features/inventory.
+  if (msg.type === 'inventory-sell-item-requested') {
+    return sellInventoryItem(msg.invId, msg.expectedName, msg.isCrime, msg.maxPrice, sender.tab?.id);
+  }
+
+  if (msg.type === 'inventory-lock-item-requested') {
+    return lockInventoryItem(msg.invId, sender.tab?.id);
+  }
+
+  if (msg.type === 'inventory-batch-finished') {
+    releaseInventoryLease(sender.tab?.id);
+    return false;
   }
 
   // Sent by a page's Achievement chip when opened — see that message

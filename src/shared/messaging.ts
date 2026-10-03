@@ -196,6 +196,18 @@ export type ExtensionMessage =
   // Same per-item shape, for a vehicle a Fit Parts plan found to be
   // `migrated: false` — see `GarageMigrateResult`'s own doc.
   | { type: 'garage-migrate-requested'; carId: number }
+  // Sent by the Inventory Auto-Sell panel's confirmed batch, once per item —
+  // same "one item per message, loop lives in the page" shape as the garage
+  // tools. Background runs the item's whole `dispose_quote` → `quicksell`
+  // pair, so the quote can be checked against the card (`expectedName`,
+  // `isCrime`, `maxPrice`) before the sale is sent. See
+  // background/features/inventory.
+  | { type: 'inventory-sell-item-requested'; invId: number; expectedName: string; isCrime: boolean; maxPrice: number | null }
+  // Sent by the panel's "Lock one of each" batch, once per item.
+  | { type: 'inventory-lock-item-requested'; invId: number }
+  // Sent when a sell or lock batch finishes or stops, releasing this tab's
+  // hold on the inventory batch lease.
+  | { type: 'inventory-batch-finished' }
   // Sent by a page's Achievement chip when opened — same "live fetch+parse
   // only background can do" exception as 'career-catalog-requested'.
   // `category` is the achievement category name verbatim (e.g. "Vehicles &

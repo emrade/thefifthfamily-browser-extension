@@ -61,6 +61,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'On the Inventory page, adds up what every item currently shown would quick-sell for, following the tab, filter, rarity and search you have picked, and tags each item with its price. Prices are estimated from the Item Market (open it once to fill them in) and replaced by the exact amount whenever you have tapped an item’s $ button. Crime Req items are totalled on their own line.',
   },
   {
+    id: 'inventoryAutoSell',
+    label: 'Inventory Auto-Sell & Crime Locks',
+    description:
+      'On the Inventory page, flags Crime Req items you have no locked copy of (with a button to lock one of each), and quick-sells every item matching criteria you pick (rarity, slot, upgrade level, price cap, never-sell names) one after another, after a preview and confirm. Keeps one copy of every Crime Req item. Nothing runs until you press Confirm.',
+  },
+  {
     id: 'stockMarketStatus',
     label: 'Stock Market Tracker',
     description:

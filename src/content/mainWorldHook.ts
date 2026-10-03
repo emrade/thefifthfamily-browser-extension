@@ -171,6 +171,22 @@ function installXhrHook() {
 }
 
 /**
+ * Lets an isolated-world feature ask the game to re-render the inventory after
+ * changing it behind the page's back (the Auto-Sell panel's sell and lock
+ * batches): only this world can reach the game's own `Game.loadPanel`, the
+ * same call its own buttons make. Limited to the inventory panel, the only
+ * one anything asks for.
+ */
+function installPanelReloadBridge(): void {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const data = event.data as { source?: string; type?: string; panel?: string } | undefined;
+    if (data?.source !== 'ff-content' || data.type !== 'reload-panel' || data.panel !== 'inventory') return;
+    (window as unknown as { Game?: { loadPanel?: (name: string) => void } }).Game?.loadPanel?.('inventory');
+  });
+}
+
+/**
  * Guards against installing the hooks more than once in the same document. Without
  * this, reloading the extension during development while the game tab stays open
  * leaves the old copy of this script still running — it has no chrome.* API calls,
@@ -192,4 +208,5 @@ if ((window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
   (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
   installFetchHook();
   installXhrHook();
+  installPanelReloadBridge();
 }
