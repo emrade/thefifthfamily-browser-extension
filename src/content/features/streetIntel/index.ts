@@ -4,8 +4,10 @@ import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
 import { parseStreetIntelAction } from './adapters/streetIntelActionAdapter';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { recordScoutResponse } from './pageHighlights';
+import { recordAttemptResponse } from './complicationHint';
 
 export { initStreetIntelHighlights } from './pageHighlights';
+export { initStreetIntelComplicationHint } from './complicationHint';
 
 export function handleCapturedRequest(req: CapturedRequest) {
   const url = new URL(req.url, window.location.origin);
@@ -14,7 +16,10 @@ export function handleCapturedRequest(req: CapturedRequest) {
     // Purely local to this tab's own in-page highlighting (see
     // pageHighlights.ts's `annotateHiddenApproaches`) — never sent to
     // background, unlike the message below.
-    if (req.requestBody) recordScoutResponse(req.requestBody, req.responseText);
+    if (req.requestBody) {
+      recordScoutResponse(req.requestBody, req.responseText);
+      recordAttemptResponse(req.requestBody, req.responseText);
+    }
 
     const message = parseStreetIntelAction(req.requestBody, req.responseText, req.timestamp);
     if (message) send(message);

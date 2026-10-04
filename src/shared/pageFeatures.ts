@@ -23,6 +23,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'Highlights the best-value job, risky-but-lucrative jobs, and the best scout odds on the Street Intel page.',
   },
   {
+    id: 'streetIntelComplicationHint',
+    label: 'Street Intel Complication Hint',
+    description:
+      'When a complication comes up, marks the choice that has never won in that situation (FF AVOID) and the best one (FF PICK) right on the buttons, with each choice’s real win record from your history.',
+  },
+  {
     id: 'courierPanel',
     label: 'Pet Courier Panel',
     description: 'A floating panel on the Smuggling page with a Run button and last-run summary, so running couriers doesn’t need the popup open.',

@@ -44,12 +44,26 @@ Every archive combined (480 resolved complications, 2026-08-10..10-04 —
   the runner; whether the game offers it on every complication or only after
   `steel_yourself` is unknown.
 
-How the new mode decides (`src/shared/streetIntelComplications.ts`): keep the
-original rule's pick unless it's blocked for this scenario — either in the
-seeded table from the analysis above, or 0-for-2+ in the live
-`complicationTypeStats`. If blocked, use the unblocked choice with the best
-win rate for that scenario, shrunk toward its pooled rate. The popup shows
-"(avoided X)" on the last attempt whenever it overrode a pick.
+How it's used (`src/shared/streetIntelComplications.ts`): the full
+scenario × choice table above is seeded into the code, and for each cell the
+code uses whichever has more attempts — that seed or the live
+`complicationTypeStats`. A choice with 0 wins in 2+ tries is *blocked*. Two
+consumers share this one rule, so they never disagree:
+
+- **Auto-runner, opt-in** (`complicationMode: 'avoidBlocked'`, the **Smart
+  complication choices** toggle in the popup and overlay): keeps the original
+  rule's pick unless it's blocked, then uses the best unblocked choice for
+  that scenario (win rate shrunk toward the pooled rate). The popup shows
+  "(avoided X)" on the last attempt whenever it overrode a pick.
+- **On-page hint for manual play** (`content/features/streetIntel/complicationHint.ts`,
+  Settings → "Street Intel Complication Hint", on by default like every page
+  feature): marks the game's own choice buttons "FF AVOID" / "FF PICK" with
+  each choice's record, plus a one-line summary under the scenario text. Built
+  against the game's stylesheet classes (`.si-comp`, `.si-comp-choice`); not
+  yet confirmed against a live complication dialog.
+
+Among *unblocked* choices the ranking differences are small (all ~85-90%) —
+the pick there is a mild preference, not a strong signal.
 
 ## Why this exists
 
