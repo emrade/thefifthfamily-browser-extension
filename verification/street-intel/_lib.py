@@ -169,3 +169,180 @@ def scout_estimates(records):
         for est in resp["estimates"]:
             if est.get("modifiers"):
                 yield oid, est, mi
+
+
+# ---------------------------------------------------------------------------
+# Multi-archive helpers for the profit / stamina / target-selection scripts
+# (added 2026-10-04). Those questions need the whole combined history, and
+# the combined `tff archives` folder is several GB of gzip — loading it
+# single-threaded through load_records_deduped takes minutes, so this reads
+# each archive in parallel and keeps only the endpoints a script asks for.
+# ---------------------------------------------------------------------------
+
+def _load_filtered(args):
+    path, needles = args
+    out = []
+    for row in load_records(path):
+        ep = row.get("endpoint", "") or ""
+        if any(n in ep for n in needles):
+            out.append(row)
+    return out
+
+
+def load_endpoint_records(archive_paths, endpoint_substrings, processes: int = 8) -> list:
+    """Rows from every archive whose `endpoint` contains any of
+    `endpoint_substrings`, de-duplicated by (timestamp, endpoint, requestBody)
+    and sorted by timestamp. Panel endpoints carry a unique `_t=` cache-buster
+    in the URL but the archive's `endpoint` field strips it, which is why the
+    endpoint is part of the key but the URL isn't."""
+    from multiprocessing import Pool
+
+    seen = set()
+    rows = []
+    with Pool(processes) as pool:
+        for chunk in pool.imap_unordered(_load_filtered, [(p, tuple(endpoint_substrings)) for p in archive_paths]):
+            for row in chunk:
+                key = (row.get("timestamp"), row.get("endpoint"), row.get("requestBody"), row.get("url"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append(row)
+    rows.sort(key=lambda r: r.get("timestamp") or 0)
+    return rows
+
+
+def _money(text: str):
+    m = re.match(r"\$?\s*([\d.,]+)\s*([kKmMbB]?)", text.strip())
+    if not m:
+        return None
+    return float(m.group(1).replace(",", "")) * {"": 1, "k": 1e3, "m": 1e6, "b": 1e9}[m.group(2).lower()]
+
+
+def parse_panel_cards(panel_html: str) -> dict:
+    """Python port of streetIntelPanelRegexParser.ts — opportunity_id ->
+    {title, risk, legendary, reward_min, reward_max, stamina, scout_cost,
+    approaches}. Only workable cards (ones with a siScout handler) are
+    returned, same as the extension's own parser."""
+    end = panel_html.find("Operation Dossier")
+    if end != -1:
+        panel_html = panel_html[:end]
+    cards = {}
+    for chunk in panel_html.split('<div class="si-card ')[1:]:
+        id_m = re.search(r"siScout\((\d+),", chunk)
+        if not id_m:
+            continue
+        cls_m = re.match(r'^([^"]*)"', chunk)
+        cls = cls_m.group(1) if cls_m else ""
+        risk = next((r for r in ("extreme", "high", "medium") if f"risk-{r}" in cls), "low")
+        title_m = re.search(r'cat-icon"[\s\S]*?</div>\s*<span>([^<]+)', chunk)
+        reward_m = re.search(r'class="val"[^>]*>(\$[^<]+)<', chunk)
+        lo = hi = None
+        if reward_m:
+            parts = re.split(r"[–-]", reward_m.group(1))
+            lo, hi = _money(parts[0]), _money(parts[-1])
+        stam_m = re.search(r'class="val"[^>]*>(\d+)</div><div class="lbl">Stamina</div>', chunk)
+        scout_m = re.search(r"Scout \((\d+)S\)", chunk)
+        approaches = []
+        ap_m = re.search(r'data-approaches="([^"]+)"', chunk)
+        if ap_m:
+            try:
+                approaches = json.loads(html.unescape(ap_m.group(1)))
+            except json.JSONDecodeError:
+                pass
+        cards[int(id_m.group(1))] = {
+            "title": html.unescape(title_m.group(1).strip()) if title_m else None,
+            "risk": risk,
+            "legendary": "legendary" in cls,
+            "reward_min": lo,
+            "reward_max": hi,
+            "stamina": int(stam_m.group(1)) if stam_m else None,
+            "scout_cost": int(scout_m.group(1)) if scout_m else 1,
+            "approaches": approaches,
+        }
+    return cards
+
+
+def panel_html(row):
+    try:
+        return json.loads(row.get("responseBody") or "").get("html", "") or ""
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+
+
+def build_attempts(rows) -> list:
+    """Every `ok:true` Street Intel attempt, joined with its card (from the
+    latest panel snapshot that showed it) and its resolved complication (if
+    any). `net` = reward_cash minus whatever the complication took back."""
+    cards = {}
+    for row in rows:
+        if "type=street_intel" in (row.get("endpoint") or ""):
+            cards.update(parse_panel_cards(panel_html(row)))
+
+    complications = {}
+    for row in rows:
+        if row.get("endpoint") != "POST /actions/street_intel.php":
+            continue
+        body = row.get("requestBody") or ""
+        if "action=complication" not in body:
+            continue
+        try:
+            resp = json.loads(row["responseBody"])
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+        oid_m = re.search(r"opportunity_id=(\d+)", body)
+        choice_m = re.search(r"choice=(\w+)", body)
+        if oid_m and resp.get("ok") and resp.get("comp_success") is not None:
+            complications.setdefault(int(oid_m.group(1)), (resp, choice_m.group(1) if choice_m else None))
+
+    attempts = []
+    for row in rows:
+        if row.get("endpoint") != "POST /actions/street_intel.php":
+            continue
+        body = row.get("requestBody") or ""
+        if "action=attempt" not in body:
+            continue
+        try:
+            resp = json.loads(row["responseBody"])
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+        if not resp.get("ok"):
+            continue
+        oid = int(re.search(r"opportunity_id=(\d+)", body).group(1))
+        approach_m = re.search(r"approach=(\w+)", body)
+        card = cards.get(oid, {})
+        comp = complications.get(oid)
+        lost = 0
+        if comp and not comp[0]["comp_success"]:
+            r = comp[0]
+            lost = (r.get("cash_lost_from_hand") or 0) + (r.get("cash_lost_from_bank") or 0) or (r.get("cash_lost") or 0)
+        reward = resp.get("reward_cash") or 0
+        attempts.append(
+            {
+                "t": row.get("timestamp"),
+                "oid": oid,
+                "approach": approach_m.group(1) if approach_m else None,
+                "band": resp.get("outcome_band"),
+                "reward": reward,
+                "jail": resp.get("jail_time") or 0,
+                "has_complication": bool(resp.get("has_complication")),
+                "scenario": (resp.get("complication") or {}).get("type"),
+                "comp_choice": comp[1] if comp else None,
+                "comp_success": comp[0]["comp_success"] if comp else None,
+                "lost": lost,
+                "net": reward - lost,
+                "risk": card.get("risk"),
+                "legendary": card.get("legendary"),
+                "reward_min": card.get("reward_min"),
+                "reward_max": card.get("reward_max"),
+                "stamina": card.get("stamina"),
+            }
+        )
+    return attempts
+
+
+def player_day(ts_ms: int) -> str:
+    """Calendar day in the player's own timezone (WAT, UTC+1) — the game's
+    daily reset is 23:00 UTC, i.e. player midnight."""
+    import datetime
+
+    return (datetime.datetime.utcfromtimestamp(ts_ms / 1000) + datetime.timedelta(hours=1)).strftime("%Y-%m-%d")
