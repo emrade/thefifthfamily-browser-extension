@@ -9,6 +9,39 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.36.0] - 2026-10-05
+
+### Added
+- Street Intel Auto: **Smart scouting** switch (popup Street Intel Auto tab
+  and the in-page overlay; off by default). Before scouting, works out the
+  best odds each card could possibly show (from its risk tier and your own
+  modifiers) and only scouts cards that could still beat the best one
+  already found — in your last cycle, 1 scout instead of 12, same pick.
+  In a replay of 2026-09-14..10-04 it cut scouting from ~200 to ~64
+  Stamina a day and raised net profit about 14%.
+- Street Intel Auto: **Smart complication choices** switch (same places;
+  off by default). Most complication scenarios have one choice that has
+  never won (0/91 across 480 real complications, e.g. talk on "You hear
+  footsteps behind the door." 0/12) — those picks caused 86% of all cash
+  lost to complications. With this on, the runner keeps its usual pick
+  unless it's one of those, then uses the best remaining choice for that
+  scenario. The popup shows "(avoided X)" when it does.
+- Street Intel Complication Hint (Settings → page features, on by
+  default): when a complication comes up during manual play, marks the
+  never-winning choice "FF AVOID" and the best one "FF PICK" right on the
+  game's buttons, with each choice's real win record, plus a one-line
+  summary. Not yet checked against a live complication dialog.
+- Street Intel Auto popup: a live per-strategy comparison — attempts, net
+  profit, net per Stamina, share of Stamina spent scouting, and
+  complication win rate for each scouting/complication combination used.
+
+### Changed
+- Street Intel Auto no longer scouts every affordable card each cycle (that
+  spent ~30% of all Stamina on scouting). With Smart scouting off it now
+  scouts only the 2 highest-paying cards, then picks the best of those as
+  before — applies automatically, no setting to change. Replay: $20.6M/day
+  vs $18.2M for scouting everything (top 3: $20.1M).
+
 ## [0.35.1] - 2026-10-03
 
 ### Fixed
