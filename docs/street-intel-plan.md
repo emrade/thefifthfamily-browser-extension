@@ -323,7 +323,7 @@ model than iteration 2's incidental 25/25 — and it fixes the Easy Money case c
 Union Whisper's EV (94% × $34,350 ≈ $32,289) beats Easy Money's (95% × $6,850 ≈ $6,508)
 outright, no tolerance-band tuning required.
 
-`findScoutedCandidate()` in `actionRunner.ts` now scouts every affordable candidate
+`findScoutedCandidate()` in `actionRunner.ts` then scouted every affordable candidate (retired 2026-10-05 — see "Stamina and target-size analysis")
 (still in reward ÷ Stamina order, since the account owner's actual *scouting* order — as
 opposed to their final pick — isn't observable from the archive, only what they ended up
 comparing) and picks whichever cleared candidate has the highest EV
@@ -394,9 +394,9 @@ Policy replay (real panel snapshots and real Stamina income, 2026-09-14..
 \*Per calendar day including archive gaps — compare rows to each other.
 
 A big-targets-only filter idles most of the Stamina (500-700/day wasted at
-the cap), so it wasn't built. What shipped instead, **both opt-in, both off
-by default, toggled from the popup's Street Intel Auto tab and the in-page
-overlay**:
+the cap), so it wasn't built. What shipped instead — the two smart modes
+**opt-in and off by default**, both toggled from the popup's Street Intel Auto
+tab and the in-page overlay:
 
 - **Smart scouting** (`scoutMode: 'smart'`): scouts candidates in order of
   their best *possible* EV — `upperBoundEstimate()` in
@@ -407,6 +407,14 @@ overlay**:
   count). A card is skipped unscouted once the best real EV already found
   beats its bound. Only 5 of 7,645 real cards ever scouted above the bound,
   and being wrong only costs a missed card, never a bad attempt.
+- **Top 2 by payout** (`scoutMode: 'topPayout'`, the default — what the
+  Smart scouting switch falls back to when off): scouts only the 2
+  highest-paying affordable cards per cycle. Replaced the original
+  scout-everything behavior on 2026-10-05, at the account owner's request,
+  rather than keeping that as the fallback — it had no reason to exist once
+  its cost was known. Replay: top 1 $19.6M, **top 2 $20.6M**, top 3 $20.1M,
+  top 5 $19.3M per day (the third card rarely wins but its scout costs
+  Stamina every cycle).
 - **Smart complication choices** (`complicationMode: 'avoidBlocked'`): see
   `docs/street-intel-complication-tracking.md`'s Findings.
 

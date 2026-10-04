@@ -48,9 +48,9 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   // this in automatically (see `getStreetIntelAutoConfig`) so nobody's
   // config silently opts into 'computed' on upgrade.
   oddsMode: 'revealed',
-  // Same reasoning: both new modes are opt-in, the original behavior stays
-  // the default for every install (including upgrades).
-  scoutMode: 'all',
+  // Smart scouting and smart complications stay opt-in; 'topPayout' is the
+  // non-smart scouting behavior — see `StreetIntelAutoConfig.scoutMode`.
+  scoutMode: 'topPayout',
   complicationMode: 'reuse',
 };
 

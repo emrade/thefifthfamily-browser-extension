@@ -234,7 +234,7 @@ function renderToggle(): void {
   const scoutStatus = panelEl.querySelector('.ff-sip-scout-status');
   if (scoutToggle) scoutToggle.checked = smartScouting;
   if (scoutStatus) {
-    scoutStatus.textContent = smartScouting ? 'Only scouts cards that could beat the best found.' : 'Off — scouts every affordable card.';
+    scoutStatus.textContent = smartScouting ? 'Only scouts cards that could beat the best found.' : 'Off — scouts the 2 highest-paying cards.';
   }
 
   const smartComplications = config.complicationMode === 'avoidBlocked';
@@ -341,7 +341,7 @@ function buildPanel(): HTMLDivElement {
   toggle?.addEventListener('change', () => writeConfig({ enabled: toggle.checked }));
 
   const scoutToggle = el.querySelector<HTMLInputElement>('.ff-sip-scout-toggle');
-  scoutToggle?.addEventListener('change', () => writeConfig({ scoutMode: scoutToggle.checked ? 'smart' : 'all' }));
+  scoutToggle?.addEventListener('change', () => writeConfig({ scoutMode: scoutToggle.checked ? 'smart' : 'topPayout' }));
 
   const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));

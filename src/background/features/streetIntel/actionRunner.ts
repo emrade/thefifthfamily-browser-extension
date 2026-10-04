@@ -4,6 +4,7 @@ import {
   STREET_INTEL_AUTO_BUFFER_MS,
   STREET_INTEL_AUTO_FALLBACK_INTERVAL_MS,
   STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS,
+  STREET_INTEL_AUTO_TOP_PAYOUT_SCOUTS,
 } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
@@ -245,7 +246,8 @@ interface ScoutedChoice {
  * cleanly: Union Whisper's EV (94% × $34,350 ≈ $32,289) beats Easy Money's
  * (95% × $6,850 ≈ $6,508) outright, no tolerance-band tuning required.
  *
- * So: this scouts every affordable, workable candidate (still walking the
+ * So (original behavior — retired 2026-10-05, see `scoutMode` below): this
+ * scouted every affordable, workable candidate (still walking the
  * list in reward÷Stamina order — an arbitrary-but-reasonable order to spend
  * scouting Stamina in, since the account owner's actual *scouting* order
  * isn't observable from the archive, only what they ended up comparing) and,
@@ -282,8 +284,12 @@ interface ScoutedChoice {
  * quietly behaves like `'revealed'` for the cycle (no stats snapshot yet to
  * compute from), rather than guessing with a stat of 0.
  *
- * `scoutMode` (`StreetIntelAutoConfig`): under `'all'` (default), the
- * behavior above — every affordable candidate gets scouted. Under `'smart'`,
+ * `scoutMode` (`StreetIntelAutoConfig`): the "scouts every affordable
+ * candidate" behavior described above was the original, retired 2026-10-05
+ * (it spent ~30% of all Stamina on scouting). Under `'topPayout'` (default),
+ * only the `STREET_INTEL_AUTO_TOP_PAYOUT_SCOUTS` highest-paying affordable
+ * candidates (by reward midpoint) are scouted, then ranked by EV as above.
+ * Under `'smart'`,
  * candidates are walked in order of their best *possible* EV instead
  * (`upperBoundEstimate` — the highest odds the card could show once scouted,
  * from its risk tier's max `base_pct` and the account's own modifiers), and a
@@ -294,10 +300,10 @@ interface ScoutedChoice {
  * shared-modifier term starts from `DEFAULT_SHARED_MODS_UPPER_BOUND` and is
  * raised from each real scout this cycle (`upperBoundSharedMods`), which is
  * how an active `temporary` buff gets picked up. Needs `rawStats`; without
- * them the cycle quietly behaves like `'all'`.
+ * them the cycle quietly behaves like `'topPayout'`.
  *
  * Returns `scoutStaminaCharged` (what scouting really cost — a `cached`
- * re-scout is free) and `skipped` (candidates smart mode never scouted).
+ * re-scout is free) and `skipped` (candidates either mode left unscouted).
  */
 async function findScoutedCandidate(
   candidates: StreetIntelOpportunity[],
@@ -318,7 +324,10 @@ async function findScoutedCandidate(
   let sharedModsBound = DEFAULT_SHARED_MODS_UPPER_BOUND;
   const evBound = (c: StreetIntelOpportunity) =>
     (upperBoundEstimate(c.riskTier, c.approaches, statsByName, sharedModsBound) / 100) * rewardMidpoint(c);
-  const ordered = smart ? [...candidates].sort((a, b) => evBound(b) - evBound(a)) : candidates;
+  const ordered = smart
+    ? [...candidates].sort((a, b) => evBound(b) - evBound(a))
+    : [...candidates].sort((a, b) => rewardMidpoint(b) - rewardMidpoint(a));
+  let topPayoutTaken = 0;
 
   for (const candidate of ordered) {
     if (smart) {
@@ -337,8 +346,13 @@ async function findScoutedCandidate(
         skipped += 1;
         continue;
       }
-    } else if (availableStamina - staminaSpentScouting < candidate.scoutCost) {
-      continue;
+    } else {
+      if (availableStamina - staminaSpentScouting < candidate.scoutCost) continue;
+      if (topPayoutTaken >= STREET_INTEL_AUTO_TOP_PAYOUT_SCOUTS) {
+        skipped += 1;
+        continue;
+      }
+      topPayoutTaken += 1;
     }
 
     const valueRatio = rewardMidpoint(candidate) / candidate.staminaCost;
@@ -603,7 +617,7 @@ async function runIfEligibleOnce(): Promise<void> {
   // Only needed for `oddsMode: 'computed'` and `scoutMode: 'smart'` — raw
   // stats change only on level-ups/gear, so this cached read (rather than a
   // fresh stats.php call) is effectively always current. Null just means
-  // those modes behave like 'revealed'/'all' for this cycle (see
+  // those modes behave like 'revealed'/'topPayout' for this cycle (see
   // `findScoutedCandidate`'s doc comment).
   const rawStats = config.oddsMode === 'computed' || config.scoutMode === 'smart' ? await storage.getLatestStats() : null;
   const tallyKey = modeKey(config);

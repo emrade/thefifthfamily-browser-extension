@@ -21,7 +21,7 @@ function localDateKey(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-const SCOUT_MODE_LABEL: Record<string, string> = { all: 'Scout all', smart: 'Smart scouting' };
+const SCOUT_MODE_LABEL: Record<string, string> = { topPayout: 'Top 2 by payout', smart: 'Smart scouting' };
 const COMPLICATION_MODE_LABEL: Record<string, string> = { reuse: 'reuse approach', avoidBlocked: 'avoid losing choices' };
 
 function modeTallyLabel(key: string): string {
@@ -105,7 +105,7 @@ export function StreetIntelAutoHome() {
 
   function setScoutMode(smart: boolean) {
     if (!config) return;
-    saveConfig({ ...config, scoutMode: smart ? 'smart' : 'all' });
+    saveConfig({ ...config, scoutMode: smart ? 'smart' : 'topPayout' });
   }
 
   function setComplicationMode(avoidBlocked: boolean) {
@@ -192,7 +192,7 @@ export function StreetIntelAutoHome() {
           <div class="ff-toggle-row__status">
             {config.scoutMode === 'smart'
               ? 'Only scouts cards that could still beat the best one found so far.'
-              : 'Off — scouts every affordable card each cycle.'}
+              : 'Off — scouts the 2 highest-paying cards each cycle.'}
           </div>
         </div>
         <input type="checkbox" class="ff-toggle" checked={config.scoutMode === 'smart'} onChange={(e) => setScoutMode((e.target as HTMLInputElement).checked)} />
@@ -299,7 +299,7 @@ export function StreetIntelAutoHome() {
             coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
             {config.oddsMode === 'computed' && ' "≈" marks a computed (not scout-revealed) estimate; "→" marks the pick.'}
             {(status.lastCycleSkipped ?? 0) > 0 &&
-              ` Smart scouting left ${status.lastCycleSkipped} more card${status.lastCycleSkipped === 1 ? '' : 's'} unscouted — none could beat the pick.`}
+              ` ${status.lastCycleSkipped} more affordable card${status.lastCycleSkipped === 1 ? '' : 's'} left unscouted${config.scoutMode === 'smart' ? ' — none could beat the pick' : ' (outside the top 2 by payout)'}.`}
           </div>
           {status.lastCycleScouted.map((c, i) => {
             // `approaches` is new (2026-09-06) — a `lastCycleScouted` entry

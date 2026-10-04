@@ -249,6 +249,11 @@ export const STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // sub-60% disaster. 50 sits just above that realized floor.
 export const STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT = 50;
 
+/** How many cards `scoutMode: 'topPayout'` scouts per cycle — the highest-
+ *  paying ones. 2 beat 3 in the 2026-10-04 replay ($20.6M vs $20.1M/day):
+ *  the third card rarely won, but its scout cost Stamina every cycle. */
+export const STREET_INTEL_AUTO_TOP_PAYOUT_SCOUTS = 2;
+
 // --- Stock market tracker -----------------------------------------------------
 //
 // See docs/stock-market-tracker-plan.md. Confirmed from the live panel's own

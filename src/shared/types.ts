@@ -793,8 +793,12 @@ export interface StreetIntelAutoConfig {
    *  regardless of which one was revealed — see
    *  docs/street-intel-partial-reveal.md's "Correction" note. */
   oddsMode: 'revealed' | 'computed';
-  /** 'all' (default): scout every affordable candidate each cycle, then rank
-   *  — the original behavior. 'smart': scout candidates in order of their
+  /** 'topPayout' (default): scout only the `STREET_INTEL_AUTO_TOP_PAYOUT_SCOUTS`
+   *  (2) highest-paying affordable candidates (by reward midpoint), then rank
+   *  those. Replaced the original scout-every-affordable-candidate behavior
+   *  (~30% of all Stamina went on scouting) before either mode shipped.
+   *  Replay: $18.2M/day scouting everything vs $20.6M top 2 vs $20.1M top 3.
+   *  'smart': scout candidates in order of their
    *  best *possible* EV (a pre-scout upper bound on odds — see
    *  `upperBoundEstimate` in `@/shared/streetIntelEstimate`) and stop as soon
    *  as the best real EV already found beats every remaining candidate's
@@ -813,7 +817,7 @@ export interface StreetIntelAutoConfig {
   complicationMode: StreetIntelComplicationMode;
 }
 
-export type StreetIntelScoutMode = 'all' | 'smart';
+export type StreetIntelScoutMode = 'topPayout' | 'smart';
 export type StreetIntelComplicationMode = 'reuse' | 'avoidBlocked';
 
 /** Running totals for one scoutMode+complicationMode combination — what lets
@@ -1005,7 +1009,8 @@ export interface StreetIntelAutoStatus {
   complicationTypeStats: ComplicationTypeStats;
   /** How many affordable candidates the last cycle left unscouted because
    *  smart scouting proved none of them could beat what it had already found.
-   *  Always 0 under `scoutMode: 'all'`. Optional for pre-existing statuses. */
+   *  Under `scoutMode: 'topPayout'`, the candidates past the top-payout cap.
+   *  Optional for pre-existing statuses. */
   lastCycleSkipped?: number;
   /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
    *  Optional for pre-existing statuses. */
