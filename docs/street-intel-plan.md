@@ -186,13 +186,13 @@ Not built (out of scope for this pass, no explicit ask):
 
 ## Auto-Attempt
 
-Status: **implemented, but a 2026-09-06 game change invalidated a core
-assumption below — see `docs/street-intel-partial-reveal.md` for the full
-investigation. Short version: scouting no longer reveals every approach's
-odds in one call (one random approach only, rarely two), which breaks
-`findScoutedCandidate()`'s `sorted[1]`/`secondBestApproach` and the "Confirmed
-API details" `scout` shape description immediately below. Fixes not yet
-applied.**
+Status: **implemented.** A 2026-09-06 game change (scouting reveals one
+random approach, rarely two) broke the original `secondBestApproach` logic;
+fixed the same day — see `docs/street-intel-partial-reveal.md`'s "What needs
+fixing" list. The "Confirmed API details" `scout` shape below still describes
+the pre-change shape as history. **2026-10-04:** two opt-in strategy modes
+added after a stamina and target-size analysis — see "Stamina and
+target-size analysis" below.
 
 The highlights and notifier above still leave every action manual — the player scouts,
 picks an approach, attempts, and answers any complication by hand. This adds a
@@ -351,11 +351,84 @@ the second came back `"Not enough energy!"` and paused the automation) — see
 `docs/career-auto-plan.md`'s "Known residual risk" section for that capture; fixed with
 the same `cycleInFlight` guard.
 
+### Stamina and target-size analysis (2026-10-04)
+
+The question: Stamina feels too short to keep Street Intel going — would a
+toggle that only targets big payouts (roughly $1M+, high/extreme risk) make
+more money? Every archive combined (2026-08-10..10-04, ~2,235 attempts,
+~12.7k scouts); scripts in `verification/street-intel/`
+(`analyze_profit_and_stamina.py`, `simulate_target_selection.py`).
+
+- **Current earnings:** full days since 2026-09-07 net ~$18-29M from ~55-70
+  attempts (2026-10-04: $26,982,568 gross, matching the extension's own
+  `cashToday`).
+- **Stamina is the binding limit, not cooldown:** regen is 1 point per 234s
+  (`stats.php` `regen_rates.stamina`, ~370/day) plus ~430/day from refills and
+  level-ups. The 480s cooldown would allow ~180 attempts/day; the account
+  does ~60. So profit *per Stamina* is the metric to optimize.
+- **~30% of all Stamina went on scouting.** The runner scouted every
+  affordable card every cycle (~3.6 paid scouts per attempt, 200-380
+  Stamina/day). A `cached: true` re-scout is free; only first-time scouts are
+  charged.
+- **Bigger cards do pay more per Stamina** (net, since 2026-09-14): low
+  $15k, medium $31k, high $38k, extreme $68k, $1M+ midpoint $81-85k.
+- **But supply is the limit.** Only ~10-14 cards/day have a $1M+ midpoint,
+  and the runner already attempted 55% of them; 22% were skipped for odds
+  just under the 52% floor (all 45-51%), ~15% for Stamina/scouting reasons.
+- **Scouted odds are honest:** 50-54% scouted won 60% (n=162), 55-59% won
+  68%, 95% won 96%. The computed best approach (oddsMode `computed`) matched
+  the real runner's chosen approach on 2,228/2,235 attempts.
+
+Policy replay (real panel snapshots and real Stamina income, 2026-09-14..
+10-04, expected-value credited; baseline within ~5% of the real net):
+
+| Policy | Net/day* |
+| --- | --- |
+| Current | $18.3M |
+| $1M+ midpoint only | $6.5M |
+| $750k+ only | $13.4M |
+| High + extreme only | $18.5M |
+| Smart scouting | **$20.8M** (scouting 203 → 64 Stamina/day) |
+| Smart scouting + $1M+ cards allowed down to 45% odds | $22.5M |
+
+\*Per calendar day including archive gaps — compare rows to each other.
+
+A big-targets-only filter idles most of the Stamina (500-700/day wasted at
+the cap), so it wasn't built. What shipped instead, **both opt-in, both off
+by default, toggled from the popup's Street Intel Auto tab and the in-page
+overlay**:
+
+- **Smart scouting** (`scoutMode: 'smart'`): scouts candidates in order of
+  their best *possible* EV — `upperBoundEstimate()` in
+  `src/shared/streetIntelEstimate.ts`, from the risk tier's max `base_pct`
+  (low 61, medium 46, high 33, extreme 23), the account's raw stats, the
+  card's pre-scout approach bonuses/autofail flags, and a shared-modifier
+  ceiling raised from each real scout that cycle (so `temporary` buffs
+  count). A card is skipped unscouted once the best real EV already found
+  beats its bound. Only 5 of 7,645 real cards ever scouted above the bound,
+  and being wrong only costs a missed card, never a bad attempt.
+- **Smart complication choices** (`complicationMode: 'avoidBlocked'`): see
+  `docs/street-intel-complication-tracking.md`'s Findings.
+
+Each attempt records which modes it ran under, and
+`StreetIntelAutoStatus.modeTallies` keeps live totals per mode combination
+(net per Stamina, scouting share, complication win rate), shown in the
+popup — so the new modes can be judged on live results, not just the replay.
+
+**Not built (deliberately):** a lower odds floor for $1M+ cards. It's the
++$1.7M/day difference between the last two table rows, but below 50% the
+calibration rests on only 8 real attempts, and at 50-54% odds ~13% of
+attempts are disasters (jail). Worth revisiting once there's more data.
+
 ### Residual risk
 
 Same shape as Career's: the tracked cooldown is this feature's *own*, seeded only from
 calls it makes itself, and can go stale if the account also plays Street Intel manually
 — mitigated, not eliminated, by cross-checking the panel's own live cooldown bar each
-cycle. And the complication-choice mapping (reuse the attempt's winning approach) is a
-reasoned heuristic based on how the choices map to stats, not something confirmed
-against real per-choice odds — none exist to confirm against.
+cycle. The default complication rule (reuse the attempt's winning approach) is a reasoned
+heuristic, and as of 2026-10-04 is known to keep making scenario-blocked picks; the
+opt-in `avoidBlocked` mode fixes that from real outcome data (the game still exposes no
+odds for complication choices). Smart scouting's bound rests on the highest `base_pct`
+and modifiers ever observed — a game change that raised them would make it stop
+scouting a little early (a missed card, not a bad attempt) until the constants in
+`streetIntelEstimate.ts` are updated.

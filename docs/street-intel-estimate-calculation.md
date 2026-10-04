@@ -226,6 +226,20 @@ Because `base_pct` is constant across all approaches on a given card, a single r
 
 ## 7. Complication Analysis & Optimal Choice Strategy
 
+> **Update (2026-10-04): superseded by a much larger sample.** With 480
+> resolved complications (every archive combined, vs 55 here), the
+> per-scenario picture in 7C is directionally right for the *avoid* side but
+> several specific claims didn't hold — e.g. "The drop site is surrounded" is
+> not 0/3 "extreme peril" (fight is now 7/8), and "getaway driver never
+> showed up" favours run/talk, not run alone. The real pattern is simpler:
+> 14 of 24 scenarios have one choice that never wins (0/91 combined), and
+> the other two choices win ~85% whatever they are. Section 7D's
+> "default to `fight`" advice is not supported (fight 85%, run 83%, talk 90%
+> once blocked picks are excluded). Current reference:
+> `docs/street-intel-complication-tracking.md` ("Findings") and
+> `verification/street-intel/verify_complication_blocked_choices.py`. Acted
+> on via the opt-in `complicationMode: 'avoidBlocked'`.
+
 An investigation of all **55 resolved complication events** in the archive (`fifth-family-archive-2026-09-06T14-27-10-157Z.ndjson.gz`) was conducted to evaluate the current complication heuristic and determine the optimal selection strategy.
 
 ### A. Empirical Win Rate & Cash Loss by Choice
@@ -318,4 +332,4 @@ Does **not** hold up as stated:
 
 - **Table A/B's "+ Parsed `env_stat`" column claiming 100.00%/MAE 0.000.** Replicating the described heuristic (flat +3.5/-3.0 for favored/hindered) gives 98.34% exact / MAE 0.017 / worst-case 1 — good, not perfect. Checked why: `env_stat`'s magnitude isn't recoverable from `modifier_intel` text at all — the identical string `"Favorable conditions (+5%). Lower complication risk. Agility approaches favored."` maps to real `env_stat` values of both `3` (17 occurrences) and `4` (13 occurrences) across different cards. The text only ever says "favored"/"hindered" categorically, never the actual number (unlike `env_global`'s own "(+N%)", which is a different, separate figure). No text-parsing approach can reach 100% here; the 100% figure in this column was most likely computed using each target's real (ground-truth) `env_stat` value during the backtest rather than one actually derived from text — trivial to get 100% that way in a backtest, but not achievable for a genuinely hidden approach in real play. **Shipped implementation defaults `env_stat` to 0 rather than attempting text-parsing**, accepting the small associated error (worst case ~3pt) rather than a heuristic that can't actually reach the accuracy it was framed as reaching.
 
-Section 7 (Complication Analysis)'s specific strategy recommendations (prompt-keyword matching, defaulting the `steel_yourself` fallback to `fight`) are **not** acted on — see the conversation this doc came out of for why: most per-scenario samples are `n=1`-`2`, well under this project's own `docs/street-intel-complication-tracking.md` noise threshold (~15-20+), and the `fight`-fallback figure here (5/6, 83.3%) is a small slice of a larger tracked history (`complicationStats`, 146 total direct+fallback events by a later point) where `fight`'s own *fallback* win rate — the only bucket `pickComplicationChoice` actually consults — sits at 60% (9/15) and `run`'s fallback rate is actually ahead at 69% (18/26); confirmed 2026-09-06 by reading the live `complicationStats` straight out of the extension's popup UI. The larger sample is the one to trust. `complicationTypeStats` (new, see `shared/types.ts`) now tracks wins/attempts per scenario type so this hypothesis can accumulate real evidence before anything acts on it.
+*(2026-10-04: the per-scenario question below is now answered — see the update note at the top of Section 7. Kept as written for history.)* Section 7 (Complication Analysis)'s specific strategy recommendations (prompt-keyword matching, defaulting the `steel_yourself` fallback to `fight`) are **not** acted on — see the conversation this doc came out of for why: most per-scenario samples are `n=1`-`2`, well under this project's own `docs/street-intel-complication-tracking.md` noise threshold (~15-20+), and the `fight`-fallback figure here (5/6, 83.3%) is a small slice of a larger tracked history (`complicationStats`, 146 total direct+fallback events by a later point) where `fight`'s own *fallback* win rate — the only bucket `pickComplicationChoice` actually consults — sits at 60% (9/15) and `run`'s fallback rate is actually ahead at 69% (18/26); confirmed 2026-09-06 by reading the live `complicationStats` straight out of the extension's popup UI. The larger sample is the one to trust. `complicationTypeStats` (new, see `shared/types.ts`) now tracks wins/attempts per scenario type so this hypothesis can accumulate real evidence before anything acts on it.

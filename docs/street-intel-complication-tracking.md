@@ -1,13 +1,55 @@
 # Street Intel — Complication Choice Tracking
 
-Status: **instrumentation implemented — and as of 2026-09-06, the `fallback`
-bucket below has cleared this doc's own "~15-20+" sample threshold for all
-three choices (see "How to use this data later," point 1). See
-`docs/street-intel-partial-reveal.md` for why this is now urgent, not just
-available: the 2026-09-06 scouting change broke the `secondBestApproach`
-heuristic `pickComplicationChoice()`'s `steel_yourself` fallback depends on,
-and this tracker's real `fallback` win-rate data is the recommended
-replacement.**
+Status: **answered (2026-10-04) — see "Findings" directly below.** The
+per-scenario question this tracker was built to eventually answer now has a
+real answer: most scenarios have one choice that never wins, and avoiding it
+is worth far more than any per-choice or raw-stat signal. Acted on through the
+opt-in **Smart complication choices** toggle (`complicationMode:
+'avoidBlocked'`). The original reuse/fallback rule is unchanged and still the
+default.
+
+## Findings (2026-10-04)
+
+Every archive combined (480 resolved complications, 2026-08-10..10-04 —
+`verification/street-intel/verify_complication_blocked_choices.py`):
+
+- **14 of 24 scenarios have one *blocked* choice** that went 0-for-everything:
+  0/91 combined (talk 0/55, run 0/20, fight 0/16). Strongest single cells:
+  talk on "You hear footsteps behind the door." 0/12 (p≈1e-10 at the pooled
+  rate), run on "The evidence is heavier than expected." 0/11, talk on
+  "booby-trapped" 0/9, run on "reinforced case" 0/9, talk on "lockdown" 0/8,
+  fight on "fake credentials" 0/7. Stable across 1-6 weeks and many different
+  cards; the card's own `autofail` flags don't explain it (autofail-card
+  choices still won 26/31).
+- **Every non-blocked choice wins about the same:** fight 85%, run 83%, talk
+  90% pooled. So the raw-stat hypothesis below (Strength is this account's
+  best stat, so maybe `fight` wins more) is **not supported** — once blocked
+  picks are removed, the choice itself barely matters.
+- **Blocked picks cost $26.4M of the $30.7M lost to complications (86%).**
+  The original rule kept making them (74 of 91 in a chronological replay)
+  because it never looked at the scenario.
+- **Chronological replay** (only data available before each event): "avoid
+  any choice that's 0-for-2+ in this scenario, otherwise reuse" cuts expected
+  losses from $30.7M to ~$10M, starting from zero knowledge.
+- **Ceiling: about 85%.** Nothing else separates non-blocked wins from losses
+  — outcome band, risk tier, odds, reward size, direct vs fallback, the card's
+  favoured/hindered-stat intel, level, rank, stamina were all flat. Difficulty
+  is always 40 and `comp_score` has been hidden since 2026-08-11 (it briefly
+  showed 65-82 against difficulties 30-50, consistent with a hidden stat
+  roll). The card's "Lower/Higher complication risk" intel changes how *often*
+  a complication happens (22% vs 32% of successful attempts), not the result.
+- **Untested lead: a fourth choice, `stand_ground`.** Used once manually
+  (2026-08-29) after a `steel_yourself` attempt, on "The evidence is heavier
+  than expected." — and won, in the scenario where `run` is 0/11. Not used by
+  the runner; whether the game offers it on every complication or only after
+  `steel_yourself` is unknown.
+
+How the new mode decides (`src/shared/streetIntelComplications.ts`): keep the
+original rule's pick unless it's blocked for this scenario — either in the
+seeded table from the analysis above, or 0-for-2+ in the live
+`complicationTypeStats`. If blocked, use the unblocked choice with the best
+win rate for that scenario, shrunk toward its pooled rate. The popup shows
+"(avoided X)" on the last attempt whenever it overrode a pick.
 
 ## Why this exists
 
@@ -29,7 +71,8 @@ its own, but it raised a real question worth checking with actual data instead o
 guessing again: **is "reuse the winning approach" even the right heuristic, or would a
 different signal do better?**
 
-One concrete alternative hypothesis, **not confirmed, worth testing once data exists**:
+One concrete alternative hypothesis (**tested 2026-10-04 — not supported**; see Findings
+above: non-blocked choices win 83-90% regardless of stat), originally worth testing once data existed:
 this account's raw stats (from `stats.php`) are `strength: 82, defence: 62, agility: 58,
 dexterity: 58` — strength is this account's clearly strongest stat. But `fight`-flavored
 *attempt* approaches score the **worst** of the four in scouted `estimate_pct` (~36%
@@ -99,6 +142,9 @@ doing. This tracker is deliberately just the lightweight aggregate for at-a-glan
 visibility.
 
 ## How to use this data later
+
+*Kept for history — point 3 below (stratify by `complication.type`) is what
+actually answered it, on 2026-10-04; see Findings above.*
 
 **Don't touch the selection heuristic on a small sample.** A single choice's win rate
 needs a real sample before it means anything — treat anything under roughly 15–20

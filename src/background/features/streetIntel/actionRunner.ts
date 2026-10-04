@@ -12,7 +12,8 @@ import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
-import { computeEstimate, sumSharedModifiers } from '@/shared/streetIntelEstimate';
+import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
+import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
 import type {
   ComplicationChoiceKey,
   ComplicationTrackingBucket,
@@ -22,6 +23,7 @@ import type {
   ScoutedCandidateLog,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
+  StreetIntelModeTally,
 } from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
@@ -94,6 +96,8 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
     lastCycleAt: current?.lastCycleAt ?? null,
     complicationStats: current?.complicationStats ?? EMPTY_COMPLICATION_STATS,
     complicationTypeStats: current?.complicationTypeStats ?? {},
+    lastCycleSkipped: current?.lastCycleSkipped ?? 0,
+    modeTallies: current?.modeTallies ?? {},
     ...patch,
   };
   await storage.setStreetIntelAutoStatus(next);
@@ -136,6 +140,34 @@ function bumpComplicationTypeStats(current: ComplicationTypeStats | undefined, t
     ...base,
     [type]: { ...bucket, [choice]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } },
   };
+}
+
+function modeKey(config: StreetIntelAutoConfig): string {
+  return `${config.scoutMode}+${config.complicationMode}`;
+}
+
+/** Adds `delta` into the running tally for whichever scoutMode+complicationMode
+ *  combination this cycle ran under — see `StreetIntelModeTally`. */
+function bumpModeTally(
+  current: Record<string, StreetIntelModeTally> | undefined,
+  key: string,
+  delta: Partial<Omit<StreetIntelModeTally, 'since'>>,
+): Record<string, StreetIntelModeTally> {
+  const base = current ?? {};
+  const prior: StreetIntelModeTally = base[key] ?? {
+    since: Date.now(),
+    cycles: 0,
+    scoutStamina: 0,
+    attempts: 0,
+    attemptStamina: 0,
+    gross: 0,
+    cashLost: 0,
+    complications: 0,
+    complicationWins: 0,
+  };
+  const next = { ...prior };
+  for (const [field, value] of Object.entries(delta) as [keyof typeof delta, number][]) next[field] += value;
+  return { ...base, [key]: next };
 }
 
 async function pause(message: string): Promise<void> {
@@ -249,24 +281,70 @@ interface ScoutedChoice {
  * `rawStats` is only needed for `'computed'` — null just means that mode
  * quietly behaves like `'revealed'` for the cycle (no stats snapshot yet to
  * compute from), rather than guessing with a stat of 0.
+ *
+ * `scoutMode` (`StreetIntelAutoConfig`): under `'all'` (default), the
+ * behavior above — every affordable candidate gets scouted. Under `'smart'`,
+ * candidates are walked in order of their best *possible* EV instead
+ * (`upperBoundEstimate` — the highest odds the card could show once scouted,
+ * from its risk tier's max `base_pct` and the account's own modifiers), and a
+ * candidate is skipped without scouting once the best real EV already found
+ * (and still affordable) beats its bound — it provably can't win. Only a
+ * candidate whose scout *and* attempt both still fit gets scouted, so no
+ * Stamina goes on a card that couldn't be attempted anyway. The bound's
+ * shared-modifier term starts from `DEFAULT_SHARED_MODS_UPPER_BOUND` and is
+ * raised from each real scout this cycle (`upperBoundSharedMods`), which is
+ * how an active `temporary` buff gets picked up. Needs `rawStats`; without
+ * them the cycle quietly behaves like `'all'`.
+ *
+ * Returns `scoutStaminaCharged` (what scouting really cost — a `cached`
+ * re-scout is free) and `skipped` (candidates smart mode never scouted).
  */
 async function findScoutedCandidate(
   candidates: StreetIntelOpportunity[],
   minSuccessPct: number,
   availableStamina: number,
   oddsMode: StreetIntelAutoConfig['oddsMode'],
+  scoutMode: StreetIntelAutoConfig['scoutMode'],
   rawStats: PlayerStatsSnapshot | null,
-): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[] }> {
+): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[]; scoutStaminaCharged: number; skipped: number }> {
   const log: ScoutedCandidateLog[] = [];
   let staminaSpentScouting = 0;
+  let scoutStaminaCharged = 0;
+  let skipped = 0;
   const cleared: { choice: ScoutedChoice; logIndex: number }[] = [];
 
-  for (const candidate of candidates) {
-    if (availableStamina - staminaSpentScouting < candidate.scoutCost) continue;
+  const smart = scoutMode === 'smart' && rawStats !== null;
+  const statsByName = (rawStats ?? {}) as unknown as Record<string, number>;
+  let sharedModsBound = DEFAULT_SHARED_MODS_UPPER_BOUND;
+  const evBound = (c: StreetIntelOpportunity) =>
+    (upperBoundEstimate(c.riskTier, c.approaches, statsByName, sharedModsBound) / 100) * rewardMidpoint(c);
+  const ordered = smart ? [...candidates].sort((a, b) => evBound(b) - evBound(a)) : candidates;
+
+  for (const candidate of ordered) {
+    if (smart) {
+      const staminaLeft = availableStamina - staminaSpentScouting;
+      if (staminaLeft < candidate.scoutCost + candidate.staminaCost) continue;
+      const bestFoundEv = Math.max(
+        -1,
+        ...cleared
+          .filter((c) => c.choice.opportunity.staminaCost <= staminaLeft)
+          .map((c) => (c.choice.estimatePct / 100) * rewardMidpoint(c.choice.opportunity)),
+      );
+      // `continue`, not `break`: the bound tightens/loosens as real scouts
+      // update `sharedModsBound`, so the initial order isn't guaranteed to
+      // still be bound order — each remaining candidate is checked on its own.
+      if (bestFoundEv >= evBound(candidate)) {
+        skipped += 1;
+        continue;
+      }
+    } else if (availableStamina - staminaSpentScouting < candidate.scoutCost) {
+      continue;
+    }
 
     const valueRatio = rewardMidpoint(candidate) / candidate.staminaCost;
     const resp = await postAction('/actions/street_intel.php', { action: 'scout', opportunity_id: candidate.id });
     staminaSpentScouting += candidate.scoutCost;
+    if (resp?.ok === true && !resp.cached) scoutStaminaCharged += Number(resp.scout_cost ?? candidate.scoutCost) || 0;
 
     // An ordinary business rejection (e.g. a stamina/cooldown race against our
     // own tracking) — not systemic, just means this one candidate is off the
@@ -310,6 +388,9 @@ async function findScoutedCandidate(
     // all and every entry was a real reveal. See
     // docs/street-intel-partial-reveal.md for the full investigation.
     const revealed = resp.estimates.filter((e: any) => typeof e.estimate_pct === 'number' && e.revealed !== false);
+    for (const e of revealed) {
+      if (e.modifiers) sharedModsBound = Math.max(sharedModsBound, upperBoundSharedMods(e.modifiers));
+    }
 
     // Ranking pool: the scout's own real numbers, always — plus, under
     // `oddsMode: 'computed'`, every other approach on the card scored via the
@@ -400,7 +481,7 @@ async function findScoutedCandidate(
   const winner = byEvDesc.find((c) => c.choice.opportunity.staminaCost <= staminaLeftAfterScouting) ?? null;
   if (winner) log[winner.logIndex].chosen = true;
 
-  return { choice: winner?.choice ?? null, log };
+  return { choice: winner?.choice ?? null, log, scoutStaminaCharged, skipped };
 }
 
 /**
@@ -519,19 +600,33 @@ async function runIfEligibleOnce(): Promise<void> {
     .filter((o) => o.staminaCost > 0 && o.approaches.length > 0 && status.stamina >= o.scoutCost + o.staminaCost)
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
 
-  // Only needed for `oddsMode: 'computed'` — raw stats change only on
-  // level-ups/gear, so this cached read (rather than a fresh stats.php call)
-  // is effectively always current. Null just means that mode behaves like
-  // 'revealed' for this cycle (see `findScoutedCandidate`'s doc comment).
-  const rawStats = config.oddsMode === 'computed' ? await storage.getLatestStats() : null;
+  // Only needed for `oddsMode: 'computed'` and `scoutMode: 'smart'` — raw
+  // stats change only on level-ups/gear, so this cached read (rather than a
+  // fresh stats.php call) is effectively always current. Null just means
+  // those modes behave like 'revealed'/'all' for this cycle (see
+  // `findScoutedCandidate`'s doc comment).
+  const rawStats = config.oddsMode === 'computed' || config.scoutMode === 'smart' ? await storage.getLatestStats() : null;
+  const tallyKey = modeKey(config);
 
   try {
-    const { choice, log } = await findScoutedCandidate(candidates, config.minSuccessPct, status.stamina, config.oddsMode, rawStats);
+    const { choice, log, scoutStaminaCharged, skipped } = await findScoutedCandidate(
+      candidates,
+      config.minSuccessPct,
+      status.stamina,
+      config.oddsMode,
+      config.scoutMode,
+      rawStats,
+    );
+    // Read once here so both the "no attempt" paths and the attempt path
+    // below can fold this cycle's scouting into the running mode tally.
+    const previousStatus = await storage.getStreetIntelAutoStatus();
+    const cycleTallies = bumpModeTally(previousStatus?.modeTallies, tallyKey, { cycles: 1, scoutStamina: scoutStaminaCharged });
+
     if (!choice) {
       // Nothing affordable cleared the bar this cycle — the scouted log is
       // still worth keeping (it's the whole answer to "what did it consider
       // and why didn't it act"), even though no attempt happened.
-      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now() });
+      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now(), lastCycleSkipped: skipped, modeTallies: cycleTallies });
       scheduleNextCheck(null);
       return;
     }
@@ -559,7 +654,7 @@ async function runIfEligibleOnce(): Promise<void> {
     // and retry on the normal fallback cadence — rather than pausing.
     if (attemptResp?.ok === false && typeof attemptResp.msg === 'string' && /cooldown active|opportunity has expired/i.test(attemptResp.msg)) {
       console.error(LOG_PREFIX, `street intel attempt rejected — ${attemptResp.msg}`);
-      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now() });
+      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now(), lastCycleSkipped: skipped, modeTallies: cycleTallies });
       scheduleNextCheck(null);
       return;
     }
@@ -576,13 +671,10 @@ async function runIfEligibleOnce(): Promise<void> {
       return;
     }
 
-    // Fetched here, before the complication decision below needs it (for the
-    // `fallback` win-rate lookup in `pickComplicationChoice`), and reused
-    // further down rather than fetched a second time.
-    const previousStatus = await storage.getStreetIntelAutoStatus();
-
     let complicationChoice: string | null = null;
+    let complicationAvoided: string | null = null;
     let complicationSuccess: boolean | null = null;
+    let complicationCashLost = 0;
     // The scenario's own narrative text — see `ComplicationTypeStats`'s doc
     // comment in shared/types.ts for why this is captured. Not used for the
     // choice decision itself yet (sample sizes per scenario are still tiny),
@@ -590,6 +682,13 @@ async function runIfEligibleOnce(): Promise<void> {
     const complicationType: string | null = attemptResp.has_complication ? String(attemptResp.complication?.type ?? '') || null : null;
     if (attemptResp.has_complication) {
       complicationChoice = pickComplicationChoice(choice, previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
+      // Opt-in override: same pick unless it's a known loser for this exact
+      // scenario — see `@/shared/streetIntelComplications`.
+      if (config.complicationMode === 'avoidBlocked' && complicationType !== null && isComplicationChoiceKey(complicationChoice)) {
+        const picked = pickAvoidingBlocked(complicationType, complicationChoice, previousStatus?.complicationTypeStats);
+        complicationChoice = picked.choice;
+        complicationAvoided = picked.avoided;
+      }
       const compResp = await postAction('/actions/street_intel.php', {
         action: 'complication',
         opportunity_id: choice.opportunity.id,
@@ -599,7 +698,13 @@ async function runIfEligibleOnce(): Promise<void> {
       // the automation — the attempt itself already fully resolved and
       // banked its own cooldown; a failed complication response just means
       // this one follow-up result is unknown, not that anything is broken.
-      if (compResp?.ok === true) complicationSuccess = Boolean(compResp.comp_success);
+      if (compResp?.ok === true) {
+        complicationSuccess = Boolean(compResp.comp_success);
+        if (!complicationSuccess) {
+          complicationCashLost =
+            (Number(compResp.cash_lost_from_hand) || 0) + (Number(compResp.cash_lost_from_bank) || 0) || Number(compResp.cash_lost) || 0;
+        }
+      }
       else console.error(LOG_PREFIX, 'street intel complication response was not ok:true', compResp);
     }
 
@@ -633,13 +738,13 @@ async function runIfEligibleOnce(): Promise<void> {
     const cashToday = (rolledOver ? 0 : previousStatus!.cashToday ?? 0) + rewardCash;
     const nextEligibleAt = Date.now() + attemptResp.cooldown_seconds * 1000;
 
-    // Whether this complication choice came from the steel_yourself fallback
-    // (real fallback win-rate lookup, see pickComplicationChoice) rather than
-    // directly reusing the attempt's own winning approach — see
-    // pickComplicationChoice's own branch condition, mirrored here, and
-    // ComplicationTrackingBucket's doc comment for why the two are tracked
-    // separately.
-    const wasFallback = choice.approach === 'steel_yourself';
+    // Whether this complication choice was anything other than directly
+    // reusing the attempt's own winning approach — the steel_yourself
+    // fallback (see pickComplicationChoice) or an `avoidBlocked` override.
+    // Under the original rule this is exactly `approach === 'steel_yourself'`;
+    // see ComplicationTrackingBucket's doc comment for why direct and
+    // fallback picks are tracked separately.
+    const wasFallback = complicationChoice !== null && complicationChoice !== choice.approach;
 
     // Only folds in a real, resolved outcome — a complication that came back
     // as anything other than `ok:true` leaves `complicationSuccess` null and
@@ -670,6 +775,9 @@ async function runIfEligibleOnce(): Promise<void> {
         complicationChoice,
         complicationWasFallback: attemptResp.has_complication ? wasFallback : null,
         complicationSuccess,
+        complicationAvoided,
+        scoutMode: config.scoutMode,
+        complicationMode: config.complicationMode,
       },
       nextEligibleAt,
       pausedReason: null,
@@ -682,6 +790,15 @@ async function runIfEligibleOnce(): Promise<void> {
       lastCycleAt: Date.now(),
       complicationStats,
       complicationTypeStats,
+      lastCycleSkipped: skipped,
+      modeTallies: bumpModeTally(cycleTallies, tallyKey, {
+        attempts: 1,
+        attemptStamina: choice.opportunity.staminaCost,
+        gross: rewardCash,
+        cashLost: complicationCashLost,
+        complications: haveResolvedComplication ? 1 : 0,
+        complicationWins: haveResolvedComplication && complicationSuccess ? 1 : 0,
+      }),
     });
 
     // The same deposit rejected over and over is unexpected — pause until the

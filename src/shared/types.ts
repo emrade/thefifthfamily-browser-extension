@@ -793,6 +793,46 @@ export interface StreetIntelAutoConfig {
    *  regardless of which one was revealed — see
    *  docs/street-intel-partial-reveal.md's "Correction" note. */
   oddsMode: 'revealed' | 'computed';
+  /** 'all' (default): scout every affordable candidate each cycle, then rank
+   *  — the original behavior. 'smart': scout candidates in order of their
+   *  best *possible* EV (a pre-scout upper bound on odds — see
+   *  `upperBoundEstimate` in `@/shared/streetIntelEstimate`) and stop as soon
+   *  as the best real EV already found beats every remaining candidate's
+   *  bound. Same pick in almost every case, far fewer paid scouts — replayed
+   *  against 2026-09-14..10-04 history: scouting 203 -> 64 Stamina/day, net
+   *  +14% (verification/street-intel/simulate_target_selection.py). */
+  scoutMode: StreetIntelScoutMode;
+  /** 'reuse' (default): reuse the attempt's own approach, `steel_yourself`
+   *  falling back to the best overall fallback win rate — the original
+   *  behavior. 'avoidBlocked': same pick, unless that choice is known to be
+   *  a losing one for this specific complication scenario (see
+   *  `@/shared/streetIntelComplications`), in which case the best remaining
+   *  choice for that scenario is used instead. Blocked picks went 0/91 in the
+   *  2026-10-04 analysis and cost 86% of all complication cash lost
+   *  (verification/street-intel/verify_complication_blocked_choices.py). */
+  complicationMode: StreetIntelComplicationMode;
+}
+
+export type StreetIntelScoutMode = 'all' | 'smart';
+export type StreetIntelComplicationMode = 'reuse' | 'avoidBlocked';
+
+/** Running totals for one scoutMode+complicationMode combination — what lets
+ *  the player compare the original behavior against the new modes on their
+ *  own live results rather than only on the historical replay. Net per
+ *  Stamina (`(gross - cashLost) / (scoutStamina + attemptStamina)`) is the
+ *  number that matters: Street Intel is Stamina-bound, not cooldown-bound. */
+export interface StreetIntelModeTally {
+  since: number;
+  cycles: number;
+  /** Stamina actually charged for scouting — a `cached: true` re-scout is
+   *  free and isn't counted. */
+  scoutStamina: number;
+  attempts: number;
+  attemptStamina: number;
+  gross: number;
+  cashLost: number;
+  complications: number;
+  complicationWins: number;
 }
 
 /** What one automated attempt (+ its complication, if one came up) actually
@@ -827,6 +867,13 @@ export interface StreetIntelAttemptResult {
    *  docs/street-intel-complication-tracking.md. */
   complicationWasFallback: boolean | null;
   complicationSuccess: boolean | null;
+  /** Set only when `complicationMode: 'avoidBlocked'` overrode the choice the
+   *  original rule would have made — that original choice, for the record. */
+  complicationAvoided?: string | null;
+  /** Which modes this attempt ran under. Optional only because attempts
+   *  recorded by builds before these modes existed don't have them. */
+  scoutMode?: StreetIntelScoutMode;
+  complicationMode?: StreetIntelComplicationMode;
 }
 
 /**
@@ -915,10 +962,10 @@ export type ComplicationChoiceKey = 'fight' | 'run' | 'talk';
  * "Complication Analysis" section for the hypothesis this exists to test).
  * Keyed by the literal scenario string rather than any enum, since the full
  * set of possible scenarios isn't confirmed closed. Same "accumulates for as
- * long as the automation runs" reasoning as `complicationStats` — most
- * individual scenarios will sit at single-digit sample sizes for a long
- * time, so this is deliberately not surfaced as an actionable signal
- * anywhere yet, only collected.
+ * long as the automation runs" reasoning as `complicationStats`. Acted on
+ * only under `complicationMode: 'avoidBlocked'`, and only to rule a choice
+ * *out* for a scenario (0 wins in 2+ tries) — see
+ * `@/shared/streetIntelComplications`.
  */
 export type ComplicationTypeStats = Record<string, Record<ComplicationChoiceKey, ComplicationChoiceStats>>;
 
@@ -956,6 +1003,13 @@ export interface StreetIntelAutoStatus {
   complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>;
   /** See `ComplicationTypeStats`'s own doc comment. */
   complicationTypeStats: ComplicationTypeStats;
+  /** How many affordable candidates the last cycle left unscouted because
+   *  smart scouting proved none of them could beat what it had already found.
+   *  Always 0 under `scoutMode: 'all'`. Optional for pre-existing statuses. */
+  lastCycleSkipped?: number;
+  /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
+   *  Optional for pre-existing statuses. */
+  modeTallies?: Record<string, StreetIntelModeTally>;
 }
 
 /**

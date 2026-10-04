@@ -17,7 +17,9 @@ import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/type
  * Deliberately lighter than the popup's own StreetIntelAutoHome — no minimum
  * success %, odds mode, last-cycle-scouted breakdown, or complication history
  * here; that's config/analysis, not the daily-glance snapshot this exists
- * for. Adjust those in the popup.
+ * for. Adjust those in the popup. The two strategy switches (smart scouting,
+ * smart complication choices) are the exception: they're on/off toggles the
+ * player wants to flip back quickly from the page if a new mode misbehaves.
  *
  * `StreetIntelAutoConfig`/`StreetIntelAutoStatus` live in `chrome.storage.local`,
  * which (unlike Dexie's `db`) a content script can read/write directly — no
@@ -216,12 +218,31 @@ function renderStatus(): string {
 function renderToggle(): void {
   if (!panelEl || !config) return;
   const toggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-auto-toggle');
-  const statusText = panelEl.querySelector('.ff-sip-toggle-row__status');
+  const statusText = panelEl.querySelector('.ff-sip-auto-status');
   if (toggle) toggle.checked = config.enabled;
   if (statusText) {
     statusText.textContent = config.enabled
       ? `Running whenever the best scouted approach clears ${config.minSuccessPct}%.`
       : 'Off — nothing will run.';
+  }
+
+  // `=== 'smart'`/`=== 'avoidBlocked'` rather than trusting the field to
+  // exist: a config pushed through `chrome.storage.onChanged` is the raw
+  // stored object, which an older build may have written without these.
+  const smartScouting = config.scoutMode === 'smart';
+  const scoutToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-scout-toggle');
+  const scoutStatus = panelEl.querySelector('.ff-sip-scout-status');
+  if (scoutToggle) scoutToggle.checked = smartScouting;
+  if (scoutStatus) {
+    scoutStatus.textContent = smartScouting ? 'Only scouts cards that could beat the best found.' : 'Off — scouts every affordable card.';
+  }
+
+  const smartComplications = config.complicationMode === 'avoidBlocked';
+  const cplxToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
+  const cplxStatus = panelEl.querySelector('.ff-sip-cplx-status');
+  if (cplxToggle) cplxToggle.checked = smartComplications;
+  if (cplxStatus) {
+    cplxStatus.textContent = smartComplications ? 'Avoids choices that never win in that scenario.' : 'Off — reuses the attempt approach.';
   }
 }
 
@@ -281,9 +302,23 @@ function buildPanel(): HTMLDivElement {
       <label class="ff-sip-toggle-row">
         <div class="ff-sip-toggle-row__text">
           <div class="ff-sip-toggle-row__title">Auto-Attempt</div>
-          <div class="ff-sip-toggle-row__status">Loading…</div>
+          <div class="ff-sip-toggle-row__status ff-sip-auto-status">Loading…</div>
         </div>
         <input class="ff-sip-auto-toggle ff-sip-toggle" type="checkbox">
+      </label>
+      <label class="ff-sip-toggle-row">
+        <div class="ff-sip-toggle-row__text">
+          <div class="ff-sip-toggle-row__title">Smart scouting</div>
+          <div class="ff-sip-toggle-row__status ff-sip-scout-status">Loading…</div>
+        </div>
+        <input class="ff-sip-scout-toggle ff-sip-toggle" type="checkbox">
+      </label>
+      <label class="ff-sip-toggle-row">
+        <div class="ff-sip-toggle-row__text">
+          <div class="ff-sip-toggle-row__title">Smart complication choices</div>
+          <div class="ff-sip-toggle-row__status ff-sip-cplx-status">Loading…</div>
+        </div>
+        <input class="ff-sip-cplx-toggle ff-sip-toggle" type="checkbox">
       </label>
       <div class="ff-sip-status"><div class="ff-sip-empty">Loading…</div></div>
     </div>
@@ -292,16 +327,24 @@ function buildPanel(): HTMLDivElement {
   el.querySelector('.ff-sip-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-sip-close')?.addEventListener('click', () => setExpanded(false));
 
-  const toggle = el.querySelector<HTMLInputElement>('.ff-sip-auto-toggle');
-  toggle?.addEventListener('change', () => {
+  const writeConfig = (patch: Partial<StreetIntelAutoConfig>) => {
     if (!config) return;
-    const next = { ...config, enabled: toggle.checked };
+    const next = { ...config, ...patch };
     config = next;
     storage
       .setStreetIntelAutoConfig(next)
       .then(() => refresh())
       .catch((err) => console.error(LOG_PREFIX, 'street intel status panel toggle write failed', err));
-  });
+  };
+
+  const toggle = el.querySelector<HTMLInputElement>('.ff-sip-auto-toggle');
+  toggle?.addEventListener('change', () => writeConfig({ enabled: toggle.checked }));
+
+  const scoutToggle = el.querySelector<HTMLInputElement>('.ff-sip-scout-toggle');
+  scoutToggle?.addEventListener('change', () => writeConfig({ scoutMode: scoutToggle.checked ? 'smart' : 'all' }));
+
+  const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
+  cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
 
   return el;
 }

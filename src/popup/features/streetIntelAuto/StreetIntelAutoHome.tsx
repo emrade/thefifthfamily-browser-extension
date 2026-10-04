@@ -21,6 +21,14 @@ function localDateKey(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+const SCOUT_MODE_LABEL: Record<string, string> = { all: 'Scout all', smart: 'Smart scouting' };
+const COMPLICATION_MODE_LABEL: Record<string, string> = { reuse: 'reuse approach', avoidBlocked: 'avoid losing choices' };
+
+function modeTallyLabel(key: string): string {
+  const [scout, complication] = key.split('+');
+  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}`;
+}
+
 function riskLabel(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
@@ -95,7 +103,19 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, oddsMode: mode });
   }
 
+  function setScoutMode(smart: boolean) {
+    if (!config) return;
+    saveConfig({ ...config, scoutMode: smart ? 'smart' : 'all' });
+  }
+
+  function setComplicationMode(avoidBlocked: boolean) {
+    if (!config) return;
+    saveConfig({ ...config, complicationMode: avoidBlocked ? 'avoidBlocked' : 'reuse' });
+  }
+
   if (!loaded || !config) return null;
+
+  const modeTallies = Object.entries(status?.modeTallies ?? {}).filter(([, t]) => t.cycles > 0);
 
   return (
     <>
@@ -132,7 +152,7 @@ export function StreetIntelAutoHome() {
       <div class="ff-field">
         <div class="ff-field__label">Minimum scouted success %</div>
         <div class="ff-field__hint">
-          Every opportunity is scouted first — this skips one entirely (no attempt spent) if its best approach
+          Opportunities are scouted before attempting — this skips one entirely (no attempt spent) if its best approach
           doesn't clear this floor, regardless of risk tier. All risk tiers are otherwise eligible.
         </div>
         <input
@@ -163,6 +183,58 @@ export function StreetIntelAutoHome() {
           <option value="computed">Computed (includes hidden approaches)</option>
         </select>
       </div>
+
+      <div class="ff-section-label">Strategy</div>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Smart scouting</div>
+          <div class="ff-toggle-row__status">
+            {config.scoutMode === 'smart'
+              ? 'Only scouts cards that could still beat the best one found so far.'
+              : 'Off — scouts every affordable card each cycle.'}
+          </div>
+        </div>
+        <input type="checkbox" class="ff-toggle" checked={config.scoutMode === 'smart'} onChange={(e) => setScoutMode((e.target as HTMLInputElement).checked)} />
+      </label>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Smart complication choices</div>
+          <div class="ff-toggle-row__status">
+            {config.complicationMode === 'avoidBlocked'
+              ? "Avoids a choice that has never won in that complication's scenario."
+              : 'Off — reuses the attempt approach (steel_yourself falls back by win rate).'}
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.complicationMode === 'avoidBlocked'}
+          onChange={(e) => setComplicationMode((e.target as HTMLInputElement).checked)}
+        />
+      </label>
+
+      {modeTallies.length > 0 && (
+        <>
+          <div class="ff-field__hint">
+            Live results per strategy combination, since it was first used. Net per Stamina (after complication losses,
+            scouting included) is the number to compare — Street Intel is limited by Stamina, not cooldown.
+          </div>
+          {modeTallies.map(([key, t]) => {
+            const stamina = t.scoutStamina + t.attemptStamina;
+            const netPerStamina = stamina > 0 ? Math.round((t.gross - t.cashLost) / stamina) : null;
+            return (
+              <div class="ff-auto-row" key={key}>
+                {modeTallyLabel(key)}: {t.attempts} attempts · net ${(t.gross - t.cashLost).toLocaleString()}
+                {netPerStamina !== null ? ` · $${netPerStamina.toLocaleString()}/S` : ''} · scouting{' '}
+                {stamina > 0 ? Math.round((t.scoutStamina / stamina) * 100) : 0}% of Stamina
+                {t.complications > 0 ? ` · complications ${t.complicationWins}/${t.complications}` : ''}
+              </div>
+            );
+          })}
+        </>
+      )}
 
       <div class="ff-section-label">Status</div>
 
@@ -208,6 +280,7 @@ export function StreetIntelAutoHome() {
           {status.lastAttempt.hadComplication && (
             <div class="ff-auto-row">
               Complication: chose {status.lastAttempt.complicationChoice}
+              {status.lastAttempt.complicationAvoided ? ` (avoided ${status.lastAttempt.complicationAvoided})` : ''}
               {status.lastAttempt.complicationSuccess === null
                 ? ' (result unknown)'
                 : status.lastAttempt.complicationSuccess
@@ -225,6 +298,8 @@ export function StreetIntelAutoHome() {
             Every opportunity the last cycle actually scouted, in the order tried — including ones passed over for
             coming in under {config.minSuccessPct}%. {status.lastCycleAt && `As of ${new Date(status.lastCycleAt).toLocaleTimeString()}.`}
             {config.oddsMode === 'computed' && ' "≈" marks a computed (not scout-revealed) estimate; "→" marks the pick.'}
+            {(status.lastCycleSkipped ?? 0) > 0 &&
+              ` Smart scouting left ${status.lastCycleSkipped} more card${status.lastCycleSkipped === 1 ? '' : 's'} unscouted — none could beat the pick.`}
           </div>
           {status.lastCycleScouted.map((c, i) => {
             // `approaches` is new (2026-09-06) — a `lastCycleScouted` entry

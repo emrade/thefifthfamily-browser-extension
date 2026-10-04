@@ -48,6 +48,10 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   // this in automatically (see `getStreetIntelAutoConfig`) so nobody's
   // config silently opts into 'computed' on upgrade.
   oddsMode: 'revealed',
+  // Same reasoning: both new modes are opt-in, the original behavior stays
+  // the default for every install (including upgrades).
+  scoutMode: 'all',
+  complicationMode: 'reuse',
 };
 
 // All three default off, no exception for `watchEnabled` — every kill switch

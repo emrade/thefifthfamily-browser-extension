@@ -63,7 +63,12 @@ deduplicated automatically.
   every bucket against `docs/street-intel-complication-tracking.md`'s
   ~15-20-per-bucket noise threshold. Answers "is Section 7C's per-scenario
   advice trustworthy yet" directly rather than needing the question re-run
-  by hand each time. As of 2026-09-08 (two archives combined): no.
+  by hand each time. As of 2026-09-08 (two archives combined): no. As of
+  2026-10-04 (all archives, 480 events): only a couple of buckets reach 15
+  (run on "smoke" and on "rival informant", 14/15 each), so most *ranking* of
+  choices is still noise — but the stronger
+  question, whether a choice can be ruled *out* per scenario, is answered yes
+  by `verify_complication_blocked_choices.py` below.
 
 - **`verify_complication_blocked_choices.py`** (2026-10-04) — tests whether
   each complication scenario has one choice that essentially never wins.
