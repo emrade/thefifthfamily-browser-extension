@@ -9,6 +9,36 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.37.0] - 2026-10-05
+
+### Added
+- Arena Fight Advisor: each badge now shows how often fights like it have
+  actually been won (e.g. "~76%"), from 387 real fights, and the details
+  popup adds what a win puts in the page pot.
+- Arena Fight Advisor: a **Pot** line in the plan — the pot you have now
+  (read from the game's own Page Pot box) and what you can expect to bank
+  from the fights left. Each opponent's bounty shows in the attack order.
+- Arena Fight Advisor: the boss call now depends on the pot you'd be
+  risking. A strong-chance boss is always worth fighting; a weak one (e.g.
+  an Iron River boss rated Avoid) only while your pot is small (~80 or
+  less) — otherwise bank and skip it.
+
+### Changed
+- Arena Fight Advisor: the Refresh tip now weighs bounty. It compares this
+  lineup's expected pot with what an average re-roll banks (~87): "worth
+  it" below that, "keep this lineup" above it — e.g. when the 105/140
+  opponent is Beatable. The old tip fired whenever 2+ opponents were
+  Avoid, ignoring bounty. Backtested on 48 real refreshes: re-rolls it
+  would recommend raised the expected pot by 46 on average.
+- Arena Fight Advisor: a coin-flip now leans win when the card's % CHANCE
+  is 50 or more (37 of 50 won, vs 14 of 48 under 50). Previously any
+  Passive opponent leaned win, but Passive ones under 50% won only 10 of
+  24.
+- Arena Fight Advisor: a boss now needs a score of 1.3 to be Beatable (was
+  1.2). Every boss at 1.3+ has been won (24/24); all four non–Iron River
+  boss losses scored 1.13–1.22, and the boss notes no longer claim those
+  families always win.
+
 ## [0.36.0] - 2026-10-05
 
 ### Added
