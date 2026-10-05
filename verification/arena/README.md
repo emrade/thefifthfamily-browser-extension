@@ -36,6 +36,16 @@ fights; rule 155/179 correct (quoted ≥ 50: 138/179); score ≥ 1.2 won 81/81;
 every boss loss was an Iron River (STR-built) boss. This answers the "why"
 left open by the 2026-09-20 findings below.
 
+Extended 2026-10-05 (sections 8–9): win rate per verdict band as the
+advisor's `WIN_CHANCE` uses it, the coin-flip lean (quoted ≥ 50% now
+decides it), and bounty economics (bounty = slot base × a `threat_ratio`
+multiplier; wins pay exactly the card's bounty). Also fixed: fights after a
+Refresh were silently dropped and bosses were scored with a stale boss's
+stats — both now read the opponent's own card. Run that day: 387 fights;
+regular "quoted ≥ 50" 297/331 vs score 293/331; boss score ≥ 1.3 won 24/24,
+1.1–1.3 won 23/27. See docs/arena-combat-mechanics.md's "Pot, bounty and
+Refresh" section.
+
 ```
 python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 ```

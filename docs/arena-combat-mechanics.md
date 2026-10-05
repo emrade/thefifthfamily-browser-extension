@@ -12,24 +12,39 @@ The extension turns this into the **Arena Fight Advisor** (verdict badges on
 the Arena page) and the **Arena page reminder**. See
 [What the extension does with this](#what-the-extension-does-with-this).
 
+**Updated 2026-10-05** with 387 fights (2026-09-09 → 10-04), and a fix to the
+verification script, which had been dropping every fight after a Refresh.
+New: [Pot, bounty and Refresh](#pot-bounty-and-refresh-2026-10-05) and
+[Why opponents got harder](#why-opponents-got-harder-oct-1-season). Corrected:
+the % CHANCE is a good cut-off for *regular* opponents (it was compared
+including bosses), `threat_ratio` *is* a strength signal (it sets the
+bounty), and non–Iron River bosses can lose (boss "Beatable" is now 1.3+).
+
 ---
 
 ## TL;DR
 
 - The **% CHANCE badge is just the opponent's Combat Power** on a log curve
   (`≈ 249 − 24.6·ln(CP)`, within ±2). CP is roughly the sum of the four
-  stats, but the stats don't matter equally in a fight.
+  stats, but the stats don't matter equally in a fight. Even so, for
+  **regular** opponents it works as a **50% cut-off** (right 297/331, the
+  kill-race score 293/331), and inside a coin-flip it's the best tie-breaker
+  there is. For bosses it's useless.
 - A fight is a **race between damage and HP**. What matters is the
   opponent's **STR** (how hard they hit) against their **level** (their HP).
   DEF only matters when it's low; AGI and DEX barely matter.
 - The **kill-race score** below calls **160/184** fights correctly. Quoted
   ≥ 50% gets 142/184. Score ≥ 1.2 has won **85/85**; score < 0.8 has won
   **2/40**.
-- **Bosses:** family decides it. Iron River bosses are built on STR and
-  caused every boss loss. Kito-gumi, Viola, SBP and Volkskaya bosses have
-  won **19/19** at quoted odds of 37–46%.
+- **Bosses:** score them like anyone else, with a higher bar: **1.3+** has
+  won 24/24, 1.1–1.3 won 23/27. Iron River bosses (built on STR) score
+  lowest and lose most; the others lost only at 1.13–1.22.
+- **Pot:** a win adds the opponent's **bounty**, any loss wipes the
+  unbanked pot, and banked pots are the season score. Bounty is the game's
+  own difficulty price (set by `threat_ratio`). See
+  [Pot, bounty and Refresh](#pot-bounty-and-refresh-2026-10-05).
 - **Passive** opponents fight weaker than their card shows; **active** ones
-  stronger.
+  stronger — but the quoted % is the better coin-flip tie-breaker.
 - About **10% of fights are genuine coin-flips**. Even a simulator fed each
   fight's real in-fight numbers only called 159/179.
 
@@ -166,6 +181,11 @@ For regular opponents it acts like a blunt **~50% cut-off** rather than a
 probability. For bosses it's useless: every boss is quoted 37–47%, because
 bosses carry one huge stat that inflates CP.
 
+2026-10-05, 331 regular fights: 30–39% won 0/11, 40–49% 18/92, 50–59%
+127/143, 60%+ 85/85. As a cut-off ("≥ 50% = win") it's right 297/331 —
+level with the kill-race score (293/331). The earlier "142 vs 160" comparison
+lumped bosses in, where the quote is meaningless.
+
 ---
 
 ## The kill-race score
@@ -214,6 +234,21 @@ under ~350 is an easy win at any STR within reason.
 
 ### Tie-breakers in the coin-flip band (0.8 ≤ score < 1.2)
 
+**2026-10-05: the quoted % is the tie-breaker** (account owner's own
+observation, confirmed on 98 coin-flip fights):
+
+| | Quoted ≥ 50% | Quoted < 50% |
+|---|---|---|
+| Passive | 22/28 (79%) | 10/24 (42%) |
+| Active | 15/22 (68%) | 4/24 (17%) |
+
+48–49% won 11/23, 50–51% 24/37, 52–53% 10/11. "Leans win if quoted ≥ 50%"
+is right 71/98; the old "Passive or quoted ≥ 51%" rule 68/98 — it leaned win
+on every Passive opponent, and a Passive one quoted under 50% won only
+10/24. The advisor now follows the quote (Passive only when no quote shows).
+
+Original (2026-09-24, 184 fights):
+
 | | Score 0.8–1.0 | Score 1.0–1.2 |
 |---|---|---|
 | **Passive** opponent | 9/14 won | 12/19 won |
@@ -248,13 +283,29 @@ stat:
 | Volkskaya | DEX (~1,000–1,430) | 2 | **2** | 615–771 |
 | **Iron River** | **STR (~900–1,630)** | 5 | **2** | 898, 1,114 L, 1,125 L, 1,523 L, 1,627 |
 
-So:
+So (2026-09-24):
 
 - **Non–Iron River boss:** a near-certain win at current stats. Their STR
   sits well under the break-even point.
 - **Iron River boss:** decide by STR. **Break-even ≈ 1,030 STR** this
   season (~675 at max HP 710; ~600 at max HP 661). Under ~900 has always
   been a win; the one win above 1,500 was luck.
+
+**2026-10-05 update (57 boss fights):** non–Iron River bosses now lose too —
+Kito-gumi at STR 821 and 871, Volkskaya at 857 and 885. Boss HP grows with
+level (625 at 106, 645 at 110), and the in-game wiki says each family's
+bosses move up a tier (Common → Uncommon → Rare → Legendary) once you've
+beaten all of the tier below, so bosses keep getting stronger as you clear
+them. By kill-race score:
+
+| Boss score | Record |
+|---|---|
+| 1.3+ | **24/24** |
+| 1.1–1.3 | 23/27 (all four non–Iron River losses: 1.13–1.22) |
+| < 0.8 (all Iron River) | 2/5 |
+
+So the boss "Beatable" line is now **1.3** (regular stays 1.2), and whether
+to fight a boss depends on the pot riding on it — see below.
 
 Boss stats have grown over time: `band` went 5 → 6 on ~2026-09-16, and
 stats rose again ~2026-09-22. Always read the current card rather than
@@ -295,11 +346,77 @@ assuming.
   opponents were replaced, and the boss (Vito 'The Shadow' Moretti, Iron
   River, STR 1,605 / DEF 719 / CP 3,830) was identical before and after.
 - **`threat_ratio`, `tier`, `bounty`, `multiplier`** in
-  `opponent_bounties` are the slot's bounty economics (tier 1–4 → base
-  bounty 10/20/40/70). They are **not** a strength signal: threat_ratio
-  doesn't track win chance (e.g. 4.25 at a quoted 63%, won).
+  `opponent_bounties` are the slot's bounty economics. *Corrected
+  2026-10-05:* they **are** a strength signal — `multiplier` is set by
+  `threat_ratio` (the game's own opponent-vs-you strength), and it's what
+  makes a bounty big. See the next section. (A single 4.25 that won proves
+  nothing either way.)
 
 ---
+
+## Pot, bounty and Refresh (2026-10-05)
+
+Banked pots are the season score, so this is what actually decides ranking.
+
+- **A win adds exactly the card's BOUNTY to the page pot** (230/230 wins).
+  **Any loss wipes the unbanked pot**; you keep fighting to rebuild it.
+  Banking ends the page.
+- **Bounty = slot base × a multiplier from `threat_ratio`** (the game's
+  opponent-vs-you strength):
+
+  | threat_ratio | multiplier |
+  |---|---|
+  | < 0.8 | ×0.8 |
+  | 0.8–1.0 | ×1 |
+  | 1.0–1.2 | ×1.2 |
+  | 1.2–1.5 | ×1.5 |
+  | 1.5+ | ×2 |
+
+  Slots 1–4 carry base 10/20/40/70 (20/40/40/70 on some pages), so every
+  page has roughly an 8 / 20 / 48 / 105–140 lineup. Big bounty = strong
+  opponent: 8-bounty opponents won 88%, 140-bounty ones 55%.
+- **Attack order: riskiest first.** A bounty only survives if every later
+  fight is won too, so expected banked points are `Σ bountyᵢ·pᵢ·Π(later p)`.
+  Every opponent has to be fought to unlock the boss, and a first fight is
+  free to lose (the pot is empty), so the least-winnable fight goes first.
+  A bounty-weighted order (sort by `(1 − p) / (bounty·p)`) was tried
+  2026-10-05: it differed on 109 of 136 real lineups but gained only ~3
+  points a page, so the account owner kept riskiest first.
+- **Boss with a pot on it.** Fight while `p × (pot + boss bounty) > pot`,
+  i.e. while the pot is under `p·bounty / (1 − p)`. With the boss bands
+  above: a 1.3+ boss is always worth it; a 1.1–1.3 boss (~85%) up to a pot of
+  ~800 (always, in practice); an Iron River boss under 0.8 (~40%, bounty 120)
+  only under a pot of ~80.
+- **Refresh.** Re-rolls all four regulars (never the boss); the first per
+  page is free, later ones cost MG, and it locks once you attack. A fresh
+  lineup played riskiest first banks **~87** expected points on average
+  (136 real lineups; 103 last season, 77 this one). So re-roll a lineup that
+  expects less than ~87 and keep one that expects more — typically one whose
+  105/140 is Beatable. Backtested on the account owner's 48 real refreshes:
+  where this rule says re-roll (46), the re-roll raised the expected pot by
+  **+46** on average; where it says keep (2), re-rolling lost 16.
+- **Win chances used** (real record per verdict band, all 387 fights):
+  regular Beatable 176/176, Avoid 3/57; coin-flip 0.8–1.0: quoted ≥ 50%
+  12/17, under 7/33; 1.0–1.2: 25/33 vs 7/15. Bosses as in the table above.
+
+### Why opponents got harder (Oct 1 season)
+
+| Season | Your level | Opp. level (median) | Opp. STR (median) | Beatable | Avoid | Won | Banked / page |
+|---|---|---|---|---|---|---|---|
+| Sep 22 (HP 737) | 106 | 100 | 608 | 63% | 9% | 80% | 270 |
+| Oct 1 (HP 759, partial) | 110 | 104 | 707 | 55% | 20% | 70% | 212 |
+
+- Opponents are matched to **your level** (median ~6 levels below, range
+  −25 to +24), and STR climbs steeply with level (lvl 100–104 ≈ 638, 110–114
+  ≈ 822, 120+ ≈ 1,204). Your 4 levels pulled in noticeably stronger players;
+  at the same level band players only got ~8% stronger week to week.
+- Your locked numbers barely moved (HP 737 → 759, base 418 → 431, ~3%): the
+  loadout locks per season and levels add little fighting power. This
+  season's `preview_loadout` wasn't captured.
+- Fewer Passive opponents (~75% → 64%).
+- The "Tight matchmaking" / "Open pool" page pill didn't show a clear
+  difficulty difference in this data.
+- Bosses tier up as you clear them (see Bosses).
 
 ## Why Arena Auto-Attack was removed
 
@@ -327,19 +444,27 @@ history.
 
 - **Arena Fight Advisor** (`src/content/features/arena/fightAdvisor.ts`,
   model in `src/shared/arenaCombat.ts`). Badges each live opponent and the
-  boss **✅ Beatable / ⚖️ Coin-flip (lean win or loss) / ⛔ Avoid**, numbers
-  the attack order riskiest first, and adds a plan line above the cards:
-  the order, whether to fight the boss or bank and skip it, and a Refresh
-  tip when 2+ opponents are Avoid before any fight. Hovering a badge (or an
+  boss **✅ Beatable / ⚖️ Coin-flip (lean win or loss) / ⛔ Avoid** with the
+  verdict band's real win rate, numbers the attack order riskiest first, and
+  adds a
+  plan above the cards: the order (with each bounty), the expected pot from
+  the fights left, the boss call given the current pot (read from the
+  game's own Page Pot box), and — before any fight, while Refresh is
+  available — whether to re-roll this lineup or keep it (see
+  [Pot, bounty and Refresh](#pot-bounty-and-refresh-2026-10-05)). *(Until
+  2026-10-05 the Refresh tip fired whenever 2+ opponents were Avoid, which
+  ignored bounty.)* Hovering a badge (or an
   attack-order chip) shows the verdict and its main reason; clicking opens a
-  breakdown (`fightDetails.ts`): HP, damage per hit and hits to finish for
-  both sides, their STR against your limit, notes, the game's quoted %, and
-  what each verdict has meant so far. That record is live
+  breakdown (`fightDetails.ts`): the win rate and what a win adds to the
+  pot, HP, damage per hit and hits to finish for both sides, their STR
+  against your limit, notes, the game's quoted %, and what each verdict has
+  meant so far. That record is live
   (`ArenaTrackRecord`): the 184 archived fights plus every desktop fight
   scored against the verdict its card showed before the attack, all-time
   and for this season. Losing a Beatable fight (or beating an Avoid) puts a
-  Heads-up line in the banner for 24 hours. A coin-flip leans win when the opponent is Passive, or quoted
-  ≥ 51% (regular), or scores ≥ 1.0 (boss). Your numbers come from the
+  Heads-up line in the banner for 24 hours. A coin-flip leans win when the
+  card's quoted % is 50+ (regular; Passive only when no quote shows), or it
+  scores ≥ 1.0 (boss). Your numbers come from the
   captured `preview_loadout` (an estimate), then the season medians of your
   logged fights. Replaying every archived fight in order, with the numbers
   as they would have stood at the time, gives 154/179 correct, Beatable

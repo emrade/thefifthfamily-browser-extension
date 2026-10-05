@@ -5,14 +5,18 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import {
+  TYPICAL_LINEUP_POINTS,
+  bossPotLimit,
+  expectedPot,
   foldFight,
-  isRecommended,
   recordFight,
   profileFromPreview,
   sampleFromAttack,
   verdictFor,
+  winChance,
   type ArenaOpponentCard,
   type ArenaVerdict,
+  type PotFight,
 } from '@/shared/arenaCombat';
 import type { ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
@@ -20,10 +24,18 @@ import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail }
 /**
  * The Arena fight advisor: badges every live opponent and the boss
  * Beatable / Coin-flip / Avoid from the stats already on their card, numbers
- * the attack order (riskiest first, the player's own way of playing: an
- * early loss only costs a small pot), and puts a one-line plan above the
- * cards: the order, what to do about the boss, and when the free Refresh is
- * worth it. The model and its evidence are in docs/arena-combat-mechanics.md
+ * the attack order, and puts a plan above the cards: the order, the pot it
+ * should bank, what to do about the boss, and whether a Refresh is worth it.
+ *
+ * Built around the pot, since banked pots are the season score: a win adds
+ * the opponent's bounty, any loss wipes the unbanked pot. The order is
+ * riskiest first (the player's own way of playing: every opponent has to be
+ * fought to unlock the boss, and an early loss only wipes a small pot), the
+ * boss is worth fighting only while the pot is under `bossPotLimit`, and a
+ * lineup is worth re-rolling when its expected pot is under what an average
+ * re-roll banks (`TYPICAL_LINEUP_POINTS`).
+ * Win chances behind all three are the real record of each verdict band
+ * (`winChance`). The model and its evidence are in docs/arena-combat-mechanics.md
  * and shared/arenaCombat.ts. The game's own "% CHANCE" badge is left alone;
  * it's repeated in each badge's hover text.
  *
@@ -40,6 +52,9 @@ const FEATURE_KEY = 'arena';
 const STYLE_ID = 'ff-arena-advisor-style';
 const BANNER_ID = 'ff-arv-banner';
 const BADGE_CLASS = 'ff-arv-strip';
+/** Bounty to assume for a boss card whose bounty can't be read — the most
+ *  common boss bounty in the archive (120/144/180 seen). */
+const FALLBACK_BOSS_BOUNTY = 144;
 
 // Colours follow the game's own palette: green/amber/red accents on a dark
 // tinted fill, uppercase spaced labels like its BOUNTY / PASSIVE tags.
@@ -89,6 +104,7 @@ const CSS = `
 #${BANNER_ID} .ff-arv-chip { cursor: pointer; }
 #${BANNER_ID} .ff-arv-chip .ff-arv-name { color: #f1ede2; }
 #${BANNER_ID} .ff-arv-arrow { color: #6b6455; }
+#${BANNER_ID} .ff-arv-bounty { color: #fbbf24; font-weight: 800; font-size: 0.66rem; letter-spacing: 0.4px; }
 #${BANNER_ID} .ff-arv-word { font-weight: 800; }
 #${BANNER_ID} .ff-arv-word.ff-arv-beatable,
 #${BANNER_ID} .ff-arv-word.ff-arv-coinflip,
@@ -201,6 +217,8 @@ export function handleCapturedRequest(req: CapturedRequest): void {
 interface CardOnPage {
   el: HTMLElement;
   card: ArenaOpponentCard;
+  /** Points a win adds to the pot (the card's own BOUNTY tag). */
+  bounty: number | null;
   familyLabel: string | null;
   /** Regular opponent still to fight, or a boss not yet fought. */
   live: boolean;
@@ -233,6 +251,7 @@ function readCard(el: HTMLElement): CardOnPage | null {
 
   return {
     el,
+    bounty: num(el.querySelector('.ar-opp-bounty')?.textContent),
     card: {
       name, isBoss, level, strength, defence, agility, dexterity,
       passive: el.querySelector('.ar-opp-passive') !== null,
@@ -242,6 +261,12 @@ function readCard(el: HTMLElement): CardOnPage | null {
     live,
     bossLocked,
   };
+}
+
+/** The page's unbanked pot: the game's own "Page Pot" box while one is
+ *  building, otherwise nothing at risk (fresh page, forfeited, or banked). */
+function readPot(): number {
+  return num(document.querySelector('.ar-pot-banner.ar-pot-active .ar-pot-val')?.textContent) ?? 0;
 }
 
 /** "Locked Max HP" on the page's own loadout summary. A mismatch with the
@@ -274,13 +299,14 @@ function verdictDetail(v: ArenaVerdict): string {
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
   const meta = c.el.querySelector('.ar-opp-meta');
   if (!meta || !profile) return;
+  const p = winChance(c.card, v);
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
     `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
-    `<span class="ff-arv-detail">${verdictDetail(v)}</span>`;
+    `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v)}</span>`;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
   shownVerdicts.set(c.card.name, v);
-  const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord };
+  const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord, winChance: p, bounty: c.bounty };
   const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
   if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) {
     details.set(existing, detail);
@@ -321,10 +347,13 @@ function setBanner(anchor: HTMLElement, html: string | null): void {
   }
 }
 
-function freeRefreshAvailable(): boolean {
+/** The Refresh button, if it can be used right now: free (once per page,
+ *  before any attack) or with its MG cost as the game labels it. */
+function refreshOffer(): { free: boolean; cost: string } | null {
   const btn = document.querySelector<HTMLButtonElement>('.ar-actbtn[onclick*="av2_arenaRefresh"]');
-  if (!btn || btn.disabled) return false;
-  return /free/i.test(btn.querySelector('.ar-cost')?.textContent ?? '');
+  if (!btn || btn.disabled) return null;
+  const cost = btn.querySelector('.ar-cost')?.textContent?.trim() ?? '';
+  return { free: /free/i.test(cost), cost };
 }
 
 function escapeHtml(s: string): string {
@@ -352,10 +381,15 @@ function paint(): void {
   const regulars = cards.filter((c) => !c.card.isBoss);
   const boss = cards.find((c) => c.card.isBoss) ?? null;
 
-  const live = regulars
+  const scored = regulars
     .filter((c) => c.live)
-    .map((c) => ({ c, v: verdictFor(c.card, profile!) }))
-    .sort((a, b) => a.v.score - b.v.score);
+    .map((c): PotFight<{ c: CardOnPage; v: ArenaVerdict }> => {
+      const v = verdictFor(c.card, profile!);
+      return { item: { c, v }, p: winChance(c.card, v), bounty: c.bounty ?? 0 };
+    });
+  // Riskiest first.
+  const ordered = [...scored].sort((a, b) => a.item.v.score - b.item.v.score);
+  const live = ordered.map((f) => f.item);
 
   for (const c of cards.filter((x) => !x.live)) c.el.querySelector(`.${BADGE_CLASS}`)?.remove();
   live.forEach(({ c, v }, i) => paintBadge(c, v, i + 1));
@@ -363,34 +397,78 @@ function paint(): void {
   if (boss && bossVerdict) paintBadge(boss, bossVerdict, null);
 
   // --- the plan line -------------------------------------------------------
+  const pot = readPot();
   const lines: string[] = [];
   if (live.length > 0) {
     const order = live
       .map(
         ({ c, v }, i) =>
-          `<span class="ff-arv-chip ff-arv-${v.kind}" data-ff-order="${i + 1}"><span class="ff-arv-order">${i + 1}</span><span class="ff-arv-name">${escapeHtml(c.card.name)}</span></span>`,
+          `<span class="ff-arv-chip ff-arv-${v.kind}" data-ff-order="${i + 1}"><span class="ff-arv-order">${i + 1}</span><span class="ff-arv-name">${escapeHtml(c.card.name)}</span>${
+            c.bounty !== null ? `<span class="ff-arv-bounty">${c.bounty}</span>` : ''
+          }</span>`,
       )
       .join('<span class="ff-arv-arrow">→</span>');
     lines.push(`<div class="ff-arv-line"><span class="ff-arv-label">Attack order</span>${order}</div>`);
+
+    const expected = expectedPot(ordered, pot);
+    const best = ordered.reduce((s, f) => s + f.bounty, pot);
+    lines.push(
+      `<div class="ff-arv-line"><span class="ff-arv-label">Pot</span><span class="ff-arv-text">${
+        pot > 0 ? `<b>${fmt(pot)}</b> in the pot now. ` : ''
+      }Expect to bank <b>~${fmt(expected)}</b> from ${live.length === 1 ? 'this fight' : `these ${live.length} fights`} (${fmt(best)} if you win them all), before the boss.</span></div>`,
+    );
   }
 
+  let bossIsSkip = false;
   if (boss && bossVerdict) {
     const fam = boss.familyLabel ? `${escapeHtml(boss.familyLabel)}, ` : '';
     const word = `<span class="ff-arv-word ff-arv-${bossVerdict.kind}">${verdictWord(bossVerdict)}</span>`;
-    const what = isRecommended(bossVerdict)
-      ? `${word} — fight it${boss.bossLocked ? ' once it unlocks' : ''}.`
-      : `${word} — <span class="ff-arv-warn">bank and skip it</span>. A boss loss forfeits the whole pot.`;
+    const p = winChance(boss.card, bossVerdict);
+    const bounty = boss.bounty ?? FALLBACK_BOSS_BOUNTY;
+    const limit = bossPotLimit(p, bounty);
+    // The biggest pot this page could reach before the boss.
+    const maxPot = scored.reduce((s, f) => s + f.bounty, pot);
+    const chance = `~${Math.round(p * 100)}% to win, +${bounty}`;
+    let what: string;
+    if (limit >= maxPot) {
+      what = `${word} (${chance}) — fight it${boss.bossLocked ? ' once it unlocks' : ''}.`;
+    } else if (live.length === 0) {
+      what =
+        pot <= limit
+          ? `${word} (${chance}) — fight it: your pot of ${fmt(pot)} is small enough to risk.`
+          : `${word} (${chance}) — <span class="ff-arv-warn">bank your ${fmt(pot)} and skip it</span>. A boss loss forfeits the whole pot.`;
+      bossIsSkip = pot > limit;
+    } else {
+      what = `${word} (${chance}) — fight it only if your pot is under <b>~${fmt(limit)}</b> when you get there; above that, <span class="ff-arv-warn">bank and skip it</span>.`;
+      bossIsSkip = limit < TYPICAL_LINEUP_POINTS;
+    }
     lines.push(
       `<div class="ff-arv-line"><span class="ff-arv-label">Boss</span><span class="ff-arv-text">${escapeHtml(boss.card.name)} (${fam}STR ${fmt(boss.card.strength)}, your break-even ~${fmt(bossVerdict.maxStrength)}): ${what}</span></div>`,
     );
   }
 
+  // Refresh: worth it when this lineup's expected pot is under what an
+  // average re-roll banks. Refresh only replaces the four regulars (never
+  // the boss) and locks after the first attack.
   const noneFoughtYet = regulars.length > 0 && regulars.every((c) => c.live);
-  const avoidCount = live.filter(({ v }) => v.kind === 'avoid').length;
-  if (noneFoughtYet && avoidCount >= 2 && freeRefreshAvailable()) {
-    lines.push(
-      `<div class="ff-arv-line"><span class="ff-arv-label">Tip</span><span class="ff-arv-text">${avoidCount} opponents are Avoid. The free Refresh re-rolls all four opponents (not the boss), and it locks once you attack.</span></div>`,
-    );
+  const refresh = noneFoughtYet && scored.length > 0 ? refreshOffer() : null;
+  if (refresh) {
+    const lineup = expectedPot(ordered);
+    const costNote = refresh.free ? 'The free Refresh' : `Refresh (${escapeHtml(refresh.cost) || 'paid'})`;
+    const bossNote = bossIsSkip ? ' The boss is a likely skip, so these four are most of the page.' : '';
+    const bigKeeper = ordered.find((f) => f.bounty >= 100 && f.p >= 0.75);
+    if (lineup < TYPICAL_LINEUP_POINTS) {
+      lines.push(
+        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${TYPICAL_LINEUP_POINTS}.${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.</span></div>`,
+      );
+    } else {
+      const why = bigKeeper
+        ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v)}, and `
+        : '';
+      lines.push(
+        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, more than the ~${TYPICAL_LINEUP_POINTS} an average re-roll banks.</span></div>`,
+      );
+    }
   }
 
   const surprise = trackRecord?.surprise;
@@ -418,7 +496,8 @@ function paint(): void {
   document.getElementById(BANNER_ID)?.querySelectorAll<HTMLElement>('.ff-arv-chip[data-ff-order]').forEach((chip) => {
     const i = Number(chip.dataset.ffOrder) - 1;
     const x = live[i];
-    if (x) details.set(chip, { card: x.c.card, familyLabel: x.c.familyLabel, verdict: x.v, order: i + 1, profile: profile!, record: trackRecord });
+    const f = ordered[i];
+    if (x && f) details.set(chip, { card: x.c.card, familyLabel: x.c.familyLabel, verdict: x.v, order: i + 1, profile: profile!, record: trackRecord, winChance: f.p, bounty: x.c.bounty });
   });
 }
 

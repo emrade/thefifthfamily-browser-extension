@@ -94,7 +94,7 @@ export const PAGE_FEATURE_DEFINITIONS = [
     id: 'arenaFightAdvisor',
     label: 'Arena Fight Advisor',
     description:
-      'Badges every opponent and the boss on the Arena page Beatable, Coin-flip or Avoid, from the stats on their card, and numbers the attack order (riskiest first). Hover a badge for the reason and the game’s own quoted %. A line above the cards sums up the page: the order, whether to fight the boss or bank and skip it, and when the free Refresh is worth using.',
+      'Badges every opponent and the boss on the Arena page Beatable, Coin-flip or Avoid with how often fights like it have been won, from the stats on their card, and numbers the attack order (riskiest first). A plan above the cards shows the pot you can expect to bank, the largest pot still worth risking on the boss, and whether a Refresh is worth it for this lineup or the big bounty is worth keeping.',
   },
   {
     id: 'garageBulkOps',

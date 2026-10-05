@@ -16,6 +16,11 @@ Reports, in order:
      band.
   6. Boss results by family, with STR.
   7. Passive vs active opponents inside the coin-flip band.
+  8. Win rate per verdict band, as `WIN_CHANCE` in src/shared/arenaCombat.ts
+     uses it (regular coin-flips split by quoted >= 50%; boss bands with the
+     1.3 boss "Beatable" line), plus the old vs new coin-flip lean rule.
+  9. Bounty economics: bounty = slot base x a multiplier set by
+     threat_ratio, win rate by bounty, and points_earned == bounty.
 
 Run: python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 
@@ -26,6 +31,21 @@ Written 2026-09-24. First run: 179 V2 fights (156 regular, 23 bosses,
 2026-09-09 .. 09-24): rule 155/179 correct vs 138/179 for "quoted >= 50";
 score >= 1.2 won 81/81; score < 0.8 won 2/40; every boss loss was Iron
 River (STR-built).
+
+2026-10-05 fix: fights after a Refresh were silently dropped (their
+opponents never appear in `open_next_page`, only on the page's cards), and
+a boss was scored with whichever boss the last captured `open_next_page`
+offered, which goes stale when page opens aren't captured. Both now read
+the opponent's own card. Run that day: 388 fights (331 regular, 57 boss).
+For regular opponents alone, "quoted >= 50" is right 297/331 vs the score's
+294/331 — the quote is a fine cut-off; it's bosses where it's useless.
+Score >= 1.2 won 176/176; < 0.8 won 3/56. Bosses: score >= 1.3 won 25/25,
+1.1-1.3 won 23/27 (all four non-Iron River losses). In the coin-flip band,
+quoted >= 50% won 37/50 vs 14/48 under 50% (a Passive opponent quoted
+under 50% won only 10/24, so the coin-flip lean now follows the quote).
+Bounty and quoted % now come from the card itself: `open_next_page` quotes
+pile up across pages and go stale for an opponent met again (with them,
+only 156 of 187 wins matched their bounty; with the card, 230/230).
 """
 
 import argparse
@@ -100,8 +120,11 @@ def parse_cards(html):
         if not name or not all(stats):
             continue
         cp = g(r"fa-bolt\"></i>([\d,]+) Combat Power")
+        wp = g(r'ar-opp-winpct[^"]*">(\d+)')
+        bounty = g(r'ar-opp-bounty[^"]*">(\d+)')
         out.append({"name": name, "passive": "ar-opp-passive" in c, "stats": [num(s) for s in stats],
-                    "cp": num(cp) if cp else None})
+                    "cp": num(cp) if cp else None, "wp": int(wp) if wp else None,
+                    "bounty": int(bounty) if bounty else None})
     return out
 
 
@@ -144,17 +167,39 @@ def build_fights(rows):
         elif "action=attack" in req:
             oid = re.search(r"opponent_id=(\d+)", req).group(1)
             is_boss = oid == "0"
+            card = cards.get(b["defender"])
             if is_boss:
-                if not boss_quote:
+                # The boss's own card first: `boss_quote` is whichever boss the
+                # last *captured* page open offered, stale when a page open
+                # wasn't captured.
+                fresh = boss_quote if boss_quote and boss_quote.get("name") == b["defender"] else None
+                if card:
+                    stats, cp = card["stats"], card["cp"]
+                elif fresh:
+                    stats = [fresh["snapshot_strength"], fresh["snapshot_defence"], fresh["snapshot_agility"], fresh["snapshot_dexterity"]]
+                    cp = fresh["combat_power"]
+                else:
                     continue
-                q = boss_quote
-                stats = [q["snapshot_strength"], q["snapshot_defence"], q["snapshot_agility"], q["snapshot_dexterity"]]
-                passive, cp = False, q["combat_power"]
+                passive = False
+                q = {"win_pct": fresh["win_pct"] if fresh else None,
+                     "bounty": b.get("points_earned") if b["won"] else (fresh or {}).get("bounty")}
             else:
-                q, card = quotes.get(oid), cards.get(b["defender"])
-                if not q or not card:
+                # Opponents brought in by a Refresh never appear in
+                # `open_next_page`, only on the page's cards.
+                if not card:
                     continue
+                # The card is the reliable source for bounty and quoted %:
+                # `quotes` accumulates every page's `opponent_bounties`, so an
+                # opponent met again on a later page can carry an old entry.
+                # The quote's threat_ratio/multiplier are only kept when its
+                # bounty agrees with the card (same encounter).
+                qq = quotes.get(oid) or {}
+                same = qq.get("bounty") is not None and qq.get("bounty") == card["bounty"]
                 stats, passive, cp = card["stats"], card["passive"], card["cp"]
+                q = {"win_pct": card["wp"] if card["wp"] is not None else qq.get("win_pct"),
+                     "bounty": card["bounty"] if card["bounty"] is not None else qq.get("bounty"),
+                     "threat_ratio": qq.get("threat_ratio") if same else None,
+                     "multiplier": qq.get("multiplier") if same else None}
             rounds = b.get("rounds") or []
             atk = [x["attacker"] for x in rounds if isinstance(x.get("attacker"), dict) and "base_dmg" in x["attacker"]]
             dfd = [x["defender"] for x in rounds if isinstance(x.get("defender"), dict) and "base_dmg" in x["defender"]]
@@ -164,6 +209,8 @@ def build_fights(rows):
             fights.append({
                 "ts": row["timestamp"], "t": row.get("isoTime", "")[:16], "boss": is_boss, "name": b["defender"],
                 "family": b.get("boss_family"), "won": bool(b["won"]), "wp": q["win_pct"], "cp": cp,
+                "bounty": q.get("bounty"), "threat": q.get("threat_ratio"), "mult": q.get("multiplier"),
+                "pts": b.get("points_earned"),
                 "stats": stats, "passive": passive, "lvl": b["def_level"],
                 "my_hp": b["att_max_hp"], "op_hp": b["def_max_hp"],
                 # Misses log base_dmg 0; including them drags the mean down ~5%.
@@ -200,6 +247,7 @@ def main():
 
     print("== 1. Quoted win% vs actual ==")
     for label, G in (("boss", boss), ("regular", reg)):
+        G = [f for f in G if f["wp"] is not None]
         print(f"{label}: n={len(G)} won={sum(f['won'] for f in G)} expected-from-quote={sum(f['wp'] for f in G) / 100:.1f}")
         bins = collections.defaultdict(list)
         for f in G:
@@ -211,7 +259,7 @@ def main():
     print("\n== 2. Quoted win% vs the opponent's Combat Power ==")
     by_week = collections.defaultdict(list)
     for f in fights:
-        if f["cp"]:
+        if f["cp"] and f["wp"] is not None:
             by_week[iso_week(f["ts"])].append((f["cp"], f["wp"]))
     for w, L in sorted(by_week.items()):
         if len(L) < 5:
@@ -261,8 +309,11 @@ def main():
               f"  -> K ≈ {k_const:,.0f}, boss break-even STR ≈ {boss_str:,.0f}")
     scored = [(score(f, my_by_season[f["my_hp"]]), f) for f in fights]
     ok = sum((s >= 1) == f["won"] for s, f in scored)
-    q_ok = sum((f["wp"] >= 50) == f["won"] for f in fights)
-    print(f"   rule correct {ok}/{len(scored)}   vs quoted>=50 correct {q_ok}/{len(fights)}")
+    q_ok = sum((f["wp"] >= 50) == f["won"] for f in fights if f["wp"] is not None)
+    print(f"   rule correct {ok}/{len(scored)}   vs quoted>=50 correct {q_ok}/{sum(f['wp'] is not None for f in fights)}")
+    r_ok = sum((s >= 1) == f["won"] for s, f in scored if not f["boss"])
+    rq_ok = sum((f["wp"] >= 50) == f["won"] for f in reg if f["wp"] is not None)
+    print(f"   regular only: rule correct {r_ok}/{len(reg)}   vs quoted>=50 correct {rq_ok}/{sum(f['wp'] is not None for f in reg)}")
     for lo, hi in ((0, 0.8), (0.8, 1.0), (1.0, 1.2), (1.2, 1e9)):
         g = [f for s, f in scored if lo <= s < hi]
         if g:
@@ -282,9 +333,42 @@ def main():
             g = [f for s, f in scored if not f["boss"] and f["passive"] == pv and lo <= s < hi]
             if g:
                 print(f"   {'passive' if pv else 'active '} score {lo}-{hi}: n={len(g):2} won {sum(f['won'] for f in g)}")
-    band = [f for s, f in scored if 0.8 <= s < 1.2]
-    hi_q = [f for f in band if f["wp"] >= 51]
-    print(f"   in-band quoted >= 51%: n={len(hi_q)} won {sum(f['won'] for f in hi_q)}")
+    band = [f for s, f in scored if 0.8 <= s < 1.2 and not f["boss"] and f["wp"] is not None]
+    hi_q = [f for f in band if f["wp"] >= 50]
+    print(f"   in-band quoted >= 50%: n={len(hi_q)} won {sum(f['won'] for f in hi_q)}")
+
+    rate = lambda g: f"{sum(f['won'] for f in g)}/{len(g)}" + (f" ({sum(f['won'] for f in g) / len(g):.0%})" if g else "")
+    print("\n== 8. Win rate per verdict band (WIN_CHANCE in src/shared/arenaCombat.ts) ==")
+    regs = [(s, f) for s, f in scored if not f["boss"] and f["wp"] is not None]
+    print(f"   regular score >= 1.2: {rate([f for s, f in regs if s >= 1.2])}")
+    for lo, hi in ((0.8, 1.0), (1.0, 1.2)):
+        g = [f for s, f in regs if lo <= s < hi]
+        print(f"   regular score {lo}-{hi}: quoted >= 50 {rate([f for f in g if f['wp'] >= 50])}   under 50 {rate([f for f in g if f['wp'] < 50])}")
+    print(f"   regular score < 0.8: {rate([f for s, f in regs if s < 0.8])}")
+    bs = [(s, f) for s, f in scored if f["boss"]]
+    for lo, hi in ((1.3, 1e9), (1.1, 1.3), (0.8, 1.1), (0, 0.8)):
+        print(f"   boss score {lo}-{'∞' if hi > 1e8 else hi}: {rate([f for s, f in bs if lo <= s < hi])}")
+    cb = [f for s, f in regs if 0.8 <= s < 1.2]
+    for name, rule in (("old: passive or quoted >= 51", lambda f: f["passive"] or f["wp"] >= 51),
+                       ("new: quoted >= 50", lambda f: f["wp"] >= 50)):
+        print(f"   coin-flip lean {name}: right {sum(rule(f) == f['won'] for f in cb)}/{len(cb)}")
+    for pv in (True, False):
+        print(f"   {'passive' if pv else 'active '} in band: quoted >= 50 {rate([f for f in cb if f['passive'] == pv and f['wp'] >= 50])}"
+              f"   under 50 {rate([f for f in cb if f['passive'] == pv and f['wp'] < 50])}")
+
+    print("\n== 9. Bounty ==")
+    paid = [f for f in reg if f["won"] and f["bounty"] is not None]
+    print(f"   points_earned == bounty on wins: {sum(f['pts'] == f['bounty'] for f in paid)}/{len(paid)}")
+    mt = collections.defaultdict(list)
+    for f in reg:
+        if f["mult"] is not None and f["threat"] is not None:
+            mt[f["mult"]].append(f["threat"])
+    for m in sorted(mt):
+        print(f"   multiplier x{m}: threat_ratio {min(mt[m]):.2f}-{max(mt[m]):.2f} (n={len(mt[m])})")
+    for bnt in sorted({f["bounty"] for f in reg if f["bounty"] is not None}):
+        g = [f for f in reg if f["bounty"] == bnt]
+        if len(g) >= 5:
+            print(f"   bounty {bnt:4}: won {rate(g)}")
 
 
 if __name__ == "__main__":

@@ -4,10 +4,11 @@ import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './type
  * The Arena V2 kill-race model from docs/arena-combat-mechanics.md, as pure
  * functions: turn an opponent card (STR / DEF / level, plus the Passive tag
  * and the game's quoted %) and the player's own season numbers into a score
- * and a verdict. Re-derived against every real fight in the archives by
- * verification/arena/verify_combat_rule.py (155/179 correct; score ≥ 1.2 won
- * 81/81; score < 0.8 won 1/39). Update the coefficients here and there
- * together.
+ * and a verdict, and verdicts plus bounties into an expected pot. Re-derived
+ * against every real fight in the archives by
+ * verification/arena/verify_combat_rule.py (2026-10-05, 387 fights: regular
+ * score ≥ 1.2 won 176/176, < 0.8 won 3/57; boss ≥ 1.3 won 24/24). Update the
+ * coefficients here and there together.
  */
 
 /** Mean of the five "minimum damage" steps, as a fraction of the attacker's
@@ -20,10 +21,45 @@ export const FLOOR_FRACTION = 0.088;
 /** Score bands. ≥ BEATABLE has won every time so far; < AVOID almost never. */
 export const SCORE_BEATABLE = 1.2;
 export const SCORE_AVOID = 0.8;
+/** Bosses need a higher score to be safe. Re-checked 2026-10-05 on 57 boss
+ *  fights: every boss scoring 1.3+ was won (24/24), but 1.1–1.3 went 23/27 —
+ *  all four non–Iron River boss losses (Kito-gumi STR 821/871, Volkskaya
+ *  857/885) scored 1.13–1.22, as boss HP grew with level (645 at level 110). */
+export const SCORE_BOSS_BEATABLE = 1.3;
 
-/** Within the coin-flip band, a quoted % at or above this leaned to a win
- *  (11/13). */
-export const COINFLIP_LEAN_QUOTED_PCT = 51;
+/**
+ * Real win rate per verdict band, from all 388 archived Arena V2 fights
+ * (2026-09-09 → 10-04; verification/arena/verify_combat_rule.py, section 8,
+ * which scores with the same season medians the advisor uses).
+ * Used to turn verdicts into an expected pot, not shown as a precise %.
+ */
+const WIN_CHANCE = {
+  regular: {
+    beatable: 0.99, // 176/176
+    avoid: 0.05, // 3/57
+    // Lean = quoted ≥ 50% (see COINFLIP_LEAN_QUOTED_PCT).
+    coinflipLow: { leanWin: 0.71, leanLoss: 0.21 }, // score 0.8–1.0: 12/17, 7/33
+    coinflipHigh: { leanWin: 0.76, leanLoss: 0.47 }, // score 1.0–1.2: 25/33, 7/15
+  },
+  boss: {
+    beatable: 0.98, // score ≥ 1.3: 24/24
+    coinflip: 0.85, // score 1.1–1.3: 23/27 (no boss has scored 0.8–1.1 yet)
+    avoid: 0.4, // score < 0.8, all Iron River: 2/5
+  },
+} as const;
+
+/** Expected points a fresh set of four regular opponents banks when played
+ *  riskiest first, from 136 real lineups: mean 87 (103 last season, 77 this
+ *  one). A lineup under this is worth re-rolling; one at or above it is
+ *  worth keeping. */
+export const TYPICAL_LINEUP_POINTS = 87;
+
+/** Within the coin-flip band, a quoted % at or above this leans to a win.
+ *  Re-checked 2026-10-05 on 98 coin-flip fights: quoted ≥ 50% won 37/50,
+ *  under 50% won 14/48 — right 71/98, vs 68/98 for the old "Passive or
+ *  quoted ≥ 51%" rule, which leaned win on every Passive opponent even
+ *  though a Passive one quoted under 50% won only 10/24 (≥ 50%: 22/28). */
+export const COINFLIP_LEAN_QUOTED_PCT = 50;
 
 /** `preview_loadout` locked stats → the player's own combat numbers, before
  *  any fight has been logged this season. Measured ratios across three
@@ -109,11 +145,15 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
   const theirHit = Math.max(FLOOR_FRACTION * base, base - me.reduction);
   // Score = 1 with their hits on the floor: base = myHp·mine / (floor·theirHp).
   const breakEvenBase = (me.maxHp * mine) / (FLOOR_FRACTION * hp);
-  const kind: ArenaVerdictKind = score >= SCORE_BEATABLE ? 'beatable' : score < SCORE_AVOID ? 'avoid' : 'coinflip';
-  const leansWin =
-    card.passive ||
-    (card.quotedPct !== null && card.quotedPct >= COINFLIP_LEAN_QUOTED_PCT && !card.isBoss) ||
-    (card.isBoss && score >= 1);
+  const beatableAt = card.isBoss ? SCORE_BOSS_BEATABLE : SCORE_BEATABLE;
+  const kind: ArenaVerdictKind = score >= beatableAt ? 'beatable' : score < SCORE_AVOID ? 'avoid' : 'coinflip';
+  // Regular: the game's quoted % decides the lean when it's on the card;
+  // Passive is only the fallback when it isn't. Boss: score 1.0+.
+  const leansWin = card.isBoss
+    ? score >= 1
+    : card.quotedPct !== null
+      ? card.quotedPct >= COINFLIP_LEAN_QUOTED_PCT
+      : card.passive;
   return {
     kind,
     score,
@@ -132,6 +172,46 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
 /** Should the player take this fight? Beatable, or a coin-flip leaning win. */
 export function isRecommended(v: ArenaVerdict): boolean {
   return v.kind === 'beatable' || (v.kind === 'coinflip' && v.leansWin);
+}
+
+/** The real win rate for this verdict's band — see `WIN_CHANCE`. */
+export function winChance(card: Pick<ArenaOpponentCard, 'isBoss'>, v: ArenaVerdict): number {
+  if (card.isBoss) return WIN_CHANCE.boss[v.kind];
+  const r = WIN_CHANCE.regular;
+  if (v.kind === 'beatable') return r.beatable;
+  if (v.kind === 'avoid') return r.avoid;
+  const band = v.score < 1 ? r.coinflipLow : r.coinflipHigh;
+  return v.leansWin ? band.leanWin : band.leanLoss;
+}
+
+export interface PotFight<T> {
+  item: T;
+  /** Win chance, 0–1. */
+  p: number;
+  bounty: number;
+}
+
+/** Expected points banked from `startPot` plus `fights` played in the given
+ *  order: any loss wipes the unbanked pot, so each bounty counts only if it
+ *  and every later fight are won, and the starting pot only if every fight
+ *  is won. (A bounty-weighted order can edge riskiest-first by ~3 points a
+ *  page on real lineups; the player chose to keep riskiest first,
+ *  2026-10-05.) */
+export function expectedPot(fights: PotFight<unknown>[], startPot = 0): number {
+  let total = 0;
+  let tail = 1; // chance of winning every fight after this one
+  for (let i = fights.length - 1; i >= 0; i--) {
+    total += fights[i].bounty * fights[i].p * tail;
+    tail *= fights[i].p;
+  }
+  return total + startPot * tail;
+}
+
+/** Largest pot still worth risking on the boss: fight while
+ *  p × (pot + bounty) > pot, i.e. pot < p × bounty ÷ (1 − p). Infinity when
+ *  the boss is (near enough) certain. */
+export function bossPotLimit(p: number, bossBounty: number): number {
+  return p >= 0.999 ? Infinity : (p * bossBounty) / (1 - p);
 }
 
 /** Per-fight samples kept for the season medians (a season is ~7 days of

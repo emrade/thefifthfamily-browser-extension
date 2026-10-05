@@ -4,6 +4,7 @@ import {
   ARENA_BASELINE_TALLY,
   SCORE_AVOID,
   SCORE_BEATABLE,
+  SCORE_BOSS_BEATABLE,
   addTallies,
   emptyTally,
   type ArenaOpponentCard,
@@ -26,6 +27,10 @@ export interface FightDetail {
   order: number | null;
   profile: ArenaMyProfile;
   record: ArenaTrackRecord | null;
+  /** Real win rate of this verdict's band (`winChance`), 0–1. */
+  winChance: number;
+  /** Points a win adds to the pot, if the card shows it. */
+  bounty: number | null;
 }
 
 const STYLE_ID = 'ff-arena-details-style';
@@ -33,7 +38,7 @@ const HOVER_ID = 'ff-arv-hover';
 const MODAL_ID = 'ff-arv-modal';
 
 const VERDICT_ROWS = [
-  { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+` },
+  { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+ (boss ${SCORE_BOSS_BEATABLE}+)` },
   { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE}` },
   { kind: 'avoid', label: 'Avoid', range: `under ${SCORE_AVOID}` },
 ] as const;
@@ -145,15 +150,15 @@ function notes(d: FightDetail): string[] {
   if (v.breaksThrough) out.push(`<b>Your hits get past their DEF ${fmt(card.defence)}</b>, so you deal real damage, not just the minimum.`);
   if (v.theyBreakThrough) out.push(`<b>Their hits get past your armour</b> (~${fmt(d.profile.reduction)}), so they deal real damage, not just the minimum.`);
   if (card.isBoss) {
-    if (card.family === 'iron_river') out.push('<b>Iron River boss:</b> built on STR, the stat that decides fights. Every boss loss so far was Iron River.');
-    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight. Bosses like this have won every time so far.`);
-    out.push('<b>A boss loss forfeits your unbanked pot.</b> Skipping means banking first.');
+    if (card.family === 'iron_river') out.push('<b>Iron River boss:</b> built on STR, the stat that decides fights. Most Iron River bosses have beaten you.');
+    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight, but bosses grow with your level: every boss scoring 1.3+ has been won, while 1.1–1.3 has lost about 1 in 7.`);
+    out.push('<b>A boss loss forfeits your unbanked pot.</b> Skipping means banking first. The plan above says how big a pot is still worth risking.');
   }
   if (v.kind === 'coinflip') {
     out.push(
       v.leansWin
-        ? 'Leans win: ' + (card.passive ? 'Passive opponents in this band have won most of the time.' : card.isBoss ? 'bosses scoring 1.0+ have all been won.' : 'a quoted 51%+ in this band has usually been a win.')
-        : 'Leans loss: active opponents in this band have mostly beaten you.',
+        ? 'Leans win: ' + (card.isBoss ? 'bosses scoring 1.0+ have mostly been won.' : card.quotedPct !== null ? 'a quoted 50%+ in this band has won about 3 in 4.' : 'Passive opponents in this band have won most of the time.')
+        : 'Leans loss: ' + (card.isBoss ? 'bosses this close have beaten you.' : 'a quoted under 50% in this band has won only about 1 in 3.'),
     );
   }
   return out;
@@ -179,6 +184,7 @@ export function showHover(anchor: HTMLElement, d: FightDetail): void {
     `<div class="ff-arv-h-verdict"><span style="color:${accentFor(d.verdict)}">${word(d.verdict)}</span>` +
     ` <span class="ff-arv-h-score">· ${scoreText(d.verdict)}</span></div>` +
     `<div class="ff-arv-h-reason">${keyReason(d)}</div>` +
+    `<div class="ff-arv-h-reason">Won ~${Math.round(d.winChance * 100)}% of the time${d.bounty !== null ? ` · +${d.bounty} to the pot` : ''}.</div>` +
     `<div class="ff-arv-h-hint">Click for the full breakdown</div>`;
 
   const r = anchor.getBoundingClientRect();
@@ -273,6 +279,13 @@ export function openModal(d: FightDetail): void {
       </div>
 
       <div class="ff-arv-m-sec">
+        <div class="ff-arv-m-h">Pot</div>
+        <div class="ff-arv-m-sum">Fights like this have been won <b>~${Math.round(d.winChance * 100)}%</b> of the time.${
+          d.bounty !== null ? ` A win adds <b>${d.bounty}</b> to the page pot;` : ' A win adds its bounty to the page pot;'
+        } a loss wipes everything unbanked.</div>
+      </div>
+
+      <div class="ff-arv-m-sec">
         <div class="ff-arv-m-h">Who wins the race</div>
         <table>
           <tr><th></th><th>You</th><th>Them</th></tr>
@@ -296,7 +309,11 @@ export function openModal(d: FightDetail): void {
         <div class="ff-arv-m-h">The game’s number</div>
         <div class="ff-arv-m-quoted">${
           card.quotedPct !== null ? `Quoted <b>${card.quotedPct}%</b>.` : 'Not seen for this boss (it only arrives when you open the page).'
-        } It comes from Combat Power alone, so it can’t tell a STR build from a DEX or AGI build.</div>
+        } It comes from Combat Power alone, so it can’t tell a STR build from a DEX or AGI build. ${
+          card.isBoss
+            ? 'For bosses it means nothing: they’re always quoted 37–47%, yet most are won.'
+            : 'For regular opponents it still works as a cut-off: 50%+ has won 9 in 10, under 50% about 1 in 6, and inside a coin-flip it tips the odds.'
+        }</div>
       </div>
 
       <div class="ff-arv-m-sec">
