@@ -23,6 +23,7 @@ python3 verification/street-intel/verify_complication_type_stats.py [--archive .
 python3 verification/street-intel/verify_complication_blocked_choices.py [--archive ... [--archive ...]]
 python3 verification/street-intel/analyze_profit_and_stamina.py [--archive ...] [--since YYYY-MM-DD]
 python3 verification/street-intel/simulate_target_selection.py [--archive ...] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
+python3 verification/street-intel/analyze_live_modes.py [--archive ...] [--since YYYY-MM-DD]
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
@@ -83,7 +84,16 @@ deduplicated automatically.
   snapshots and real stamina income against alternative selection policies
   ("big targets only", tier filters, stamina reserve, lazy scouting).
 
-These three load every archive in parallel through `_lib.load_endpoint_records`
+- **`analyze_live_modes.py`** (2026-10-05) — how the 0.36.0 modes (Smart
+  scouting, Smart complication choices, top 2 by payout) are doing on live
+  play against the original scout-everything runner. Detects which
+  behaviour ran each day from the requests themselves (scouts per cycle;
+  complication choices that differ from the attempt's approach), then
+  compares per day and before/after on **net per Stamina**, so consumables
+  and partial days don't skew it. Also flags attempts where an affordable
+  card worth 1.5x+ sat unscouted. Re-run after each new export.
+
+These scripts load every archive in parallel through `_lib.load_endpoint_records`
 (~20s for ~5GB on 8 cores) instead of `load_records_deduped`.
 
 ## What these scripts can't check
