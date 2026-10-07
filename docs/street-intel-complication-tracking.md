@@ -65,6 +65,25 @@ consumers share this one rule, so they never disagree:
 Among *unblocked* choices the ranking differences are small (all ~85-90%) —
 the pick there is a mild preference, not a strong signal.
 
+### Live results and open question (2026-10-07)
+
+First three days with Smart complication choices on (2026-10-05..07):
+34/39 complications won, $1.14M lost in total. Four of the five losses cost
+nothing. The one costly loss shows a gap in the rule:
+
+- "An off-duty cop recognized your face.", approach `fight`. The runner
+  reused `fight` (record 2/4, 50%) because it isn't *blocked* (it has wins),
+  while `talk` was 5/5. Lost $1,138,993.
+
+**Open question:** should the rule also switch away from a choice that's
+merely much worse than another, e.g. 50% vs 100%, not only from 0-win
+choices? Not built yet. These cells are tiny (4-5 tries each), so a "much
+worse" rule could chase noise as easily as fix this. Revisit after about a
+week more of live data. Check whether non-blocked-but-weak picks keep losing
+and what they cost, then replay the candidate rule chronologically the way
+the blocked rule was (`verify_complication_blocked_choices.py`). Tracked in
+`todos.md`.
+
 ## Why this exists
 
 A Street Intel `attempt` can come back with `has_complication: true`, which requires a
