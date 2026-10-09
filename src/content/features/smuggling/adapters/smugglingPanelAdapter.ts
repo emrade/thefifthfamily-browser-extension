@@ -1,4 +1,5 @@
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import { fleetPetName } from '@/shared/smugglingFleet';
 import type {
   AssignedCourier,
   BlackMarketItem,
@@ -72,7 +73,8 @@ function parseFleet(doc: Document): FleetEntry[] {
     const shipmentId = args ? Number(args[0]) : NaN;
     if (!Number.isFinite(shipmentId)) continue;
 
-    const petName = textOf(el.querySelector('.sv2-fl-txt b'));
+    // See `fleetPetName` — the name moved off the bold line on 2026-10-09.
+    const petName = fleetPetName(textOf(el.querySelector('.sv2-fl-txt b')), textOf(el.querySelector('.sv2-fl-txt span')), '·');
     const etaEl = el.querySelector('.sv2-fl-eta[data-seconds]');
     const etaSeconds = etaEl ? Number(etaEl.getAttribute('data-seconds')) : null;
     const status: FleetEntry['status'] = el.classList.contains('draft')

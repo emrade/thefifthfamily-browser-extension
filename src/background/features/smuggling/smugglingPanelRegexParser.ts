@@ -1,4 +1,5 @@
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import { fleetPetName } from '@/shared/smugglingFleet';
 import type {
   AssignedCourier,
   BlackMarketItem,
@@ -57,12 +58,13 @@ function parseFleet(html: string): FleetEntry[] {
     const idMatch = chunk.match(/Game\.smugV2Focus\((\d+)\)/);
     if (!idMatch) continue;
 
-    const nameMatch = chunk.match(/<b>([^<]+)<\/b>/);
+    const boldMatch = chunk.match(/<b>([^<]+)<\/b>/);
+    const subMatch = chunk.match(/sv2-fl-txt">[^]*?<\/b>\s*<span>([^<]*)<\/span>/);
     const etaMatch = chunk.match(/data-seconds="(\d+)"/);
 
     entries.push({
       shipmentId: Number(idMatch[1]),
-      petName: nameMatch ? nameMatch[1] : '',
+      petName: fleetPetName(boldMatch ? boldMatch[1] : '', subMatch ? subMatch[1] : '', '&middot;'),
       status: classList.includes('draft') ? 'drafting' : classList.includes('ready') ? 'ready-to-offload' : 'moving',
       etaSeconds: etaMatch ? Number(etaMatch[1]) : null,
     });

@@ -134,6 +134,25 @@ function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
 }
 
 /**
+ * Fleet entries whose pet name isn't in the persisted roster. Idle pets are
+ * worked out as "roster minus fleet names", so a name the roster doesn't know
+ * means that subtraction is wrong — and the error is always in the
+ * dangerous direction, a busy pet counted as idle. Confirmed real
+ * (2026-10-09): the fleet tiles moved the pet name off the bold line, the
+ * parser read cargo labels ("Black-Market Steroids &times;36") as names, and
+ * every automated `v2_launch` from then on included every pet, busy or not.
+ * Checked before every launch so the next markup change pauses the feature
+ * instead of quietly sending requests the real client never could. Skipped
+ * while the roster is empty (fresh install), since nothing can be launched
+ * from an empty roster anyway.
+ */
+function unrecognizedFleetNames(fleet: FleetEntry[], roster: PetRosterEntry[]): string[] {
+  if (roster.length === 0) return [];
+  const known = new Set(roster.map((p) => p.name));
+  return fleet.filter((f) => !known.has(f.petName)).map((f) => f.petName || '(blank)');
+}
+
+/**
  * POSTs `v2_launch` — sends every included idle pet in one call, with the
  * server buying the cargo inline (`buy=1`). Replaces what used to be a
  * draft→buy→load→depart sequence repeated once per pet — see
@@ -541,6 +560,12 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     }
 
     const roster = await getRoster();
+    const unrecognized = unrecognizedFleetNames(snapshot.fleet, roster);
+    if (unrecognized.length > 0) {
+      pushError(`active deliveries list couriers not in your pet roster (${unrecognized.join(', ')}) — the fleet markup may have changed shape`);
+      summary.stoppedReason = 'shape-changed';
+      return summary;
+    }
     const activeNames = new Set(snapshot.fleet.map((f) => f.petName));
     // Not in the active fleet isn't the same as actually draftable — a pet
     // can be sitting out idle on the smuggling side while still rejected by
@@ -683,6 +708,12 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         const recheck = await fetchPanel();
         if (!recheck) {
           pushError('could not re-read the smuggling panel immediately before launch');
+          summary.stoppedReason = 'shape-changed';
+          break;
+        }
+        const liveUnrecognized = unrecognizedFleetNames(recheck.fleet, roster);
+        if (liveUnrecognized.length > 0) {
+          pushError(`active deliveries list couriers not in your pet roster (${liveUnrecognized.join(', ')}) — the fleet markup may have changed shape`);
           summary.stoppedReason = 'shape-changed';
           break;
         }
