@@ -18,7 +18,7 @@ python3 verification/street-racing/verify_manual_accuracy.py [--archive PATH ...
 ```
 
 `--archive` is repeatable and defaults to *every* matching archive found
-under `~/Downloads` and its `tff archives` subfolder — a
+in the locations listed in `verification/archive_paths.py` — a
 single export's rolling window rarely covers enough real manual play to say
 anything about a trend, so this combines as many as it can find rather than
 just the newest.

@@ -17,7 +17,7 @@ Checks the claims in `docs/street-racing-leaderboard.md`:
 
 Run: python3 verification/street-racing/verify_leaderboard_speed.py [--archive PATH ...]
 
-Defaults to every archive under ~/Downloads and its "tff archives" subfolder
+Defaults to every archive in the locations in verification/archive_paths.py
 (overlapping windows are deduplicated), same as verify_manual_accuracy.py.
 
 Written 2026-09-24. First run: 41 distinct snapshots (2026-09-11 .. 09-23),
@@ -30,26 +30,17 @@ import argparse
 import collections
 import gzip
 import json
-from glob import glob
+import sys
 from pathlib import Path
 
-ARCHIVE_GLOBS = [
-    str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
-]
+# Archive locations live in verification/archive_paths.py — shared by every script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from archive_paths import find_archives as find_default_archives  # noqa: E402
+
 HOUR_MS = 3600 * 1000
 RESET_HOUR_UTC = 23  # board day + weather slot boundary (midnight WAT)
 SLOT_OFFSET_HOUR_UTC = 11  # the other weather-slot boundary
 
-
-def find_default_archives() -> list:
-    candidates = sorted({p for pattern in ARCHIVE_GLOBS for p in glob(pattern)})
-    if not candidates:
-        raise SystemExit(
-            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz (repeatable)\n"
-            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
-        )
-    return candidates
 
 
 def load_racing_rows(archive_paths):

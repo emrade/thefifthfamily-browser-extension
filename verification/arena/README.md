@@ -17,7 +17,7 @@ python3 verification/arena/verify_boss_odds.py [--archive PATH ...]
 ```
 
 `--archive` is repeatable and defaults to *every* matching archive found
-under `~/Downloads` and its `tff archives` subfolder — boss fights are far
+in the locations listed in `verification/archive_paths.py` — boss fights are far
 rarer than street races (once per page-unlock, not several times a
 session), so a single export's window is even less likely to have enough
 samples than the street-racing check.

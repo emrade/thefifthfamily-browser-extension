@@ -13,7 +13,10 @@ asking where it is.
 
 ## Where the data is
 
-Check all three, newest data last:
+The canonical list is `verification/archive_paths.py` (overridable with
+`TFF_ARCHIVE_DIR` / `TFF_DOWNLOADS_DIR`) — if it disagrees with the paths below, it
+wins. For analysis scripts, import `find_archives()` from it rather than hard-coding
+paths. Check all three, newest data last:
 
 1. **`~/Downloads/tff archives/merged/fifth-family-archive-YYYY-MM.ndjson.gz`** — the
    long-run history, one file per month, de-duplicated and sorted by time. Starts

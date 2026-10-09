@@ -24,7 +24,7 @@ Reports, in order:
 
 Run: python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 
-Defaults to every archive under ~/Downloads and its "tff archives" subfolder
+Defaults to every archive in the locations in verification/archive_paths.py
 (overlapping windows deduplicated). Standard library only.
 
 Written 2026-09-24. First run: 179 V2 fights (156 regular, 23 bosses,
@@ -52,28 +52,19 @@ import argparse
 import collections
 import gzip
 import json
+import sys
 import math
 import re
 import statistics
 from datetime import datetime, timezone
-from glob import glob
 from pathlib import Path
 
-ARCHIVE_GLOBS = [
-    str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
-]
+# Archive locations live in verification/archive_paths.py — shared by every script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from archive_paths import find_archives as find_default_archives  # noqa: E402
+
 FLOOR_FRACTION = 0.088  # min-damage mean / attacker mean base: measured 8.5% (you) and 9.1% (opponents); 8.8% shared fits results best
 
-
-def find_default_archives() -> list:
-    candidates = sorted({p for pattern in ARCHIVE_GLOBS for p in glob(pattern)})
-    if not candidates:
-        raise SystemExit(
-            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz (repeatable)\n"
-            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
-        )
-    return candidates
 
 
 def load_arena_rows(archive_paths):

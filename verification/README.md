@@ -16,3 +16,9 @@ it.
 - **`arena/`**: `verify_boss_odds.py` (quoted boss odds vs results) and
   `verify_combat_rule.py` (checks `docs/arena-combat-mechanics.md`: combat
   mechanics, the kill-race score, bosses by family).
+
+All scripts find archives through `archive_paths.py` — the merged monthly history
+(`~/Downloads/tff archives/merged/`, built by `scripts/merge-archives.py`), unmerged
+exports in `tff archives`, and fresh downloads in `~/Downloads`. If that moves, edit
+that one file or set `TFF_ARCHIVE_DIR` / `TFF_DOWNLOADS_DIR`; `--archive` still
+overrides per run.

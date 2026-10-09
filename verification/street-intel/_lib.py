@@ -7,37 +7,25 @@ if omitted, we glob common locations for the newest matching file.
 """
 
 import argparse
+import sys
 import gzip
 import html
 import json
 import math
 import re
-from glob import glob
 from pathlib import Path
 
-ARCHIVE_GLOBS = [
-    str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
-]
-
-
-def find_default_archive() -> str:
-    candidates = [p for pattern in ARCHIVE_GLOBS for p in glob(pattern)]
-    if not candidates:
-        raise SystemExit(
-            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz\n"
-            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
-        )
-    # Filenames embed an ISO timestamp, so lexicographic max == newest.
-    return max(candidates)
+# Archive locations live in verification/archive_paths.py — shared by every script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from archive_paths import find_archives, find_newest_archive as find_default_archive  # noqa: E402
 
 
 def add_archive_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--archive",
         default=None,
-        help="Path to fifth-family-archive-*.ndjson.gz (default: newest match under ~/Downloads "
-        "or its 'tff archives' subfolder)",
+        help="Path to fifth-family-archive-*.ndjson.gz (default: newest archive in the "
+        "locations listed in verification/archive_paths.py)",
     )
 
 
@@ -57,21 +45,14 @@ def add_archives_arg(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=None,
         help="Path to a fifth-family-archive-*.ndjson.gz (repeatable to combine several; "
-        "default: every match under ~/Downloads or its 'tff archives' subfolder)",
+        "default: every archive in the locations listed in verification/archive_paths.py)",
     )
 
 
 def resolve_archive_paths(args) -> list:
     if args.archives:
         return args.archives
-    candidates = sorted(p for pattern in ARCHIVE_GLOBS for p in glob(pattern))
-    if not candidates:
-        raise SystemExit(
-            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz "
-            "(repeatable)\n"
-            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
-        )
-    return candidates
+    return find_archives()
 
 
 def load_records_deduped(archive_paths):

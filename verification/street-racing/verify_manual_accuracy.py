@@ -11,8 +11,8 @@ account's real mini-game performance has shifted, rather than guessing.
 
 Run: python3 verification/street-racing/verify_manual_accuracy.py [--archive PATH ...]
 
-By default this combines *every* matching archive found under ~/Downloads
-and its "tff archives" subfolder (not just the newest) — a
+By default this combines *every* matching archive found in the locations in
+verification/archive_paths.py (merged monthly history + unmerged exports) (not just the newest) — a
 single export's rolling window rarely covers enough real manual play to say
 anything about a trend; `--archive` is repeatable if you want to pin specific
 files instead.
@@ -32,26 +32,16 @@ rather than trusting a single narrow pull.
 import argparse
 import gzip
 import json
+import sys
 import statistics
-from glob import glob
 from pathlib import Path
 from urllib.parse import parse_qs
 
-ARCHIVE_GLOBS = [
-    str(Path.home() / "Downloads" / "fifth-family-archive-*.ndjson.gz"),
-    str(Path.home() / "Downloads" / "tff archives" / "fifth-family-archive-*.ndjson.gz"),
-]
+# Archive locations live in verification/archive_paths.py — shared by every script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from archive_paths import find_archives as find_default_archives  # noqa: E402
 
 
-def find_default_archives() -> list:
-    candidates = sorted({p for pattern in ARCHIVE_GLOBS for p in glob(pattern)})
-    if not candidates:
-        raise SystemExit(
-            "No archive found. Pass --archive /path/to/fifth-family-archive-*.ndjson.gz "
-            "(repeatable)\n"
-            f"(looked in: {', '.join(ARCHIVE_GLOBS)})"
-        )
-    return candidates
 
 
 def load_records(archive_path: str):
@@ -117,7 +107,7 @@ def main():
         action="append",
         default=None,
         help="Path to a fifth-family-archive-*.ndjson.gz (repeatable; default: every match under "
-        "~/Downloads and its 'tff archives' subfolder)",
+        "verification/archive_paths.py's locations)",
     )
     args = parser.parse_args()
     archive_paths = args.archives or find_default_archives()

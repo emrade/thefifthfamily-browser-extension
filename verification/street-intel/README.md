@@ -27,7 +27,7 @@ python3 verification/street-intel/analyze_live_modes.py [--archive ...] [--since
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
-under `~/Downloads` or its `tff archives` subfolder — pass it explicitly if
+in the locations listed in `verification/archive_paths.py` — pass it explicitly if
 the archive lives somewhere else or you want to pin a specific export.
 
 `verify_complication_type_stats.py` and the three 2026-10-04 scripts
