@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.37.1] - 2026-10-09
+
+### Fixed
+- Pet Courier / Courier Watch: the game's 2026-10-09 smuggling update
+  moved each active delivery's pet name off the tile's bold line (which now
+  shows the cargo, e.g. "Black-Market Steroids ×36"). The extension read
+  cargo labels as pet names, so every pet looked idle and each launch sent
+  all of them — stopping runs with "Peregrine Falcon is already out on a
+  delivery." Pet names are now read from the new spot. Replayed against
+  every archived launch since the change: each would have sent only the
+  pets actually home.
+
+### Changed
+- Pet Courier: a run now stops before launching if the active deliveries
+  name a courier your pet roster doesn't know, so a future layout change
+  pauses the feature instead of sending busy pets.
+
 ## [0.37.0] - 2026-10-05
 
 ### Added
