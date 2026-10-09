@@ -9,6 +9,27 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.38.0] - 2026-10-09
+
+### Added
+- HTTP Archive: **Download New Since Last Export** — exports only what was
+  captured after your previous full or "new" export, so files no longer
+  repeat each other. If rows were dropped before you exported them, the
+  file's header says so (`gapBefore`). A full download also moves this
+  bookmark forward.
+- `scripts/merge-archives.py`: folds any number of exports into one
+  de-duplicated file per month, checks every row made it before replacing
+  anything, and lists time spans no export covered. Re-runnable — new
+  exports extend the monthly files. Turned 66 exports (5.84 GB) into 3
+  files (1.51 GB).
+
+### Changed
+- HTTP Archive: a background read that's byte-identical to the last stored
+  response for that page is no longer stored. The automations' repeated
+  panel reads had shrunk the 100 MB archive to ~1.5 days; this cuts ~36% of
+  raw bytes (~2.3 days). Your own page traffic and every action are always
+  kept.
+
 ## [0.37.1] - 2026-10-09
 
 ### Fixed
