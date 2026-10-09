@@ -153,6 +153,12 @@ export const storage = {
   },
   setRequestLogPreferences: (v: RequestLogPreferences) => set(STORAGE_KEYS.REQUEST_LOG_PREFERENCES, v),
 
+  // Highest `requestLog.id` included in the last full or "new since last
+  // export" download — what the next incremental export starts after. null
+  // until the first export.
+  getRequestLogExportCursor: () => get<number | null>(STORAGE_KEYS.REQUEST_LOG_EXPORT_CURSOR, null),
+  setRequestLogExportCursor: (v: number) => set(STORAGE_KEYS.REQUEST_LOG_EXPORT_CURSOR, v),
+
   getLastCourierRun: () => get<CourierRunSummary | null>(STORAGE_KEYS.LAST_COURIER_RUN, null),
   setLastCourierRun: (v: CourierRunSummary) => set(STORAGE_KEYS.LAST_COURIER_RUN, v),
 

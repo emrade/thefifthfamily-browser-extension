@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   FIGHT_CLUB_FILTER: 'ff_fight_club_filter',
   PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
   REQUEST_LOG_PREFERENCES: 'ff_request_log_preferences',
+  REQUEST_LOG_EXPORT_CURSOR: 'ff_request_log_export_cursor',
   LAST_COURIER_RUN: 'ff_last_courier_run',
   CAREER_AUTO_CONFIG: 'ff_career_auto_config',
   CAREER_AUTO_STATUS: 'ff_career_auto_status',

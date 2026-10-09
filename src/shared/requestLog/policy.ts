@@ -1,3 +1,5 @@
+import type { RequestLogOrigin } from './types';
+
 /**
  * What the archive keeps, and how often.
  *
@@ -67,6 +69,24 @@ export function throttleIntervalFor(url: string): number | null {
   const path = pathOf(url);
   if (path == null) return null;
   return THROTTLED_PATHS.find(({ pattern }) => pattern.test(path))?.minIntervalMs ?? null;
+}
+
+/**
+ * Whether a response is dropped when it's byte-identical (same status, same
+ * stored body) to the newest archived row for its endpoint.
+ *
+ * Only the extension's own background `GET`s. Measured 2026-10-09: ~80% of
+ * archive bytes were Pet Courier / Career Auto / Crimes Auto re-reading the
+ * smuggling, careers and crimes panels, and 43% of background panel bytes were
+ * exact repeats of the previous read — enough that the 100 MB budget held only
+ * ~1.5 days instead of the 30-day retention. A repeat carries nothing the
+ * stored copy doesn't, so this is lossless for every body. What it does drop is
+ * the *timestamp* of the repeated read. Page traffic is never skipped (it's the
+ * real client, and what features are built from), and neither is any `POST`
+ * (an action and its outcome, even an identical one, is an event).
+ */
+export function skipsIdenticalRepeat(method: string, origin: RequestLogOrigin): boolean {
+  return origin === 'background' && method.toUpperCase() === 'GET';
 }
 
 /** Exposed so the retention sweep can drop rows for endpoints excluded after they

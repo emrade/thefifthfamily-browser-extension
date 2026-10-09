@@ -4,7 +4,7 @@ import { db, clearRequestLog } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, RETENTION_CHOICES, type RequestLogPreferences } from '@/shared/requestLog/preferences';
 import { readStats, recomputeStats, resetStats, type RequestLogStats } from '@/shared/requestLog/stats';
-import { buildArchiveBlob, buildShapeDigest, listEndpoints, type EndpointSummary } from '@/shared/requestLog/exportRequestLog';
+import { buildArchiveBlob, buildShapeDigest, countRowsAfter, listEndpoints, newestRequestLogId, type EndpointSummary } from '@/shared/requestLog/exportRequestLog';
 import { rebuildProfiles } from '@/shared/requestLog/rebuild';
 import { REQUEST_LOG_MAX_BYTES } from '@/shared/constants';
 
@@ -60,6 +60,14 @@ function download(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** The saved cursor, unless it's ahead of the newest row — which only happens
+ *  if the archive database was recreated (ids restart from 1). Treating that
+ *  as "never exported" avoids an incremental export that silently stays empty
+ *  until ids catch back up. */
+function effectiveCursor(stored: number | null, newestId: number): number | null {
+  return stored != null && stored > newestId ? null : stored;
+}
+
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
@@ -74,15 +82,24 @@ export function RequestLogHome() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /** Last id the previous full/incremental export covered, and how many rows
+   *  have arrived since — null cursor means nothing has been exported yet. */
+  const [exportCursor, setExportCursor] = useState<number | null>(null);
+  const [newRows, setNewRows] = useState(0);
 
   async function refresh() {
-    const [nextPrefs, nextStats, profiles, nextEndpoints] = await Promise.all([
+    const [nextPrefs, nextStats, profiles, nextEndpoints, storedCursor, newestId] = await Promise.all([
       storage.getRequestLogPreferences(),
       readStats(),
       db.endpointProfiles.toArray(),
       listEndpoints(),
+      storage.getRequestLogExportCursor(),
+      newestRequestLogId(),
     ]);
     setEndpoints(nextEndpoints);
+    const cursor = effectiveCursor(storedCursor, newestId);
+    setExportCursor(cursor);
+    setNewRows(await countRowsAfter(cursor ?? 0, newestId));
 
     setPrefs(nextPrefs);
     setStats(nextStats);
@@ -115,6 +132,19 @@ export function RequestLogHome() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Exports everything after the saved cursor (or the whole archive when
+   *  `incremental` is false), then advances the cursor to the newest id the
+   *  export was pinned to. A full download advances it too: it already holds
+   *  every row, so the next incremental one should start after it. */
+  async function exportArchive(incremental: boolean) {
+    const throughId = await newestRequestLogId();
+    const cursor = effectiveCursor(await storage.getRequestLogExportCursor(), throughId);
+    const blob = await buildArchiveBlob(incremental && cursor != null ? { afterId: cursor, throughId } : { throughId });
+    download(blob, `fifth-family-archive-${incremental && cursor != null ? 'new-' : ''}${timestamp()}.ndjson.gz`);
+    await storage.setRequestLogExportCursor(throughId);
+    await refresh();
   }
 
   async function savePrefs(next: RequestLogPreferences) {
@@ -310,13 +340,22 @@ export function RequestLogHome() {
 
       <button
         class="ff-export-trigger"
+        disabled={busy !== null || newRows === 0}
+        onClick={() => run('new archive', () => exportArchive(true))}
+      >
+        {busy === 'new archive'
+          ? 'Compressing…'
+          : exportCursor == null
+            ? `Download New Since Last Export (first export — all ${newRows.toLocaleString()} rows)`
+            : newRows === 0
+              ? 'Nothing new since last export'
+              : `Download New Since Last Export (${newRows.toLocaleString()} rows)`}
+      </button>
+
+      <button
+        class="ff-export-trigger"
         disabled={busy !== null || stats.rows === 0}
-        onClick={() =>
-          run('archive', async () => {
-            const blob = await buildArchiveBlob();
-            download(blob, `fifth-family-archive-${timestamp()}.ndjson.gz`);
-          })
-        }
+        onClick={() => run('archive', () => exportArchive(false))}
       >
         {busy === 'archive' ? 'Compressing…' : `Download Full Archive (${formatBytes(stats.storedBytes)})`}
       </button>

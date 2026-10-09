@@ -60,6 +60,11 @@ export interface RequestLogEntry {
   truncated: boolean;
   /** Structural fingerprint of the response — the join key to `endpointShapes`. */
   shapeHash: string;
+  /** SHA-256 of status + the stored (post-truncation) response text. Lets the
+   *  next background read of the same endpoint be skipped when it's a
+   *  byte-identical repeat — see `skipsIdenticalRepeat`. Absent on rows written
+   *  before 2026-10-09, which simply never match. */
+  contentHash?: string;
 }
 
 /** Per-token bookkeeping inside an endpoint's vocabulary. `count` against the

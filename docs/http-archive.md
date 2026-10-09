@@ -148,6 +148,21 @@ Two things qualify that number:
   traffic is **21,726/day**, fourteen times that, so the row cap evicted after 5.5 days
   and made the retention setting meaningless. The archive page shows usage against the
   budget, so drift is visible rather than inferred.
+
+  **Measured since (2026-10-09): the budget, not the age limit, decides retention.**
+  Full exports' own headers show the window shrinking from 9–12 days (late August) to
+  ~1–1.8 days (October) at the same ~100 MB, as background automations were added.
+  In the 2026-10-09 export, ~80% of raw bytes were background re-reads of three
+  panels — smuggling (Pet Courier), careers (Career Auto), crimes (Crimes Auto) —
+  and 43% of background panel bytes were byte-identical repeats of the previous
+  read of the same panel. Nearly all of those reads land within 15 s of an action,
+  so thinning by "only around actions" would barely help; skipping exact repeats
+  would. **Now done** (`skipsIdenticalRepeat` in `policy.ts`): a background `GET`
+  whose status and stored body match the newest row for its endpoint is not
+  archived — replayed on that export, 904 of 6,679 rows and 36% of raw bytes,
+  stretching the window to ~2.3 days. Page traffic and every `POST` are always
+  kept; what's lost is only the timestamp of a repeated read. Every careers/crimes body also exceeds the 512 KB body cap
+  (`REQUEST_LOG_MAX_BODY_BYTES`), so no archived copy of either is complete.
 - **The shape index is never swept.** It is a few KB, and it is most valuable exactly
   when it outlives the bodies that produced it. Knowing an endpoint changed two months
   ago costs nothing and is the whole question the index exists to answer.
@@ -179,13 +194,45 @@ endpoint that dropped a previously universal field. It then splits into three se
 | **Export** | The endpoint picker and the three download buttons |
 | **Maintenance** | Rebuild the shape index, recount size, and the archive's own clear control |
 
-### The three exports
+### The exports
 
 | Export | Contents | Size | Use when |
 |---|---|---|---|
 | **Shape Digest** | Each endpoint's token vocabulary and structural events | KB | Something broke, or you want to know what the game changed |
 | **Download Selection** | Chosen endpoints × chosen window | MB | Working on a specific feature |
+| **New Since Last Export** | Every row captured after the previous full/new export | Grows with time since the last one | Keeping a long-run history on disk without overlap |
 | **Full Archive** | Everything stored | Large | Bulk analysis, or archiving before a wipe |
+
+**New Since Last Export** (added 2026-10-09) keys off the row `id`, not time: the last
+full or new export saves the newest id it covered, and the next one starts right after
+it, so consecutive files never overlap and never skip a row sharing a millisecond with
+the previous file's last one. A Full Archive download advances the same cursor.
+Because the archive only holds ~1–2 days (see [Retention](#retention)), run it at
+least daily — if rows were evicted before they were exported, the file's header says
+`"gapBefore": true`. Exported rows now carry their `id`.
+
+### Keeping a long-run history
+
+`scripts/merge-archives.py` folds a folder of exports (any kind) into one
+de-duplicated, time-sorted file per month, in the same row format:
+
+```bash
+python3 scripts/merge-archives.py "~/Downloads/tff archives"                   # -> <folder>/merged/
+python3 scripts/merge-archives.py "~/Downloads/tff archives" --delete-sources  # remove sources after verify
+```
+
+By default it also drops **repeat reads** with the same rule the extension now applies
+at capture (`skipsIdenticalRepeat`): a background `GET` whose status and body match the
+newest kept row for its endpoint. `--keep-repeats` keeps them. It also collapses rows
+recorded twice for one request — page panel loads captured twice with the same
+millisecond and URL, seen in October exports.
+
+It re-reads any monthly files already in `merged/`, so dropping new exports into the
+folder and re-running extends them. Before replacing anything it re-reads the output
+and confirms every distinct input row is either present exactly once or was a
+repeat whose identical copy is; sources are deleted
+only with `--delete-sources`, and only after that check passes. It also prints the
+time spans no full export covered, so a hole in the history is visible.
 
 **Reach for the selection export by default.** A monthly full archive is the wrong
 artifact to hand an AI agent — it is mostly repeated boilerplate, and no agent will

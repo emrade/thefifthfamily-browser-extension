@@ -14,6 +14,29 @@ export interface ArchiveFilter {
   endpoints?: string[];
   /** Only include requests at or after this epoch ms. */
   sinceMs?: number;
+  /** Only include rows with a primary key above this — the "new since last
+   *  export" cursor. Keyed on `id` rather than time because ids are assigned
+   *  in insert order and never reused, so consecutive incremental exports
+   *  neither overlap nor skip a row that shares a millisecond with the last
+   *  one exported. */
+  afterId?: number;
+  /** Only include rows with a primary key at or below this. Pinned to the
+   *  newest id when the export starts, so rows captured while it streams are
+   *  left for the next incremental export instead of landing in neither. */
+  throughId?: number;
+}
+
+/** Newest row id in the archive, or 0 when empty — the value an export pins
+ *  as `throughId` and then saves as the next export's cursor. */
+export async function newestRequestLogId(): Promise<number> {
+  const newest = await db.requestLog.orderBy(':id').last();
+  return newest?.id ?? 0;
+}
+
+/** Rows an incremental export would include, for the button label. */
+export async function countRowsAfter(afterId: number, throughId: number): Promise<number> {
+  if (throughId <= afterId) return 0;
+  return db.requestLog.where(':id').between(afterId, throughId, false, true).count();
 }
 
 export interface EndpointSummary {
@@ -93,7 +116,9 @@ async function resolveKeys(filter: ArchiveFilter): Promise<number[] | null> {
 export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const since = filter.sinceMs ?? 0;
-  let lastId = 0;
+  const afterId = filter.afterId ?? 0;
+  const throughId = filter.throughId ?? Infinity;
+  let lastId = afterId;
   let headerSent = false;
 
   // Populated on the first pull when an endpoint filter is in play; stays null for
@@ -107,6 +132,12 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
         headerSent = true;
         keys = await resolveKeys(filter);
         const stats = await readStats();
+        // Retention or the byte budget can evict rows before they're ever
+        // exported. When the oldest surviving row isn't the one right after the
+        // cursor, something in between was lost — recorded so a merged history
+        // can show the hole rather than imply continuous coverage.
+        const oldest = filter.afterId != null ? await db.requestLog.orderBy(':id').first() : undefined;
+        const gapBefore = filter.afterId != null && oldest?.id != null && oldest.id > filter.afterId + 1;
         controller.enqueue(
           encoder.encode(
             JSON.stringify({
@@ -117,6 +148,8 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
               filter: {
                 endpoints: filter.endpoints?.length ? filter.endpoints : 'all',
                 since: since ? new Date(since).toISOString() : 'all time',
+                ...(filter.afterId != null ? { afterId: filter.afterId, gapBefore } : {}),
+                ...(filter.throughId != null ? { throughId: filter.throughId } : {}),
               },
               // Describes the archive as a whole, not this export's subset — a
               // filtered export should still say what it was drawn from.
@@ -140,6 +173,7 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
         page = (await db.requestLog.bulkGet(slice)).filter((row) => row != null);
       } else {
         page = await db.requestLog.where(':id').above(lastId).limit(PAGE_SIZE).toArray();
+        page = page.filter((row) => (row.id ?? 0) <= throughId);
         if (!page.length) {
           controller.close();
           return;
@@ -150,11 +184,13 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
       let chunk = '';
       for (const row of page) {
         if (row.timestamp < since) continue;
+        if (row.id != null && (row.id <= afterId || row.id > throughId)) continue;
         const [responseText, requestBody] = await Promise.all([
           decompressText(row.responseBody, row.encoding),
           row.requestBody ? decompressText(row.requestBody, row.encoding) : Promise.resolve(null),
         ]);
         chunk += JSON.stringify({
+          id: row.id,
           timestamp: row.timestamp,
           isoTime: new Date(row.timestamp).toISOString(),
           endpoint: row.endpoint,

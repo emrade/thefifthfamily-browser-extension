@@ -3,7 +3,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { REQUEST_LOG_MAX_BODY_BYTES } from '@/shared/constants';
 import { byteLength, compressText, BODY_ENCODING } from './compress';
 import { endpointKey, fingerprintResponse } from './fingerprint';
-import { isExcluded, throttleIntervalFor } from './policy';
+import { isExcluded, skipsIdenticalRepeat, throttleIntervalFor } from './policy';
 import { redactBody, redactUrl } from './redact';
 import { addToStats } from './stats';
 import { foldObservation } from './profile';
@@ -73,6 +73,17 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
   // it. A truncated body yields a partial token set, which is honest: it is better
   // for an oversized response to register as its own shape than for it to be
   // silently indistinguishable from the complete one.
+  const contentHash = await sha256Hex(`${input.status ?? ''}\n${responseText}`);
+  if (skipsIdenticalRepeat(input.method, input.origin)) {
+    // Newest row for this endpoint, from any origin — if the page itself just
+    // loaded the identical panel, a background re-read of it adds nothing either.
+    // The shape index is skipped too: a repeat can't carry new structure, and
+    // folding it in would make the live index disagree with a rebuild from the
+    // archive, which never sees it.
+    const latest = await db.requestLog.where('[endpoint+timestamp]').between([endpoint, -Infinity], [endpoint, Infinity]).last();
+    if (latest?.contentHash === contentHash) return;
+  }
+
   const { hash, tokens } = fingerprintResponse(responseText);
 
   const redactedRequestBody = redactBody(input.requestBody);
@@ -98,10 +109,16 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
     storedSize,
     truncated,
     shapeHash: hash,
+    contentHash,
   });
 
   await addToStats(rawSize, storedSize, input.timestamp);
   await updateProfile(endpoint, tokens, responseText, input.timestamp);
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
