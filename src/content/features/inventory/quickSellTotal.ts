@@ -5,7 +5,7 @@ import { storage } from '@/shared/storage';
 import type { InventoryPriceResult, QuickSellPriceBook } from '@/shared/types';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
-import { QUICKSELL_BUTTON_SELECTOR, activeInventoryBatch, beginInventoryBatch, endInventoryBatch } from './shared';
+import { isQuickSellable, activeInventoryBatch, beginInventoryBatch, endInventoryBatch } from './shared';
 
 /**
  * Inventory quick-sell total: what every item currently on screen would
@@ -42,13 +42,15 @@ import { QUICKSELL_BUTTON_SELECTOR, activeInventoryBatch, beginInventoryBatch, e
  * No rule for which applies was found, so they're totalled on their own
  * line as a 2–10% range.
  *
- * Locked cards have no $ button, and consumables never do; neither is
- * counted. Equipped gear isn't an `.inv-card` at all.
+ * Only equipment is counted (`isQuickSellable`): locked cards have no $
+ * button, and consumables, which have one since the 2026-10-11 rebuild, are
+ * left out on purpose. Equipped gear isn't an `.inv-card` at all.
  */
 
 const SEARCH_INPUT_ID = 'invSearch';
-// Every card, not just `[data-inv]` ones: consumable cards carry no id, but
-// still count as "shown" for the bar's empty-state wording.
+// Every card, not just `[data-inv]` ones: consumable cards carried no id
+// before 2026-10-11, but still count as "shown" for the bar's empty-state
+// wording.
 const CARD_SELECTOR = '.inv-card';
 const BAR_ID = 'ff-qs-bar';
 const TAG_CLASS = 'ff-qs-tag';
@@ -275,7 +277,7 @@ function recompute(): void {
   const t: Totals = { count: 0, total: 0, exactCount: 0, unknownCount: 0, crimeCount: 0, crimeLow: 0, crimeHigh: 0, crimeUnknown: 0, lockedCount: 0, shownCount: 0 };
 
   for (const card of root.querySelectorAll(CARD_SELECTOR)) {
-    const sellable = card.querySelector(QUICKSELL_BUTTON_SELECTOR) !== null;
+    const sellable = isQuickSellable(card);
     const price = sellable ? priceFor(card) : null;
     // Tagged whether or not it's showing right now, so a filter change
     // doesn't reveal untagged cards for a frame.
@@ -400,7 +402,7 @@ function fetchTargets(root: Element): FetchTarget[] {
   const seen = new Set<string>();
   const out: FetchTarget[] = [];
   for (const card of root.querySelectorAll('.inv-card[data-inv]')) {
-    if (card.getAttribute('data-locked') === '1' || !card.querySelector(QUICKSELL_BUTTON_SELECTOR)) continue;
+    if (card.getAttribute('data-locked') === '1' || !isQuickSellable(card)) continue;
     const name = card.getAttribute('data-name') ?? '';
     if (!name || seen.has(name)) continue;
     const kind = priceFor(card).kind;

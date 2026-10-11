@@ -5,7 +5,7 @@ import type { InventoryAutoSellCriteria, InventoryLockResult, InventorySellResul
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { priceFor, recordQuote, type CardPrice } from './quickSellTotal';
-import { QUICKSELL_BUTTON_SELECTOR, beginInventoryBatch, endInventoryBatch } from './shared';
+import { isQuickSellable, beginInventoryBatch, endInventoryBatch } from './shared';
 
 /**
  * Inventory Auto-Sell & Crime Locks: a panel under the inventory search box
@@ -165,7 +165,7 @@ function readItems(root: Element): InvItem[] {
       type: card.getAttribute('data-type') ?? '',
       crime: card.getAttribute('data-crime') === '1',
       locked: card.getAttribute('data-locked') === '1',
-      sellable: card.querySelector(QUICKSELL_BUTTON_SELECTOR) !== null,
+      sellable: isQuickSellable(card),
       upgrade: upgradeMatch ? Number(upgradeMatch[1]) : 0,
     });
   }
