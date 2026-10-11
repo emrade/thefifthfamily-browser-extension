@@ -9,6 +9,19 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.40.3] - 2026-10-11
+
+### Fixed
+- **Smart complication choices** kept picking Fight in three scenarios
+  where it never wins: "Your getaway driver never showed up.", "An off-duty
+  cop recognized your face." and "Police spotted you leaving the scene."
+  Their built-in history counted 4 Fight wins from 2026-08-10/11, before the
+  game changed how complications are rolled, so Fight looked weak rather than
+  blocked. Since then it is 0 for 11 there, and those picks lost $2.1M on
+  2026-10-07..10. The 7 complications from before the change are no longer
+  counted, so the runner and the on-page hint now avoid Fight in those
+  scenarios.
+
 ## [0.40.2] - 2026-10-11
 
 ### Fixed
