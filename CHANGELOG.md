@@ -9,6 +9,20 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.41.0] - 2026-10-11
+
+### Added
+- **Test Stand Your Ground** (Street Intel, popup and in-page panel, off by
+  default): the game has offered a fourth complication choice, Stand Your
+  Ground (Defence), since 2026-08-16, but the auto-runner only ever used
+  Fight, Run and Talk, so there's no record of how often it wins. When on,
+  complications on cards paying up to a set cap (default $200k) are answered
+  with Stand Your Ground instead. It stops by itself in a scenario after 0 wins
+  in 2 tries, and everywhere if it wins fewer than 3 of its first 6. Its
+  record (wins, tries, cash lost) shows next to the toggle and is kept apart
+  from the other choices' stats. Temporary, to be removed once there's
+  enough data; see docs/street-intel-stand-ground-test.md.
+
 ## [0.40.3] - 2026-10-11
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "thefifthfamily-browser-extension",
-  "version": "0.40.3",
+  "version": "0.41.0",
   "private": true,
   "type": "module",
   "scripts": {
