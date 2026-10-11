@@ -9,6 +9,16 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.40.1] - 2026-10-11
+
+### Fixed
+- **Fetch prices** was far slower than tapping $ by hand (about 20 minutes
+  for 90 items). Re-paced against 28 of the player's own $ taps (sheets
+  1.4–4.7s apart, median 1.9s): items now go 0.5–2.2s apart, breaks between
+  runs of 10 are 3–8s instead of 30–75s, and the quote is sent the moment the
+  sell sheet comes back (~160ms, as the game's own sheet does) instead of
+  after a fixed 0.6s pause. 90 items now take about 3½ minutes.
+
 ## [0.40.0] - 2026-10-11
 
 ### Added
