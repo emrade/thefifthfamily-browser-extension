@@ -97,6 +97,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Badges every opponent and the boss on the Arena page Beatable, Coin-flip or Avoid with how often fights like it have been won, from the stats on their card, and numbers the attack order (riskiest first). A plan above the cards shows the pot you can expect to bank, the largest pot still worth risking on the boss, and whether a Refresh is worth it for this lineup or the big bounty is worth keeping.',
   },
   {
+    id: 'furyCatcherPanel',
+    label: 'Fury Catcher Panel',
+    description:
+      'A floating panel on the Halloween event page with everything the popup’s Fury Catcher tab has: the Auto-Catch toggle, Energy floor, daily Energy Drink cap, Check Now, your banked Fury and today’s catches.',
+  },
+  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:

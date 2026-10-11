@@ -125,6 +125,11 @@ export type ExtensionMessage =
   // alarm fires — this lets the player force the recheck immediately instead
   // of it going unnoticed until the original wait elapses anyway.
   | { type: 'crimes-check-requested' }
+  // Sent from the Fury Catcher's popup tab and in-page overlay "Check Now" —
+  // runs a cycle right now (a no-op if one is already running or it's off)
+  // and returns the fresh `FuryCatcherStatus`. For an energy refill done by
+  // hand that the scheduled wait didn't account for.
+  | { type: 'fury-catcher-check-requested' }
   // Sent from the in-page Street Racing overlay on mount/refresh — same
   // "live fetch+parse only background can do" exception as
   // 'career-catalog-requested'. Returns a fresh `RaceCatalog` (car, weather,

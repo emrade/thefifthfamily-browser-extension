@@ -10,6 +10,8 @@ import type {
   CrimesAutoConfig,
   CrimesAutoStatus,
   FightClubFilterPrefs,
+  FuryCatcherConfig,
+  FuryCatcherStatus,
   FightClubHeroStats,
   ItemMarketSortPrefs,
   InventoryAutoSellCriteria,
@@ -23,7 +25,13 @@ import type {
   StreetIntelAutoStatus,
   StreetRacingStatus,
 } from './types';
-import { CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS, STORAGE_KEYS, STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT } from './constants';
+import {
+  CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
+  FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
+  FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
+  STORAGE_KEYS,
+  STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
+} from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
@@ -71,6 +79,13 @@ const DEFAULT_COURIER_AUTO_CONFIG: CourierAutoConfig = {
 // Off by default, same convention as every other auto feature.
 const DEFAULT_CRIMES_AUTO_CONFIG: CrimesAutoConfig = {
   enabled: false,
+};
+
+// Off by default, same convention as every other auto feature.
+const DEFAULT_FURY_CATCHER_CONFIG: FuryCatcherConfig = {
+  enabled: false,
+  energyFloor: FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
+  dailyDrinkCap: FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
@@ -258,6 +273,16 @@ export const storage = {
   // until its first judged fight.
   getArenaTrackRecord: () => get<ArenaTrackRecord | null>(STORAGE_KEYS.ARENA_TRACK_RECORD, null),
   setArenaTrackRecord: (v: ArenaTrackRecord) => set(STORAGE_KEYS.ARENA_TRACK_RECORD, v),
+
+  // Same merge-with-defaults/simple-nullable split as the Crimes Auto pair.
+  getFuryCatcherConfig: async (): Promise<FuryCatcherConfig> => {
+    const stored = await get<Partial<FuryCatcherConfig>>(STORAGE_KEYS.FURY_CATCHER_CONFIG, {});
+    return { ...DEFAULT_FURY_CATCHER_CONFIG, ...stored };
+  },
+  setFuryCatcherConfig: (v: FuryCatcherConfig) => set(STORAGE_KEYS.FURY_CATCHER_CONFIG, v),
+
+  getFuryCatcherStatus: () => get<FuryCatcherStatus | null>(STORAGE_KEYS.FURY_CATCHER_STATUS, null),
+  setFuryCatcherStatus: (v: FuryCatcherStatus) => set(STORAGE_KEYS.FURY_CATCHER_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

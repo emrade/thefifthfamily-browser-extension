@@ -27,6 +27,7 @@ import { initArenaOverlay } from './features/arena/overlay';
 import { handleCapturedRequest as handleArenaFightAdvisor, initArenaFightAdvisor } from './features/arena/fightAdvisor';
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
 import { initInventoryAutoSell } from './features/inventory/autoSell';
+import { initFuryCatcherPanel } from './features/halloween/furyCatcherPanel';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -171,6 +172,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.arenaFightAdvisor) {
       initArenaFightAdvisor();
+    }
+    if (prefs.furyCatcherPanel) {
+      initFuryCatcherPanel();
     }
   });
 }

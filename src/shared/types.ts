@@ -662,6 +662,55 @@ export interface CrimesAutoStatus {
   pausedAt: number | null;
 }
 
+/** Halloween boss Fury Catcher — see `background/features/furyCatcher`. */
+export interface FuryCatcherConfig {
+  enabled: boolean;
+  /** Energy the catcher never spends — kept for the player's other energy
+   *  uses (career shifts, manual play). Chases only spend what's above it. */
+  energyFloor: number;
+  /** Energy Drinks it may use per game day (resets 23:00 UTC). 0 = never. */
+  dailyDrinkCap: number;
+}
+
+export interface FuryChaseResult {
+  timestamp: number;
+  furyId: number;
+  won: boolean;
+  /** A treat found alongside the chase, caught or not (~5% of chases). */
+  treatName: string | null;
+}
+
+export interface FuryCatcherTally {
+  chases: number;
+  caught: number;
+  drinksUsed: number;
+  treats: number;
+}
+
+/** Background-owned runtime state for the Fury Catcher. */
+export interface FuryCatcherStatus {
+  lastChase: FuryChaseResult | null;
+  /** The player's banked Fury (`my_fury`) as of `bankAt`. */
+  bank: number | null;
+  bankAt: number | null;
+  /** Last boss state seen. `respawnAt` is local epoch ms, converted from the
+   *  server's own `respawn_at`/`now` so a clock skew doesn't shift it. */
+  boss: { number: number; status: 'active' | 'dead'; hp: number; maxHp: number; wave: number; furyCount: number; respawnAt: number | null } | null;
+  /** Game day (`YYYY-MM-DD` of the day that started at 23:00 UTC) `today` counts. */
+  todayKey: string;
+  today: FuryCatcherTally;
+  lifetime: FuryCatcherTally;
+  /** When the alarm is next due — mirrored here so the in-page overlay (no
+   *  `chrome.alarms` access) can show it without a message round trip. */
+  nextCheckAt: number | null;
+  /** Why the last cycle couldn't chase, when it's not an error: waiting on
+   *  energy, drink cap reached, out of drinks, hospital. */
+  note: string | null;
+  pausedReason: 'error' | 'event-over' | null;
+  pausedMessage: string | null;
+  pausedAt: number | null;
+}
+
 /**
  * One job listed on the Careers panel, as read from the live page — see
  * `careersPanelParser.ts`. `otEnergyCost`/`otAvailable` reflect a real quirk

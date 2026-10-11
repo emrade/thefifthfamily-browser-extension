@@ -117,3 +117,12 @@ export function MaskIcon() {
     </svg>
   );
 }
+
+/** Flame — the Halloween boss's Fury. */
+export function FlameIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M12 3c.5 3-1.5 4.5-3 6.5S7 13 7 15a5 5 0 0 0 10 0c0-2.5-1.5-4-2.5-5.5-.4 1.4-1.2 2.2-2 2.5.6-2.6.2-6-0.5-9z" />
+    </svg>
+  );
+}

@@ -57,6 +57,11 @@ export const NOTIFICATION_DEFINITIONS = [
     description: 'Notify when the crimes auto-runner stops itself after an unrecognized response.',
   },
   {
+    id: 'furyCatcherStopped',
+    label: 'Fury Catcher Stopped',
+    description: 'Notify when the Halloween Fury Catcher stops itself after an unrecognized response, or when the event ends.',
+  },
+  {
     id: 'arenaPageUnlocked',
     label: 'Arena Page Reminder',
     description:

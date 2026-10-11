@@ -269,6 +269,9 @@ export interface LiveStatus {
    *  an exact status-clear instead of guessing. */
   nerveTimerSeconds: number;
   nerveRegenSeconds: number;
+  /** Same pair, for Energy. */
+  energyTimerSeconds: number;
+  energyRegenSeconds: number;
 }
 
 /** Fresh, uncached read of the handful of `stats.php` fields a pre-flight check
@@ -324,6 +327,8 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
     hospitalSeconds: Number(json.status.hospital_seconds) || 0,
     nerveTimerSeconds: Number(json.timers?.nerve) || 0,
     nerveRegenSeconds: Number(json.regen_rates?.nerve) || 0,
+    energyTimerSeconds: Number(json.timers?.energy) || 0,
+    energyRegenSeconds: Number(json.regen_rates?.energy) || 0,
   };
 }
 

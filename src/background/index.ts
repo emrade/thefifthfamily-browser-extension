@@ -16,6 +16,7 @@ import {
 } from './features/streetIntel';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
+import { handleAlarm as handleFuryCatcherAlarm, init as initFuryCatcher, runCheckNow as runFuryCatcherCheckNow } from './features/furyCatcher';
 import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
 import {
   buyVehicle as buyGarageVehicle,
@@ -81,6 +82,10 @@ initStreetIntelAuto();
 // Same idea, for the Crime Alley auto-runner — see
 // features/crimesAuto/index.ts's init.
 initCrimesAuto();
+
+// Same idea, for the Halloween Fury Catcher — see
+// features/furyCatcher/index.ts's init.
+initFuryCatcher();
 
 // Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
 // init.
@@ -188,6 +193,11 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // time-based schedule needs this escape hatch.
   if (msg.type === 'crimes-check-requested') {
     return runCrimesAutoCheckNow();
+  }
+
+  // Sent by the Fury Catcher's popup tab and in-page overlay "Check Now".
+  if (msg.type === 'fury-catcher-check-requested') {
+    return runFuryCatcherCheckNow();
   }
 
   // Sent by the in-page Street Racing overlay on mount/refresh — see that
@@ -326,4 +336,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleCourierReturnAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCourierReturnAlarm failed', err));
   handleCrimesAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCrimesAutoAlarm failed', err));
   handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
+  handleFuryCatcherAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleFuryCatcherAlarm failed', err));
 });

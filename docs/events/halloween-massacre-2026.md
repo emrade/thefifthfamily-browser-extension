@@ -130,10 +130,23 @@ Log in on each calendar day to unlock that day's reward.
 | The Don disbands the Family | Wiped for everyone |
 | You join a new Family | It comes with you and counts on their board |
 
+## Spirit of the Bombed (boss fight, from 2026-10-09)
+
+Confirmed from captured traffic: 5,317 `POST /actions/halloween.php` calls from the real client, 2026-10-09 21:35 → 10-11 14:02 UTC.
+
+- **One shared boss.** While `active` it runs waves 1–4 with 4, 3, 2 and 1 Furies out. When it dies, `status` is `dead`, the Fury list is empty, and the next boss rises at `respawn_at`, about an hour later. It was down about half the time. Boss HP grows each spawn (10.4M for #5, 13.2M for #33).
+- **`boss_state&since=N`** returns `{state:{boss, fury[{id,slot,hp,max_hp,wait}], log, my_fury, my_shots, my_reward, depart_at, now}, bars}`. `since` is the highest `log[].id` seen; the page sends 0 when it opens the Boss tab and polls every 5s while it's open.
+- **Catching Fury: `boss_chase&fury_id=N&since=N`.** 5 Energy whether caught or not; 66 of 169 real tries caught (39%), with no sign the Fury's `hp` matters. Each chase puts that Fury on a 120s cooldown for you (`wait`); every Fury has its own. About 5% of chases also drop a treat. Chasing works while travelling.
+  - Rejections seen: "Chasing a Fury costs 5 Energy.", "That Fury has vanished." with `refresh:true` (the wave moved on), "You are in hospital.".
+- **Firing: `boss_fire&since=N`** spends one banked Fury for damage, and the boss hits back for Vitality — enough of that and you're hospitalized, which blocks chasing.
+- **The bank (`my_fury`) carries over between bosses.** No cap seen (29 at most).
+- `depart_at` is 2026-10-31 23:30 UTC.
+
 ## How the extension relates
 
 - **Earning Spirits:** Crimes Auto, Career Auto and Street Intel Auto already do the three mechanics that drop Spirits. If they're on, they should get the 3 guaranteed daily Spirits and keep rolling toward the cap. None of them currently tracks Spirit drops.
 - **Using Spirits:** nothing in the extension does this. It's a manual attack, limited to one per rival per day.
+- **Catching Fury:** the Fury Catcher (`background/features/furyCatcher`, off by default) chases every ready Fury, keeping an Energy floor untouched and drinking Energy Drinks (`inventory.php` `quick_list` → `use`, the player's own manual sequence) when it runs short, up to a daily cap reset at 23:00 UTC. It never fires — the bank is left for the player. Controls are in the popup and in a floating panel on the event page.
 
 ## Still unknown
 
