@@ -13,7 +13,6 @@ import type {
   FuryCatcherConfig,
   FuryCatcherStatus,
   FightClubHeroStats,
-  ItemMarketSortPrefs,
   InventoryAutoSellCriteria,
   QuickSellPriceBook,
   PendingCourierReturn,
@@ -124,8 +123,6 @@ export const storage = {
 
   // Simple boolean-pair default — no merge-with-defaults needed, same shape
   // as Fight Club's filter prefs above.
-  getItemMarketSortPrefs: () => get<ItemMarketSortPrefs>(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, { sortByVolume: false, hideConsumables: false }),
-  setItemMarketSortPrefs: (v: ItemMarketSortPrefs) => set(STORAGE_KEYS.ITEM_MARKET_SORT_PREFS, v),
 
   // Merged with the empty book so a book stored before a map was added
   // (0.33.0 had no `quotesByName`) still reads with every map present.

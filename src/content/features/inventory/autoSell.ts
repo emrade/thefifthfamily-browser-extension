@@ -5,6 +5,7 @@ import type { InventoryAutoSellCriteria, InventoryLockResult, InventorySellResul
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { priceFor, recordQuote, type CardPrice } from './quickSellTotal';
+import { QUICKSELL_BUTTON_SELECTOR, beginInventoryBatch, endInventoryBatch } from './shared';
 
 /**
  * Inventory Auto-Sell & Crime Locks: a panel under the inventory search box
@@ -28,7 +29,8 @@ import { priceFor, recordQuote, type CardPrice } from './quickSellTotal';
  * Any rejection or unrecognized response ends the batch on the spot rather
  * than moving on to the next item; so does leaving the inventory page.
  * Nothing here runs in the background: no alarm, no trigger other than the
- * two Confirm buttons, and only one batch at a time (`batchInFlight`, plus
+ * two Confirm buttons, and only one batch at a time (`beginInventoryBatch`,
+ * shared with the Quick-Sell bar's price fetch, plus
  * a per-tab lease in background against two game tabs).
  */
 
@@ -38,7 +40,6 @@ const QS_BAR_ID = 'ff-qs-bar';
 const PANEL_ID = 'ff-as-panel';
 const STYLE_ID = 'ff-as-style';
 const CRIME_TAG_CLASS = 'ff-as-crime-tag';
-const QUICKSELL_BUTTON_SELECTOR = `[onclick*="'quicksell'"]`;
 
 /** Sale → next quote gap, total including background's own pacing. The
  *  player's own back-to-back sales ran 0.8–8s apart, most of them 1–3.5s. */
@@ -122,10 +123,6 @@ let progressDone = 0;
 let progressTotal = 0;
 let cancelRequested = false;
 let summary: Summary | null = null;
-
-// Module-level, not per-render: the panel element is rebuilt every time the
-// game reloads the inventory, but a batch must never be startable twice.
-let batchInFlight = false;
 
 // ---------------------------------------------------------------- reading
 
@@ -279,7 +276,7 @@ function totalText(sales: PlannedSale[]): string {
     high += b.high;
     if (price.kind !== 'quote' && price.kind !== 'shared-quote') exact = false;
   }
-  if (unknown === sales.length) return 'an unknown amount (open the Item Market once to fill in prices)';
+  if (unknown === sales.length) return 'an unknown amount (use Fetch prices in the Quick Sell bar first)';
   const range = low === high ? `${exact ? '' : '≈ '}${money(low)}` : `≈ ${money(low)}–${money(high)}`;
   return unknown ? `${range} + ${plural(unknown, 'unpriced item')}` : range;
 }
@@ -490,8 +487,15 @@ function reloadInventory(): void {
 }
 
 async function runBatch(kind: 'sell' | 'lock', run: (s: Summary) => Promise<void>): Promise<void> {
-  if (batchInFlight) return;
-  batchInFlight = true;
+  // Module-level (see ./shared), not per-render: the panel element is rebuilt
+  // every time the game reloads the inventory, but a batch must never be
+  // startable twice, nor alongside the Quick-Sell bar's price fetch.
+  if (!beginInventoryBatch(kind)) {
+    mode = 'idle';
+    summary = { kind, done: 0, payout: 0, overPrice: 0, skipped: 0, stopped: 'Fetch prices is still running in the Quick Sell bar. Stop it or let it finish, then try again.', cancelled: false };
+    scheduleRender();
+    return;
+  }
   mode = 'running';
   runningKind = kind;
   cancelRequested = false;
@@ -504,7 +508,7 @@ async function runBatch(kind: 'sell' | 'lock', run: (s: Summary) => Promise<void
     console.error(LOG_PREFIX, `inventory ${kind} batch failed`, err);
   } finally {
     chrome.runtime.sendMessage({ type: 'inventory-batch-finished' }).catch(() => {});
-    batchInFlight = false;
+    endInventoryBatch();
     mode = 'idle';
     summary = s;
     if (s.done > 0) reloadInventory();

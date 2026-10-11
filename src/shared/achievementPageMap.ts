@@ -143,7 +143,7 @@ export const ACHIEVEMENT_PAGE_SCOPES: AchievementPageScope[] = [
   },
   {
     id: 'itemMarket',
-    marker: '#sellGrid',
+    marker: '#imv2-root',
     category: 'Shops & Economy',
     lineNames: ['Quick Sale'],
   },

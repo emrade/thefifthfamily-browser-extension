@@ -19,7 +19,6 @@ import { initRealEstateAdvisor } from './features/realEstate';
 import { initMenagerieAssistant } from './features/menagerieAssistant';
 import { initStockMarketStatus } from './features/stockMarket';
 import { initStreetRacingOverlay } from './features/streetRacing/overlay';
-import { initItemMarketPriceAdvisor } from './features/itemMarket';
 import { initGarageOverlay } from './features/garage/overlay';
 import { initAchievementChip } from './shared/achievementChip';
 import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
@@ -151,9 +150,6 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.streetRacingOverlay) {
       initStreetRacingOverlay();
-    }
-    if (prefs.itemMarketAdvisor) {
-      initItemMarketPriceAdvisor();
     }
     if (prefs.inventoryQuickSell) {
       initInventoryQuickSell();

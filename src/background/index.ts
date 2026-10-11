@@ -29,7 +29,12 @@ import {
   sellBody as sellGarageBody,
   stripVehicle as stripGarageVehicle,
 } from './features/garage';
-import { lockItem as lockInventoryItem, releaseLease as releaseInventoryLease, sellItem as sellInventoryItem } from './features/inventory';
+import {
+  lockItem as lockInventoryItem,
+  priceItem as priceInventoryItem,
+  releaseLease as releaseInventoryLease,
+  sellItem as sellInventoryItem,
+} from './features/inventory';
 import { claimLine as claimAchievementLine, fetchCategory as fetchAchievementCategory } from './features/achievements';
 import {
   getStatus as getArenaStatus,
@@ -274,6 +279,10 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
 
   if (msg.type === 'inventory-lock-item-requested') {
     return lockInventoryItem(msg.invId, sender.tab?.id);
+  }
+
+  if (msg.type === 'inventory-price-item-requested') {
+    return priceInventoryItem(msg.invId, msg.expectedName, sender.tab?.id);
   }
 
   if (msg.type === 'inventory-batch-finished') {

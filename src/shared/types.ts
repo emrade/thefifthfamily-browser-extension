@@ -112,26 +112,20 @@ export interface FightClubFilterPrefs {
   maxRating: number | null;
 }
 
-/** The Item Market sell grid's toolbar choices — persisted so they don't need
- *  re-enabling every visit, same as Fight Club's toolbar sort/filter.
- *  `hideConsumables` exists because consumables (Nerve Tonic, Energy Drink,
- *  etc.) trade in the thousands/week and otherwise bury every piece of gear
- *  at the top of a "sort by weekly sales" view. */
-export interface ItemMarketSortPrefs {
-  sortByVolume: boolean;
-  hideConsumables: boolean;
-}
-
 /**
  * What the inventory's quick-sell total prices items from. The inventory page
- * itself carries no price at all: the game only asks for one
- * (`POST /actions/shops_v2.php action=dispose_quote`) when the player taps an
- * item's $ button. So this is filled passively, with no requests of its own:
+ * itself carries no price at all. Tapping an item's $ button opens the Item
+ * Market's sell sheet (since 2026-10-11), which asks for
+ * `GET /actions/item_market_v2.php?view=sell&inv_id=N` (carrying `item.base`,
+ * the shop price) and then `POST /actions/shops_v2.php action=dispose_quote`
+ * (the exact payout). Both are kept whenever the game sends them, and the
+ * quick-sell bar's "Fetch prices" batch sends the same pair itself for every
+ * item still missing an exact quote.
  *
- * - `shopByInv`/`shopByName`: `data-shop-price` off the Item Market's
- *   "List an Item for Sale" cards, every time that grid is on screen. Keyed
- *   by `data-inv` (the same id as the inventory card) first, with the
- *   lowercased `data-name` as the fallback for an item not seen there yet.
+ * - `shopByInv`/`shopByName`: `item.base` from each sell-sheet read. Keyed
+ *   by inventory id first, with the lowercased item name as the fallback for
+ *   another copy. (Before 2026-10-11 these came from the old Item Market sell
+ *   grid's `data-shop-price`; entries collected then are still used.)
  * - `quotes`: the real payout from every `dispose_quote` the game itself
  *   sends, keyed by inventory id. Exact, so it always wins over an estimate.
  * - `quotesByName`: the same payouts keyed by lowercased item name, so one
@@ -177,6 +171,12 @@ export type InventorySellResult =
   | { status: 'stopped'; error: string };
 
 export type InventoryLockResult = { status: 'locked' } | { status: 'stopped'; error: string };
+
+/** One item through the sell sheet's `view=sell` → `dispose_quote` pair, for
+ *  the quick-sell bar's "Fetch prices" batch. `stopped` ends the batch. */
+export type InventoryPriceResult =
+  | { status: 'priced'; name: string; shopPrice: number; cash: number }
+  | { status: 'stopped'; error: string };
 
 /**
  * `GET /actions/attack.php?type=recon&target_id=X` — the game's own pre-attack

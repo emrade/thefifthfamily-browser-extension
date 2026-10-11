@@ -2,32 +2,39 @@ import type { CapturedRequest } from '@/shared/messaging';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { QuickSellPriceBook } from '@/shared/types';
+import type { InventoryPriceResult, QuickSellPriceBook } from '@/shared/types';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
+import { QUICKSELL_BUTTON_SELECTOR, activeInventoryBatch, beginInventoryBatch, endInventoryBatch } from './shared';
 
 /**
  * Inventory quick-sell total: what every item currently on screen would
  * quick-sell for, following whatever tab, filter chip, rarity and search the
  * player has picked, plus a price tag on each card.
  *
- * The inventory page carries no prices at all. A card's $ button calls
- * `Game.disposeItemV2(id,'quicksell',name)`, and the game only then asks
- * the server (`POST /actions/shops_v2.php action=dispose_quote`, one item
- * per call). Sending that for every card would be hundreds of requests no
- * real client ever makes, so prices come from two passive sources instead
- * (see `QuickSellPriceBook`):
+ * The inventory page carries no prices at all. A card's $ button opens the
+ * Item Market's sell sheet (`IMV2.sellSheet`, since 2026-10-11), which reads
+ * `GET /actions/item_market_v2.php?view=sell&inv_id=N` (shop price in
+ * `item.base`) and then quotes it (`POST /actions/shops_v2.php
+ * action=dispose_quote`), one item per tap. Prices come from (see
+ * `QuickSellPriceBook`):
  *
  * - **Estimate, 20% of shop price.** Checked against every captured quote
  *   (2026-08-11 → 2026-09-28): 42 of the 44 quotes for non-Crime-Req items
- *   were exactly 20% of that item's `data-shop-price` on the Item Market
- *   sell grid, upgrade level (+1…+5) making no difference. The two
- *   exceptions (Enforcer's Chain Belt at 15%, Broker's Gloves at 8.4%) fit
- *   nothing found so far; shop prices also drift over time (Enforcer's
- *   Chain Belt went 800k → 950k), so an estimate is shown with "≈".
+ *   were exactly 20% of that item's shop price, upgrade level (+1…+5)
+ *   making no difference; 6 of 7 on 2026-10-11 against the new sheet's
+ *   `base` too. The exceptions (Enforcer's Chain Belt at 15%, Broker's
+ *   Gloves at 8.4%, Bandolier at 2%) fit nothing found so far; shop prices
+ *   also drift over time, so an estimate is shown with "≈".
  * - **Real quotes.** Every `dispose_quote` the game sends is kept and wins
  *   over the estimate, for that item and for every other copy of it (same
  *   name; upgrade level doesn't change the price).
+ * - **Fetch prices.** A button on the bar that taps $ for the player on
+ *   every item still without an exact quote: one copy per name, best rarity
+ *   first, in runs of 10 with a few seconds between items and a longer
+ *   break between runs, so it reads like someone going through their
+ *   inventory by hand. Manual start only, stoppable, and it picks up where
+ *   it left off (anything already quoted is skipped).
  *
  * Crime Req items (`data-crime="1"`) get their quote cut when they're tied
  * to a crime the player needs (`capstone_warning` in the quote): 2% of shop
@@ -43,8 +50,6 @@ const SEARCH_INPUT_ID = 'invSearch';
 // Every card, not just `[data-inv]` ones: consumable cards carry no id, but
 // still count as "shown" for the bar's empty-state wording.
 const CARD_SELECTOR = '.inv-card';
-const QUICKSELL_BUTTON_SELECTOR = `[onclick*="'quicksell'"]`;
-const SELL_GRID_CARD_SELECTOR = '#sellGrid .sell-item[data-inv]';
 const BAR_ID = 'ff-qs-bar';
 const TAG_CLASS = 'ff-qs-tag';
 const STYLE_ID = 'ff-qs-style';
@@ -58,7 +63,7 @@ const MAX_ENTRIES_PER_MAP = 4000;
 
 let book: QuickSellPriceBook = { shopByInv: {}, shopByName: {}, quotes: {}, quotesByName: {} };
 
-// One read-modify-write at a time, so an Item Market harvest and a quote
+// One read-modify-write at a time, so a shop price and a quote
 // landing together can't overwrite each other's entries.
 let writeChain: Promise<void> = Promise.resolve();
 
@@ -85,9 +90,13 @@ function updateBook(mutate: (b: QuickSellPriceBook) => boolean): void {
     .catch((err) => console.error(LOG_PREFIX, 'quick-sell price book write failed', err));
 }
 
-/** Keeps the real payout from every quote the game itself asks for when the
- *  player taps a $ button. */
+/** Keeps the shop price and real payout from every sell sheet the game
+ *  itself opens when the player taps a $ button. */
 export function handleCapturedRequest(req: CapturedRequest): void {
+  if (req.method === 'GET' && req.url.includes('/actions/item_market_v2.php')) {
+    handleSellSheet(req);
+    return;
+  }
   if (req.method !== 'POST' || !req.url.includes('/actions/shops_v2.php')) return;
   const params = new URLSearchParams(req.requestBody ?? '');
   if (params.get('action') !== 'dispose_quote') return;
@@ -125,32 +134,38 @@ export function recordQuote(invId: string, itemName: string, cash: number): void
   });
 }
 
-// Item Market sell-grid cards already recorded, so the observer doesn't
-// rewrite storage on every unrelated mutation while that page is open.
-const harvestedCards = new WeakSet<Element>();
-
-function harvestShopPrices(): void {
-  const fresh: { inv: string; name: string; price: number }[] = [];
-  for (const card of document.querySelectorAll(SELL_GRID_CARD_SELECTOR)) {
-    if (harvestedCards.has(card)) continue;
-    harvestedCards.add(card);
-    const price = Number(card.getAttribute('data-shop-price'));
-    const inv = card.getAttribute('data-inv');
-    if (!inv || !(price > 0)) continue;
-    fresh.push({ inv, name: card.getAttribute('data-name') ?? '', price });
+function handleSellSheet(req: CapturedRequest): void {
+  let url: URL;
+  try {
+    url = new URL(req.url, window.location.origin);
+  } catch {
+    return;
   }
-  if (fresh.length === 0) return;
+  if (url.searchParams.get('view') !== 'sell') return;
+  let data: any;
+  try {
+    data = JSON.parse(req.responseText);
+  } catch {
+    return;
+  }
+  if (data?.ok !== true || typeof data.item?.base !== 'number' || typeof data.item?.name !== 'string' || data.stack?.inv_id == null) return;
+  recordShopPrice(String(data.stack.inv_id), data.item.name, data.item.base);
+}
 
+/** Stores one shop price (the sell sheet's `item.base`). */
+export function recordShopPrice(invId: string, itemName: string, price: number): void {
+  if (!(price > 0)) return;
+  const name = itemName.toLowerCase();
   updateBook((b) => {
     const now = Date.now();
     let changed = false;
-    for (const { inv, name, price } of fresh) {
-      if (b.shopByInv[inv]?.price !== price) changed = true;
-      b.shopByInv[inv] = { price, at: now };
-      if (name) {
-        if (b.shopByName[name]?.price !== price) changed = true;
-        b.shopByName[name] = { price, at: now };
-      }
+    if (b.shopByInv[invId]?.price !== price) {
+      b.shopByInv[invId] = { price, at: now };
+      changed = true;
+    }
+    if (name && b.shopByName[name]?.price !== price) {
+      b.shopByName[name] = { price, at: now };
+      changed = true;
     }
     return changed;
   });
@@ -217,7 +232,7 @@ function tagFor(price: CardPrice): { text: string; title: string; kind: string }
         kind: 'crime',
       };
     case 'unknown':
-      return { text: 'Quick sell: no price yet', title: 'Open the Item Market once to fill in this price.', kind: 'unknown' };
+      return { text: 'Quick sell: no price yet', title: 'Tap $ on it once, or use Fetch prices above, to fill in this price.', kind: 'unknown' };
   }
 }
 
@@ -291,7 +306,7 @@ function recompute(): void {
     if (price.kind === 'unknown') t.unknownCount++;
   }
 
-  const html = renderBar(t);
+  const html = renderBar(t) + renderFetch(fetchTargets(root).length);
   if (renderedHtml.get(bar) !== html) {
     renderedHtml.set(bar, html);
     bar.innerHTML = html;
@@ -326,7 +341,7 @@ function renderBar(t: Totals): string {
     }
     if (t.unknownCount > 0 || t.crimeUnknown > 0) {
       const n = t.unknownCount + t.crimeUnknown;
-      lines.push(`<div class="ff-qs-warn">${plural(n, 'item')} with no price yet, not in the total. Open the Item Market once to fill ${n === 1 ? 'it' : 'them'} in.</div>`);
+      lines.push(`<div class="ff-qs-warn">${plural(n, 'item')} with no price yet, not in the total. Use Fetch prices below, or tap $ on ${n === 1 ? 'it' : 'them'}.</div>`);
     }
     if (t.crimeCount > 0) {
       const range = t.crimeLow === t.crimeHigh ? money(t.crimeLow) : `${money(t.crimeLow)}–${money(t.crimeHigh)}`;
@@ -338,6 +353,201 @@ function renderBar(t: Totals): string {
   if (t.lockedCount > 0) lines.push(`<div class="ff-qs-note">${plural(t.lockedCount, 'locked item')} not counted (locked items can't be quick sold).</div>`);
 
   return `${brandBadgeHtml('Quick Sell')}${lines.join('')}`;
+}
+
+// ---------------------------------------------------------------- fetch prices
+
+/** Best first, so the items worth the most get their exact price soonest.
+ *  Same values as the game's own rarity dropdown (2026-10-03). */
+const RARITY_ORDER = ['fifth_family_mythic', 'red', 'crowned_legendary', 'gold', 'underworld_epic', 'purple', 'infamous_rare', 'blue', 'green', 'grey'];
+/** Items per run before a break; a new rarity also starts a new run. */
+const FETCH_RUN_SIZE = 10;
+/** Gap between two items in a run, on top of background's own ~1.2s per
+ *  item (its fixed pause before each of the two calls). The player's own
+ *  $ taps on 2026-10-11 ran 6–60s apart while actually reading each sheet;
+ *  this is someone just clicking through. */
+const BETWEEN_ITEMS_MS: [number, number] = [3500, 9000];
+const BETWEEN_RUNS_MS: [number, number] = [30_000, 75_000];
+
+interface FetchTarget {
+  invId: number;
+  name: string;
+  quality: string;
+}
+
+interface FetchState {
+  running: boolean;
+  stopRequested: boolean;
+  done: number;
+  total: number;
+  /** What's happening right now, while running. */
+  status: string;
+  /** How the last run ended, until the next one starts. */
+  result: string | null;
+}
+
+let fetchState: FetchState = { running: false, stopRequested: false, done: 0, total: 0, status: '', result: null };
+
+function rarityRank(quality: string): number {
+  const i = RARITY_ORDER.indexOf(quality);
+  return i === -1 ? RARITY_ORDER.length : i;
+}
+
+/** One copy per item name (a quote prices every copy), only items with a $
+ *  button and no exact quote yet, best rarity first. Filters and search
+ *  don't matter: the hidden cards are still in the page. */
+function fetchTargets(root: Element): FetchTarget[] {
+  const seen = new Set<string>();
+  const out: FetchTarget[] = [];
+  for (const card of root.querySelectorAll('.inv-card[data-inv]')) {
+    if (card.getAttribute('data-locked') === '1' || !card.querySelector(QUICKSELL_BUTTON_SELECTOR)) continue;
+    const name = card.getAttribute('data-name') ?? '';
+    if (!name || seen.has(name)) continue;
+    const kind = priceFor(card).kind;
+    if (kind === 'quote' || kind === 'shared-quote') continue;
+    seen.add(name);
+    out.push({ invId: Number(card.getAttribute('data-inv')), name, quality: card.getAttribute('data-quality') ?? '' });
+  }
+  return out.sort((a, b) => rarityRank(a.quality) - rarityRank(b.quality));
+}
+
+function between([lo, hi]: [number, number]): number {
+  return lo + Math.random() * (hi - lo);
+}
+
+/** Sleeps in short steps so Stop takes effect during a break, not after it. */
+async function pause(ms: number): Promise<void> {
+  const until = Date.now() + ms;
+  while (Date.now() < until && !fetchState.stopRequested) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, until - Date.now())));
+  }
+}
+
+function titleCase(lowerName: string): string {
+  return lowerName.replace(/(^|\s)([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+}
+
+function estimateMinutes(count: number): number {
+  const runs = Math.ceil(count / FETCH_RUN_SIZE);
+  const seconds = count * ((BETWEEN_ITEMS_MS[0] + BETWEEN_ITEMS_MS[1]) / 2000 + 1.5) + Math.max(0, runs - 1) * ((BETWEEN_RUNS_MS[0] + BETWEEN_RUNS_MS[1]) / 2000);
+  return Math.max(1, Math.round(seconds / 60));
+}
+
+async function runFetch(): Promise<void> {
+  if (fetchState.running) return;
+  const root = document.getElementById(SEARCH_INPUT_ID)?.parentElement;
+  if (!root) return;
+  if (!beginInventoryBatch('price')) {
+    fetchState = { ...fetchState, result: 'Auto-Sell is running a batch. Let it finish, then try again.' };
+    scheduleRecompute();
+    return;
+  }
+
+  const targets = fetchTargets(root);
+  fetchState = { running: true, stopRequested: false, done: 0, total: targets.length, status: '', result: null };
+  scheduleRecompute();
+
+  let priced = 0;
+  let stopped: string | null = null;
+  let inRun = 0;
+  let prevQuality: string | null = null;
+  try {
+    for (const target of targets) {
+      if (fetchState.stopRequested) break;
+      if (prevQuality !== null) {
+        if (inRun >= FETCH_RUN_SIZE || target.quality !== prevQuality) {
+          const ms = between(BETWEEN_RUNS_MS);
+          fetchState.status = `Short break, next run in about ${Math.round(ms / 1000)}s.`;
+          scheduleRecompute();
+          await pause(ms);
+          inRun = 0;
+        } else {
+          await pause(between(BETWEEN_ITEMS_MS));
+        }
+        if (fetchState.stopRequested) break;
+      }
+      prevQuality = target.quality;
+
+      const liveRoot = document.getElementById(SEARCH_INPUT_ID)?.parentElement;
+      if (!liveRoot) {
+        stopped = 'you left the inventory page. Press Fetch prices again to carry on.';
+        break;
+      }
+      const card = liveRoot.querySelector(`.inv-card[data-inv="${target.invId}"]`);
+      const kind = card ? priceFor(card).kind : null;
+      // Gone, locked or quoted (by the player's own tap) since the list was made.
+      if (!card || card.getAttribute('data-locked') === '1' || kind === 'quote' || kind === 'shared-quote') {
+        fetchState.done++;
+        continue;
+      }
+
+      fetchState.status = `Checking ${titleCase(target.name)}`;
+      scheduleRecompute();
+      const result = (await chrome.runtime.sendMessage({
+        type: 'inventory-price-item-requested',
+        invId: target.invId,
+        expectedName: target.name,
+      })) as InventoryPriceResult;
+      if (result.status === 'stopped') {
+        stopped = `${titleCase(target.name)}: ${result.error}`;
+        break;
+      }
+      recordShopPrice(String(target.invId), result.name, result.shopPrice);
+      recordQuote(String(target.invId), result.name, result.cash);
+      priced++;
+      inRun++;
+      fetchState.done++;
+    }
+  } catch (err) {
+    stopped = err instanceof Error ? err.message : String(err);
+    console.error(LOG_PREFIX, 'quick-sell price fetch failed', err);
+  } finally {
+    chrome.runtime.sendMessage({ type: 'inventory-batch-finished' }).catch(() => {});
+    endInventoryBatch();
+    const got = `Fetched ${plural(priced, 'price')}.`;
+    fetchState = {
+      running: false,
+      stopRequested: false,
+      done: fetchState.done,
+      total: fetchState.total,
+      status: '',
+      result: stopped ? `${got} Stopped: ${stopped}` : fetchState.stopRequested ? `${got} Stopped by you.` : got,
+    };
+    scheduleRecompute();
+  }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+}
+
+function renderFetch(pending: number): string {
+  if (fetchState.running) {
+    return `<div class="ff-qs-fetch"><div class="ff-qs-fetch-status">Fetching prices: ${fetchState.done} of ${fetchState.total}${
+      fetchState.status ? ` · ${escapeHtml(fetchState.status)}` : ''
+    }</div><button type="button" class="ff-qs-btn" data-qs-action="stop" ${fetchState.stopRequested ? 'disabled' : ''}>${
+      fetchState.stopRequested ? 'Stopping…' : 'Stop'
+    }</button></div>`;
+  }
+  const result = fetchState.result ? `<div class="ff-qs-note">${escapeHtml(fetchState.result)}</div>` : '';
+  if (pending === 0) return result;
+  const otherBatch = activeInventoryBatch() !== null;
+  return `${result}<div class="ff-qs-fetch"><button type="button" class="ff-qs-btn" data-qs-action="fetch" ${otherBatch ? 'disabled' : ''}>Fetch prices (${plural(
+    pending,
+    'item',
+  )})</button><span class="ff-qs-note">Taps $ on each one for you, best rarity first, ${FETCH_RUN_SIZE} at a time with breaks. About ${estimateMinutes(pending)} min; stay on this page.</span></div>`;
+}
+
+function onBarClick(event: Event): void {
+  const target = (event.target as Element).closest<HTMLElement>('[data-qs-action]');
+  if (!target || !document.getElementById(BAR_ID)?.contains(target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (target.dataset.qsAction === 'fetch') runFetch();
+  if (target.dataset.qsAction === 'stop' && fetchState.running) {
+    fetchState.stopRequested = true;
+    scheduleRecompute();
+  }
 }
 
 let scheduled = false;
@@ -392,6 +602,14 @@ const STYLE = `
 .ff-qs-note, .ff-qs-empty { font-size: 0.65rem; color: #9ca3af; line-height: 1.5; }
 .ff-qs-warn { font-size: 0.65rem; color: #fbbf24; line-height: 1.5; }
 .ff-qs-crime { font-size: 0.65rem; color: #f59e0b; line-height: 1.5; }
+.ff-qs-fetch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+.ff-qs-fetch-status { font-size: 0.7rem; color: #d1d5db; }
+.ff-qs-btn {
+  padding: 5px 12px; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.4);
+  border-radius: 7px; color: #86efac; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.03em;
+  text-transform: uppercase; cursor: pointer;
+}
+.ff-qs-btn:disabled { opacity: 0.5; cursor: default; }
 .${TAG_CLASS} { font-size: 0.55rem; font-weight: 800; margin-top: 3px; letter-spacing: 0.02em; color: #4ade80; }
 .${TAG_CLASS}[data-kind="estimate"] { color: #86efac; }
 .${TAG_CLASS}[data-kind="crime"] { color: #f59e0b; }
@@ -412,8 +630,9 @@ export function initInventoryQuickSell(): void {
     scheduleRecompute();
   });
 
+  document.addEventListener('click', onBarClick, true);
+
   const observer = new MutationObserver(() => {
-    harvestShopPrices();
     if (document.getElementById(SEARCH_INPUT_ID)) ensureBar();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });

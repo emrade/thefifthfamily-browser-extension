@@ -55,16 +55,10 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A floating panel on the Street Racing page listing every race with a Run button, so you can clear the day’s attempts without playing the timing mini-game — accuracy and race timing are sampled from this account’s own real results, not maxed out.',
   },
   {
-    id: 'itemMarketAdvisor',
-    label: 'Item Market Price Advisor',
-    description:
-      'On the Item Market’s "List an Item for Sale" form, badges every item with how many sold market-wide this week, and suggests a listing price (undercutting the cheapest current ask, or matching the 7-day average when nothing’s listed) with a one-click "Use This" button.',
-  },
-  {
     id: 'inventoryQuickSell',
     label: 'Inventory Quick-Sell Total',
     description:
-      'On the Inventory page, adds up what every item currently shown would quick-sell for, following the tab, filter, rarity and search you have picked, and tags each item with its price. Prices are estimated from the Item Market (open it once to fill them in) and replaced by the exact amount whenever you have tapped an item’s $ button. Crime Req items are totalled on their own line.',
+      'On the Inventory page, adds up what every item currently shown would quick-sell for, following the tab, filter, rarity and search you have picked, and tags each item with its price. Prices fill in whenever you tap an item’s $ button, or all at once with Fetch prices, which taps $ for you on every unpriced item at a human pace (best rarity first, 10 at a time with breaks). Crime Req items are totalled on their own line.',
   },
   {
     id: 'inventoryAutoSell',

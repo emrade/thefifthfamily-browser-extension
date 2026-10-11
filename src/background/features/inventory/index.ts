@@ -1,4 +1,6 @@
-import type { InventoryLockResult, InventorySellResult } from '@/shared/types';
+import { GAME_ORIGIN } from '@/shared/constants';
+import { loggedFetch } from '@/shared/requestLog/loggedFetch';
+import type { InventoryLockResult, InventoryPriceResult, InventorySellResult } from '@/shared/types';
 import { ACTION_PACING_MS, postAction, sleep } from '../../gameAction';
 
 /**
@@ -22,6 +24,13 @@ import { ACTION_PACING_MS, postAction, sleep } from '../../gameAction';
  * - `POST /actions/inventory.php action=lock&inv_id=N` (≈60 seen) →
  *   `{ok, locked: 1, message: "Item locked."}`. Unlock is its own
  *   `action=unlock`, not a toggle, so sending `lock` twice can't unlock.
+ *
+ * - `GET /actions/item_market_v2.php?view=sell&inv_id=N` (11 seen, all
+ *   2026-10-11, the day the Item Market was rebuilt) → `{ok, view:"sell",
+ *   item:{name, base, caps, …}, stack:{inv_id, qty, locked, …}, quicksell,
+ *   tradeable, …}`. What the inventory's $ button opens; the URL carries
+ *   nothing else (no `_t`). Every one was followed 160–190ms later by a
+ *   `dispose_quote` for the same `inv_id`: the sheet quotes on open.
  *
  * Every call here returns a result instead of throwing: anything that isn't
  * the response shape above, or any rejection at all, comes back `stopped`
@@ -127,6 +136,46 @@ export async function lockItem(invId: number, tabId: number | undefined): Promis
     if (resp.ok !== true) return { status: 'stopped', error: `Lock refused: ${errorText(resp, 'no reason given')}` };
     if (Number(resp.locked) !== 1) return { status: 'stopped', error: 'The lock came back in a shape this tool doesn’t recognize.' };
     return { status: 'locked' };
+  } catch (err) {
+    return { status: 'stopped', error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** What tapping an item's $ button asks for: the sell sheet, then its quote.
+ *  Nothing is sold; the batch only wants `item.base` and the exact payout. */
+export async function priceItem(invId: number, expectedName: string, tabId: number | undefined): Promise<InventoryPriceResult> {
+  if (!claimLease(tabId)) return BUSY;
+  try {
+    await sleep(ACTION_PACING_MS);
+    const res = await loggedFetch(`${GAME_ORIGIN}/actions/item_market_v2.php?view=sell&inv_id=${invId}`, { credentials: 'include' });
+    let sheet: any;
+    try {
+      sheet = await res.json();
+    } catch {
+      return { status: 'stopped', error: `The sell sheet didn't come back as data (status ${res.status}); your session may have expired.` };
+    }
+    lease = { tabId, at: Date.now() };
+    if (sheet?.ok !== true) return { status: 'stopped', error: `Sell sheet refused: ${errorText(sheet, 'no reason given')}` };
+    if (sheet.view !== 'sell' || typeof sheet.item?.base !== 'number' || typeof sheet.item?.name !== 'string' || Number(sheet.stack?.inv_id) !== invId) {
+      return { status: 'stopped', error: 'The sell sheet came back in a shape this tool doesn’t recognize.' };
+    }
+    if (normalizeName(sheet.item.name) !== normalizeName(expectedName)) {
+      return { status: 'stopped', error: `The sell sheet showed "${sheet.item.name}" for a card named "${expectedName}".` };
+    }
+    if (sheet.quicksell !== true) {
+      return { status: 'stopped', error: `${sheet.item.name} came back as not quick-sellable, which hasn't happened before.` };
+    }
+
+    const quote = await postAction('/actions/shops_v2.php', { action: 'dispose_quote', inv_id: invId });
+    lease = { tabId, at: Date.now() };
+    if (quote.ok !== true) return { status: 'stopped', error: `Quote refused: ${errorText(quote, 'no reason given')}` };
+    if (typeof quote.cash !== 'number' || typeof quote.name !== 'string') {
+      return { status: 'stopped', error: 'The quote came back in a shape this tool doesn’t recognize.' };
+    }
+    if (normalizeName(quote.name) !== normalizeName(expectedName)) {
+      return { status: 'stopped', error: `Quoted "${quote.name}" for a card named "${expectedName}".` };
+    }
+    return { status: 'priced', name: quote.name, shopPrice: sheet.item.base, cash: quote.cash };
   } catch (err) {
     return { status: 'stopped', error: err instanceof Error ? err.message : String(err) };
   }

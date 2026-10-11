@@ -210,8 +210,12 @@ export type ExtensionMessage =
   | { type: 'inventory-sell-item-requested'; invId: number; expectedName: string; isCrime: boolean; maxPrice: number | null }
   // Sent by the panel's "Lock one of each" batch, once per item.
   | { type: 'inventory-lock-item-requested'; invId: number }
-  // Sent when a sell or lock batch finishes or stops, releasing this tab's
-  // hold on the inventory batch lease.
+  // Sent by the quick-sell bar's "Fetch prices" batch, once per item: what
+  // tapping its $ button asks for (the sell sheet, then the quote), sent by
+  // background. Holds the same inventory batch lease as selling and locking.
+  | { type: 'inventory-price-item-requested'; invId: number; expectedName: string }
+  // Sent when a sell, lock or price batch finishes or stops, releasing this
+  // tab's hold on the inventory batch lease.
   | { type: 'inventory-batch-finished' }
   // Sent by a page's Achievement chip when opened — same "live fetch+parse
   // only background can do" exception as 'career-catalog-requested'.

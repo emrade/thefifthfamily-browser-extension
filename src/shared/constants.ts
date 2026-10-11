@@ -25,7 +25,6 @@ export const STORAGE_KEYS = {
   CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
   CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
   STREET_RACING_STATUS: 'ff_street_racing_status',
-  ITEM_MARKET_SORT_PREFS: 'ff_item_market_sort_prefs',
   GARAGE_DO_NOT_TOUCH: 'ff_garage_do_not_touch',
   ARENA_WATCH_STATUS: 'ff_arena_watch_status',
   ARENA_MY_PROFILE: 'ff_arena_my_profile',
