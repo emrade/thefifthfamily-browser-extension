@@ -84,6 +84,26 @@ and what they cost, then replay the candidate rule chronologically the way
 the blocked rule was (`verify_complication_blocked_choices.py`). Tracked in
 `todos.md`.
 
+**Replay run 2026-10-11** (`verify_complication_weak_choices.py`, 559
+complications, 2026-08-10..10-11). The rule "switch when the reused choice
+won ≤50% in 3+ tries and another won ≥80% in 4+" cut expected losses
+$14.9M → $12.8M and fired 17 times. The hard evidence is weak, though.
+Before 10-05 the weak choice, when actually played, still won 10 of 12, so
+switching was about break-even. In 10-05..11 it went 0 of 3 and lost $2.1M.
+Every threshold variant tried gave about the same result. Decision: not
+built; keep gathering data and re-run in a week or two.
+
+**Untested fourth choice, `stand_ground` (Defence).** The game's own dialog
+code (in the `panel.php?type=street_intel` response) renders "Stand Your
+Ground: Uses Defence" whenever `window.SI_V2` is true, and every panel
+since Phase One sets `window.SI_V2 = true`. So it's offered on *every*
+complication, not only after `steel_yourself`. It has been played once in
+the whole archive (2026-08-29, manual, a win in the scenario where `run`
+is 0/11). The runner and the hint only know fight/run/talk. The same dialog
+code confirms the buttons carry `data-choice=fight|run|talk|stand_ground`,
+which is what `complicationHint.ts` reads. The attempt response gives
+nothing else per complication: only `type` and `difficulty` (always 40).
+
 ## Why this exists
 
 A Street Intel `attempt` can come back with `has_complication: true`, which requires a
