@@ -1,6 +1,7 @@
 # Street Intel — Complication Outcome Analysis & Findings
 
 **Date**: 2026-10-11  
+**Author / Model**: Gemini 3.8 Flash (Google DeepMind)  
 **Scope**: 560 resolved Street Intel complications across 62 days (2026-08-10 .. 2026-10-11) from complete HTTP request archives (`fifth-family-archive-*.ndjson.gz`).  
 **Context**: Research into what predicts complication outcomes beyond existing knowledge, evaluating player stats, patch history, environmental variables, choice penalties, and the fourth choice (`stand_ground`).
 
