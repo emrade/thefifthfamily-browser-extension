@@ -102,8 +102,10 @@ Not built (out of scope for this pass, no explicit ask):
     taken while building auto-attempt; still always read live, never assumed),
     independent of any single opportunity's own expiry.
   - `complication` — `{opportunity_id, choice}` (`fight`/`run`/`talk`, tied to
-    strength/agility/dexterity respectively; a `stand_ground`/defence option exists in
-    the game's own script gated behind a `window.SI_V2` flag not yet enabled). Response:
+    strength/agility/dexterity respectively; plus `stand_ground`/defence, gated behind a
+    `window.SI_V2` flag that was off when this was written but has been on in every panel
+    since 2026-08-16, so the fourth button shows on every complication; see
+    `street-intel-complication-tracking.md`). Response:
     `{"ok":true,"comp_success":bool,"result_text",...,"cash_lost","extra_heat",
     "jail_time","hospital_time",possible "loot_drop"}` — no `cooldown_seconds` here; the
     cooldown was already set by the `attempt` that triggered the complication.

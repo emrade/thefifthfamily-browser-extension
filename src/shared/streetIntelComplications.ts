@@ -11,6 +11,14 @@ import type { ComplicationChoiceKey, ComplicationTypeStats } from './types';
  * the $30.7M lost to complications in that window. Card `autofail` flags
  * don't explain it — this is keyed on the scenario text alone.
  *
+ * Excludes the 7 complications from 2026-08-10/11 that still returned a
+ * `comp_score` (all manual `fight` wins, before the game's Phase One change
+ * hid the score and fixed difficulty at 40). Counting them hid three blocked
+ * cells — getaway driver, off-duty cop and police spotted you are 0-for-11
+ * on `fight` since — and cost $2.1M on 2026-10-07..10. See
+ * docs/street-intel-complication-findings.md and
+ * verification/street-intel/verify_complication_post_patch_blocked.py.
+ *
  * Seeded here (rather than relying only on the live `complicationTypeStats`)
  * because the live tally only covers automated attempts since it was added,
  * and misses some of these cells entirely. The two overlap (most of the live
@@ -20,25 +28,25 @@ import type { ComplicationChoiceKey, ComplicationTypeStats } from './types';
 const SEED_RECORDS: Record<string, Partial<Record<ComplicationChoiceKey, [number, number]>>> = {
   'The drop site is surrounded.': { fight: [7, 8], run: [8, 15], talk: [0, 6] },
   'You hear footsteps behind the door.': { fight: [3, 3], run: [10, 11], talk: [0, 12] },
-  'Your getaway driver never showed up.': { fight: [1, 4], run: [11, 14], talk: [6, 7] },
+  'Your getaway driver never showed up.': { fight: [0, 3], run: [11, 14], talk: [6, 7] },
   'Your fake credentials are questioned.': { fight: [0, 7], run: [9, 10], talk: [4, 6] },
   'The room is filling with smoke.': { fight: [3, 3], run: [14, 15], talk: [0, 5] },
   'A security guard asks to check your bag.': { fight: [5, 5], run: [8, 10], talk: [7, 7] },
-  'The package is booby-trapped. You need to act fast.': { fight: [2, 2], run: [9, 10], talk: [0, 9] },
+  'The package is booby-trapped. You need to act fast.': { fight: [1, 1], run: [9, 10], talk: [0, 9] },
   'The target building went into lockdown.': { fight: [6, 6], run: [5, 7], talk: [0, 8] },
   'Silent alarm was tripped. Security is closing in.': { fight: [2, 2], run: [12, 14], talk: [0, 5] },
   'A rival informant recognizes you.': { fight: [3, 3], run: [14, 15], talk: [2, 2] },
   'Someone triggered a silent distress signal.': { fight: [3, 4], run: [8, 12], talk: [0, 4] },
   'The evidence is heavier than expected.': { fight: [4, 4], run: [0, 11], talk: [3, 4] },
   'A patrol car slows down beside you.': { fight: [0, 2], run: [11, 12], talk: [6, 6] },
-  "The mark had backup you didn't see coming.": { fight: [3, 3], run: [8, 10], talk: [0, 6] },
+  "The mark had backup you didn't see coming.": { fight: [2, 2], run: [8, 10], talk: [0, 6] },
   'The item is locked in a reinforced case.': { fight: [5, 5], run: [0, 9], talk: [5, 5] },
   'A rival crew followed you and wants a cut.': { fight: [4, 4], run: [7, 9], talk: [5, 6] },
   'The informant demands more money.': { fight: [3, 3], run: [11, 14], talk: [2, 2] },
-  'An off-duty cop recognized your face.': { fight: [2, 4], run: [7, 9], talk: [5, 5] },
-  'Police spotted you leaving the scene.': { fight: [1, 4], run: [9, 10], talk: [4, 4] },
+  'An off-duty cop recognized your face.': { fight: [0, 2], run: [7, 9], talk: [5, 5] },
+  'Police spotted you leaving the scene.': { fight: [0, 3], run: [9, 10], talk: [4, 4] },
   'The meeting location changed last minute.': { fight: [0, 1], run: [10, 10], talk: [6, 7] },
-  'A witness is threatening to call the cops.': { fight: [7, 7], run: [5, 5], talk: [3, 4] },
+  'A witness is threatening to call the cops.': { fight: [6, 6], run: [5, 5], talk: [3, 4] },
   'A camera catches your face.': { fight: [0, 4], run: [4, 5], talk: [6, 6] },
   'Your contact is late and the area is getting hot.': { fight: [0, 3], run: [9, 11] },
   'The client starts panicking.': { run: [6, 7], talk: [6, 7] },

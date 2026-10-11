@@ -78,7 +78,7 @@ From 559 resolved complications, 2026-08-10 .. 2026-10-11:
 - **There is a fourth choice nobody has tested: `stand_ground` (Defence).**
   - The game's own dialog code (inside the `panel.php?type=street_intel`
     response) renders it whenever `window.SI_V2` is true, and every panel
-    since Phase One (2026-08-11) sets that.
+    since 2026-08-16 sets that.
   - It has been played **once** in the whole archive: 2026-08-29, manually, a
     win in the "evidence is heavier than expected" scenario, where `run` is
     0/11.

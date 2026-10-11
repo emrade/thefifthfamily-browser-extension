@@ -162,7 +162,7 @@ if (window.SI_V2) {
 h += '<div class=si-comp-choice data-choice=run><div class=ch-copy><div class=ch-name>Run For It</div><div class=ch-stat>Uses Agility</div></div><div class=ch-icon><i class="fa-solid fa-person-running"></i></div></div>';
 h += '<div class=si-comp-choice data-choice=talk><div class=ch-copy><div class=ch-name>Talk Your Way Out</div><div class=ch-stat>Uses Dexterity</div></div><div class=ch-icon><i class="fa-solid fa-comments"></i></div></div>';
 ```
-- `window.SI_V2` is hardcoded to `true` on every panel response since Phase One (August 11).
+- `window.SI_V2` is hardcoded to `true` on every panel response since 2026-08-16 (panels from 08-10..15 don't set it).
 - **`stand_ground` is offered on every complication**, not only after `steel_yourself`.
 - The extension's TypeScript types (`ComplicationChoiceKey = 'fight' | 'run' | 'talk'`) and auto-runner omit it completely.
 

@@ -93,10 +93,22 @@ switching was about break-even. In 10-05..11 it went 0 of 3 and lost $2.1M.
 Every threshold variant tried gave about the same result. Decision: not
 built; keep gathering data and re-run in a week or two.
 
+**Resolved 2026-10-11: those "weak" cells were blocked all along.** The
+first 7 complications in the archive (2026-08-10/11, all manual `fight`
+wins) still returned a `comp_score`, before the game hid it and fixed
+difficulty at 40. Four of them landed in the getaway-driver, off-duty-cop
+and police-spotted-you scenarios and made `fight` look like 1/4-2/4 there.
+Without them, `fight` is 0 for 11 in those three scenarios. All 7 rows were
+removed from `SEED_RECORDS`, so the existing blocked rule now avoids them; no
+weak-choice rule needed. Since 08-11, a choice already at 0-for-2+ won 1 of
+its next 69 plays. Details: `street-intel-complication-findings.md`,
+`verification/street-intel/verify_complication_post_patch_blocked.py`.
+
 **Untested fourth choice, `stand_ground` (Defence).** The game's own dialog
 code (in the `panel.php?type=street_intel` response) renders "Stand Your
 Ground: Uses Defence" whenever `window.SI_V2` is true, and every panel
-since Phase One sets `window.SI_V2 = true`. So it's offered on *every*
+since 2026-08-16 sets `window.SI_V2 = true` (08-10..15 panels didn't, so it
+was hidden then). So it's offered on *every*
 complication, not only after `steel_yourself`. It has been played once in
 the whole archive (2026-08-29, manual, a win in the scenario where `run`
 is 0/11). The runner and the hint only know fight/run/talk. The same dialog
