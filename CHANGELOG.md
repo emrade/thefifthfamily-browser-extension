@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.40.2] - 2026-10-11
+
+### Fixed
+- **Fetch prices** got stuck: it priced the gear, then stopped at the first
+  consumable (Blini with Honey) on every press, so the button seemed to do
+  nothing. Since the Item Market rebuild, consumables carry the same $ button
+  as gear (it opens the market's sell sheet, for listing or selling to a buy
+  order), but they can't be quick-sold. Quick Sell, Fetch prices and
+  Auto-Sell now only treat equipment (weapon, armor, helmet, gloves, belt,
+  necklace, special) as quick-sellable, so consumables are no longer tagged,
+  counted as unpriced, fetched, or offered for auto-sale.
+
 ## [0.40.1] - 2026-10-11
 
 ### Fixed
