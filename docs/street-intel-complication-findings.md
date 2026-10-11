@@ -7,34 +7,34 @@
 
 ---
 
-## 1. Executive Summary & Key Breakthroughs
+## 1. Executive Summary
 
-1. **The "Weak Choices" Mystery Solved (17 of 24 Scenarios Are Blocked)**:
-   - Three scenarios previously categorized as having "weak" $\le 50\%$ choices on `fight` (*"Your getaway driver never showed up"*, *"An off-duty cop recognized your face"*, and *"Police spotted you leaving the scene"*) were contaminated by pre-patch test data.
-   - All recorded wins for `fight` in those scenarios occurred exclusively on August 10–11 during the initial 7-complication debugging window when `comp_score` was visible and difficulty varied (30–50).
+1. **Resolution of the "Weak Choice" Discrepancy (17 of 24 Scenarios Blocked)**:
+   - Three scenarios previously categorized as having "weak" choices with $\le 50\%$ win rates on `fight` (*"Your getaway driver never showed up"*, *"An off-duty cop recognized your face"*, and *"Police spotted you leaving the scene"*) were contaminated by pre-patch debug data.
+   - All recorded wins for `fight` in those scenarios occurred exclusively on August 10–11 during the initial 7-complication window when `comp_score` was visible (65–82) and difficulty varied (30–50).
    - Since the Phase One server patch on August 11 (`comp_score` set to `null`, `difficulty` locked to 40), `fight` has gone **0 for 11** across those three scenarios.
-   - In the live engine, **there are no partial "weak" choices**. Complication mechanics are strictly binary: either a choice is **blocked** ($0\%$ win rate, **0/102 post-patch across 17 scenarios**) or **unblocked** ($\sim 86\%$ pooled win rate, **388/450**).
-   - In live play (2026-10-05..11), the shipped runner reused `fight` in these three scenarios and lost **$2,099,543**. A clean blocked rule avoids all three losses.
+   - Rather than a continuous spectrum of "weak choices", scenario outcomes are **mostly binary**: in 17 of 24 scenarios, one choice is effectively blocked (0 wins in 2+ tries post-patch), while unblocked choices cluster around an $\sim 85\%$ ceiling (though a few borderline cells like *"drop site surrounded"* `run` at 8/15 exist).
+   - **Incremental Value**: The shipped `avoidBlocked` rule already saved $\sim \$20\text{M}$ against naive reuse. Updating the seed records to recognize these three cells delivers a concrete incremental **$2.10M** saved (the three wipeouts incurred on October 7–10) plus future avoided losses on those scenarios.
 
-2. **Severe Penalty Asymmetry on Failure (`run` is ~55% cheaper than `talk`/`fight`)**:
-   - When a complication fails, the cash penalty depends heavily on the choice made, matching the server's `result_text`:
+2. **Failure Penalty Asymmetry (`run` as a sensible tiebreaker)**:
+   - When a complication fails, the cash penalty depends on the choice made, matching the server's `result_text`:
      - **`run` failure** (*"You got clear, but not cleanly. Part of the take is gone."*): **39.1% lose $0**, **31.9% lose partial take**, only **29.0% lose full take**. Mean penalty is **41.0%** of the reward.
      - **`talk` failure** (*"They didn't buy it. You gave up a cut to walk away."*): **85.9% full wipeout**. Mean penalty is **87.6%** of the reward.
      - **`fight` failure** (*"The fight cost you. You got out, but the job suffered for it."*): **90.3% full wipeout**. Mean penalty is **92.9%** of the reward.
-   - Even though `talk` has a slightly higher raw win rate ($90.6\%$ vs $82.9\%$), **`run` has a lower expected loss per attempt** ($\mathbf{7.0\%}$ of reward vs $\mathbf{8.2\%}$ for `talk` and $\mathbf{16.4\%}$ for `fight`).
+   - In expected loss per attempt, `run` ($\sim 7.0\%$ of reward) and `talk` ($\sim 8.2\%$) are within $\sim 1.2\%$ of each other (likely within estimation noise), making `run` a sensible tiebreaker rather than a dominant rule. `fight` ($\sim 16.4\%$) is clearly a worse fallback due to near-total loss severity on failure.
 
 3. **Loss Downside is Strictly Bounded**:
-   - Across all 164 losses in the archive, **no complication ever took more than 100% of the attempt reward**.
+   - Across all 164 losses in the archive, **no complication ever took more than 100% of the attempt reward** (min loss ratio $0.013$, max $1.000$).
    - Bank balance was touched only twice (when cash-on-hand was under the reward amount).
 
-4. **All Other Candidate Variables Are Completely Flat**:
-   - Raw player stats, relative stat ratios, crime heat, scout weather (`env_global`), time of day, position in day, streaks (pity / anti-streak), card autofail flags, and event windows have **zero correlation** with complication outcomes.
+4. **All Other Candidate Variables Are Flat**:
+   - Raw player stats, relative stat ratios, crime heat, scout weather (`env_global`), time of day, position in day, streaks (pity / anti-streak), card autofail flags, and event windows showed **no predictive signal** among unblocked complication choices.
 
 ---
 
 ## 2. Findings Ranked by Strength
 
-### Finding 1: The Three "Weak" Scenarios Are 100% Blocked Post-Patch
+### Finding 1: The Three "Weak" Scenarios Are Blocked Post-Patch
 
 In previous analyses (`verify_complication_weak_choices.py`), candidate rules switching away from $\le 50\%$ choices appeared inconclusive because before 10-05, "weak" choices seemed to win 10 of 12 times.
 
@@ -42,7 +42,7 @@ Inspecting timestamps relative to server changes reveals why:
 - On **2026-08-11** (timestamp `1786487328612`), the game server deployed Phase One of Street Intel:
   - `comp_score` was removed (changed from visible integers 65–82 to `null`).
   - `difficulty` was permanently locked to 40 (previously 30–50).
-- The first 7 complications in the archive (August 10–11) were all manual `fight` attempts with visible `comp_score` $> \text{difficulty}$, and all 7 won.
+- Exactly 7 complications in the archive had `comp_score is not None` (August 10–11). All 7 were manual `fight` attempts with visible `comp_score` $> \text{difficulty}$, and all 7 won.
 - Three of those early debug wins contaminated `SEED_RECORDS`:
   - *"Your getaway driver never showed up."*: recorded as `[1, 4]` (1 win on 08-11 with `comp_score: 66`, diff 35).
   - *"An off-duty cop recognized your face."*: recorded as `[2, 4]` (2 wins on 08-10 with `comp_score: 72, 74`, diff 40).
@@ -82,31 +82,26 @@ Every single post-patch attempt on `fight` in these three scenarios was a comple
 | 16 | **The evidence is heavier than expected.** | `run` | **0/11** | fight 7/7, talk 4/5 |
 | 17 | **The item is locked in a reinforced case.** | `run` | **0/9** | fight 5/5, talk 7/7 |
 
-**Total Blocked Record**: **0 / 102 wins (0.0%)**. Single strongest cell: $p \approx 2 \times 10^{-10}$.
+*(Note: The 0/102 combined tally reflects the in-sample definition of 0-for-2+; the empirical signal is that out-of-sample in chronological replay, once a choice hits 0-for-2, it never wins in any subsequent attempt).*
 
-#### The Remaining 7 Scenarios:
-- **`The meeting location changed last minute.`**: fight 0/1, run 13/14, talk 8/9 (fight likely blocked, 1 sample so far).
-- **`The client starts panicking.`**: fight 0 tries, run 8/10, talk 6/7.
-- **5 Safe Scenarios** (all tested choices win $\ge 70\%$):
-  - *A rival crew followed you and wants a cut.* (fight 4/4, run 8/12, talk 6/7)
-  - *A rival informant recognizes you.* (fight 3/3, run 16/17, talk 4/4)
-  - *A security guard asks to check your bag.* (fight 5/5, run 11/13, talk 7/7)
-  - *A witness is threatening to call the cops.* (fight 6/6, run 9/9, talk 4/5)
-  - *The informant demands more money.* (fight 3/3, run 13/16, talk 4/4)
+#### Borderline / Nuanced Cells:
+While mostly binary, a few unblocked cells show lower win rates that warrant tracking:
+- *"The drop site is surrounded."* (`run` 8/15, 53.3%): well below the 85% ceiling, but clearly non-zero.
+- *"Someone triggered a silent distress signal."* (`run` 10/14, 71.4% vs `fight` 5/6, 83.3%).
+- *"The meeting location changed last minute."* (`fight` 0/1, run 13/14, talk 8/9): only 1 trial, likely blocked but not yet at the $N \ge 2$ threshold.
 
-#### Chronological Replay & Valuation:
+#### Incremental Value & Replay:
 - **Live Period (2026-10-05 .. 2026-10-11, $N=80$)**:
   - Actual choices made: lost **$3.12M**.
-  - Shipped `avoidBlocked`: lost **$3.12M** (reused `fight` 3 times on the contaminated scenarios).
-  - Clean `avoidBlocked` (17 scenarios): expected loss **$1.18M** (**saves $1.94M**, avoiding all 3 costly wipeouts).
-- **Full History Replay (from zero knowledge, $N=552$)**:
-  - Reuse default: **$35.07M**.
-  - Actual choices: **$33.82M**.
-  - Clean `avoidBlocked`: **$10.30M** (**cuts losses by $24.77M**).
+  - Shipped `avoidBlocked`: expected loss **$3.12M** (reused `fight` 3 times on the contaminated scenarios).
+  - Clean `avoidBlocked` (17 scenarios): expected loss **$1.18M** (**saves $1.94M**, avoiding all 3 wipeouts).
+- **Full Post-Patch Replay (zero knowledge, $N=552$)**:
+  - Reuse baseline: **$35.07M**.
+  - Clean `avoidBlocked`: **$10.30M** (cuts total losses by **$24.77M**; note that $\sim \$20\text{M}$ of this is from the 14 scenarios already handled by the shipped rule, while $\sim \$4\text{M}$ represents the lifetime savings on these 3 newly-recognized blocked cells).
 
 ---
 
-### Finding 2: Failure Penalty Asymmetry & Expected Value of `run`
+### Finding 2: Failure Penalty Asymmetry & Expected Value of Fallbacks
 
 When complications fail, the cash loss is not uniformly distributed:
 
@@ -131,7 +126,9 @@ Plugging in empirical win rates and mean penalty ratios for unblocked choices:
 - **`talk`**: $(1 - 0.906) \times 0.876 = \mathbf{8.24\% \text{ of reward}}$
 - **`fight`**: $(1 - 0.824) \times 0.929 = \mathbf{16.36\% \text{ of reward}}$
 
-**Decision Rule Takeaway**: Whenever both `run` and `talk` are unblocked (or when selecting a fallback for `steel_yourself`), **`run` has higher expected value (lower expected loss)** than `talk` or `fight`.
+**Evaluation**:
+- Between `run` (7.0%) and `talk` (8.2%), the difference is $\sim 1.2$ percentage points of reward—within normal estimation error. Preferring `run` over `talk` is a **sensible tiebreaker**, not an overwhelming statistical imperative.
+- `fight` at 16.4%, however, is clearly inferior due to its near-total 93% wipeout rate on failure, reinforcing why `fight` should not be used as a blind fallback.
 
 ---
 
@@ -189,7 +186,7 @@ All scripts are standalone, use standard-library Python 3, take `--archive` argu
    ```bash
    python3 verification/street-intel/verify_complication_post_patch_blocked.py
    ```
-   *Verifies the August 11 Phase One boundary, shows that `fight` is 0/11 post-patch across the 3 controversial scenarios, confirms 17 blocked scenarios, and prices the clean replay.*
+   *Explicitly filters on `comp_score is None`, shows that `fight` is 0/11 post-patch across the 3 controversial scenarios, confirms 17 blocked scenarios, and prices the clean replay ($35.07M reuse vs $10.30M clean avoidBlocked).*
 
 2. **Choice Penalty Asymmetry**:
    ```bash
