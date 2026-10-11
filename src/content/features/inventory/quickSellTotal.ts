@@ -31,8 +31,8 @@ import { QUICKSELL_BUTTON_SELECTOR, activeInventoryBatch, beginInventoryBatch, e
  *   name; upgrade level doesn't change the price).
  * - **Fetch prices.** A button on the bar that taps $ for the player on
  *   every item still without an exact quote: one copy per name, best rarity
- *   first, in runs of 10 with a few seconds between items and a longer
- *   break between runs, so it reads like someone going through their
+ *   first, in runs of 10 at about one item a second with a few seconds'
+ *   break between runs, so it reads like someone clicking through their
  *   inventory by hand. Manual start only, stoppable, and it picks up where
  *   it left off (anything already quoted is skipped).
  *
@@ -362,12 +362,12 @@ function renderBar(t: Totals): string {
 const RARITY_ORDER = ['fifth_family_mythic', 'red', 'crowned_legendary', 'gold', 'underworld_epic', 'purple', 'infamous_rare', 'blue', 'green', 'grey'];
 /** Items per run before a break; a new rarity also starts a new run. */
 const FETCH_RUN_SIZE = 10;
-/** Gap between two items in a run, on top of background's own ~1.2s per
- *  item (its fixed pause before each of the two calls). The player's own
- *  $ taps on 2026-10-11 ran 6–60s apart while actually reading each sheet;
- *  this is someone just clicking through. */
-const BETWEEN_ITEMS_MS: [number, number] = [3500, 9000];
-const BETWEEN_RUNS_MS: [number, number] = [30_000, 75_000];
+/** Gap between two items in a run, on top of the two round trips (~0.35s).
+ *  The player clicking through $ by hand (28 taps, 2026-10-11 17:02–17:05
+ *  UTC) went 1.4–4.7s from one sheet to the next, median 1.9s; this lands
+ *  at roughly 0.85–2.6s, median about 1.7s. */
+const BETWEEN_ITEMS_MS: [number, number] = [500, 2200];
+const BETWEEN_RUNS_MS: [number, number] = [3_000, 8_000];
 
 interface FetchTarget {
   invId: number;
@@ -429,7 +429,7 @@ function titleCase(lowerName: string): string {
 
 function estimateMinutes(count: number): number {
   const runs = Math.ceil(count / FETCH_RUN_SIZE);
-  const seconds = count * ((BETWEEN_ITEMS_MS[0] + BETWEEN_ITEMS_MS[1]) / 2000 + 1.5) + Math.max(0, runs - 1) * ((BETWEEN_RUNS_MS[0] + BETWEEN_RUNS_MS[1]) / 2000);
+  const seconds = count * ((BETWEEN_ITEMS_MS[0] + BETWEEN_ITEMS_MS[1]) / 2000 + 0.5) + Math.max(0, runs - 1) * ((BETWEEN_RUNS_MS[0] + BETWEEN_RUNS_MS[1]) / 2000);
   return Math.max(1, Math.round(seconds / 60));
 }
 

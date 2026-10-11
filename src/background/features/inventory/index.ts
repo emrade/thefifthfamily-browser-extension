@@ -146,7 +146,10 @@ export async function lockItem(invId: number, tabId: number | undefined): Promis
 export async function priceItem(invId: number, expectedName: string, tabId: number | undefined): Promise<InventoryPriceResult> {
   if (!claimLease(tabId)) return BUSY;
   try {
-    await sleep(ACTION_PACING_MS);
+    // No pause here or before the quote: the page's gap between items is the
+    // "tap", and the real sheet sends its quote the moment the sheet arrives
+    // (152–166ms after it in 30 player taps, 2026-10-11 17:01–17:05 UTC,
+    // which is just the sheet's own round trip).
     const res = await loggedFetch(`${GAME_ORIGIN}/actions/item_market_v2.php?view=sell&inv_id=${invId}`, { credentials: 'include' });
     let sheet: any;
     try {
@@ -166,7 +169,7 @@ export async function priceItem(invId: number, expectedName: string, tabId: numb
       return { status: 'stopped', error: `${sheet.item.name} came back as not quick-sellable, which hasn't happened before.` };
     }
 
-    const quote = await postAction('/actions/shops_v2.php', { action: 'dispose_quote', inv_id: invId });
+    const quote = await postAction('/actions/shops_v2.php', { action: 'dispose_quote', inv_id: invId }, { noPacing: true });
     lease = { tabId, at: Date.now() };
     if (quote.ok !== true) return { status: 'stopped', error: `Quote refused: ${errorText(quote, 'no reason given')}` };
     if (typeof quote.cash !== 'number' || typeof quote.name !== 'string') {

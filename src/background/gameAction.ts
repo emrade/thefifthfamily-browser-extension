@@ -139,6 +139,10 @@ export interface PostActionOptions {
    *  pause another that never repeated anything. Unneeded for a feature's
    *  own endpoints; their params already make the key unique. */
   rejectionScope?: string;
+  /** Skips the `ACTION_PACING_MS` pause before the call, for a request the
+   *  real client sends straight after another one (the sell sheet's quote,
+   *  ~160ms after the sheet). Only a "Slow down!" retry still waits. */
+  noPacing?: boolean;
 }
 
 export async function postAction(path: string, params: Record<string, string | number>, options: PostActionOptions = {}): Promise<any> {
@@ -155,7 +159,7 @@ export async function postAction(path: string, params: Record<string, string | n
   const body = new URLSearchParams({ ...Object.fromEntries(paramEntries), _csrf: csrf });
 
   for (let attempt = 0; ; attempt++) {
-    await sleep(ACTION_PACING_MS);
+    if (!options.noPacing) await sleep(ACTION_PACING_MS);
     const res = await loggedFetch(`${GAME_ORIGIN}${path}`, {
       method: 'POST',
       credentials: 'include',
