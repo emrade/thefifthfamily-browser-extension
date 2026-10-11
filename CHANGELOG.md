@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.39.0] - 2026-10-11
+
+### Added
+- **Fury Catcher** (Halloween boss, off by default): chases every Fury the
+  moment your cooldown on it ends (5 Energy a try, ~39% caught) and banks
+  what it catches — firing at the boss stays manual. Waits out the boss's
+  ~1h respawn when it's down, and keeps going while you travel.
+  - **Energy floor** (default 25): Energy it never spends, kept for your
+    other uses.
+  - **Energy Drinks per day** (default 7, editable, 0 = never): when Energy
+    runs short and a Fury is ready, it drinks one (+10) the same way you do
+    by hand. Resets at 23:00 UTC. Once the cap is used or you're out, it
+    carries on with natural Energy.
+  - Waits out hospital/jail; pauses with a notification on any response it
+    doesn't recognise, and switches itself off when the event ends.
+  - Controls and stats (banked Fury, boss wave/respawn, catches and drinks
+    today and all-time, next check) in a new popup tab and in a floating
+    panel on the Halloween event page.
+- Halloween event doc: boss and Fury mechanics from the captured traffic.
+
 ## [0.38.0] - 2026-10-09
 
 ### Added
