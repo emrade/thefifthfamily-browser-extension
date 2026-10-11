@@ -864,6 +864,11 @@ export interface StreetIntelAutoConfig {
    *  2026-10-04 analysis and cost 86% of all complication cash lost
    *  (verification/street-intel/verify_complication_blocked_choices.py). */
   complicationMode: StreetIntelComplicationMode;
+  /** stand_ground test (temporary — see docs/street-intel-stand-ground-test.md):
+   *  answer complications on cards rewarding at most `standGroundTestMaxReward`
+   *  with `stand_ground`. Default off. */
+  standGroundTest: boolean;
+  standGroundTestMaxReward: number;
 }
 
 export type StreetIntelScoutMode = 'topPayout' | 'smart';
@@ -927,6 +932,9 @@ export interface StreetIntelAttemptResult {
    *  recorded by builds before these modes existed don't have them. */
   scoutMode?: StreetIntelScoutMode;
   complicationMode?: StreetIntelComplicationMode;
+  /** stand_ground test: true when this complication was answered by the test
+   *  rather than the normal pick (`complicationAvoided` then holds that pick). */
+  complicationStandGroundTest?: boolean;
 }
 
 /**
@@ -1022,6 +1030,14 @@ export type ComplicationChoiceKey = 'fight' | 'run' | 'talk';
  */
 export type ComplicationTypeStats = Record<string, Record<ComplicationChoiceKey, ComplicationChoiceStats>>;
 
+/** stand_ground test tally (temporary — see docs/street-intel-stand-ground-test.md). */
+export interface StandGroundTestStats {
+  attempts: number;
+  successes: number;
+  cashLost: number;
+  byScenario: Record<string, ComplicationChoiceStats>;
+}
+
 export interface StreetIntelAutoStatus {
   lastAttempt: StreetIntelAttemptResult | null;
   nextEligibleAt: number | null;
@@ -1064,6 +1080,8 @@ export interface StreetIntelAutoStatus {
   /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
    *  Optional for pre-existing statuses. */
   modeTallies?: Record<string, StreetIntelModeTally>;
+  /** stand_ground test tally. Optional for pre-existing statuses. */
+  standGroundTestStats?: StandGroundTestStats;
 }
 
 /**

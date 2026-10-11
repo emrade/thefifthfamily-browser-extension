@@ -4,6 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import { STAND_GROUND_TEST_DEFAULT_MAX_REWARD, describeStandGroundTest } from '@/shared/standGroundTest'; // stand_ground test
 
 /**
  * A floating panel on the live Street Intel page — collapsed to a small badge
@@ -244,6 +245,16 @@ function renderToggle(): void {
   if (cplxStatus) {
     cplxStatus.textContent = smartComplications ? 'Avoids choices that never win in that scenario.' : 'Off — reuses the attempt approach.';
   }
+
+  // stand_ground test (temporary — docs/street-intel-stand-ground-test.md).
+  const sgOn = config.standGroundTest === true;
+  const sgToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-sg-toggle');
+  const sgStatus = panelEl.querySelector('.ff-sip-sg-status');
+  if (sgToggle) sgToggle.checked = sgOn;
+  if (sgStatus) {
+    const record = describeStandGroundTest(status?.standGroundTestStats);
+    sgStatus.textContent = sgOn ? `On for cards up to $${(config.standGroundTestMaxReward ?? STAND_GROUND_TEST_DEFAULT_MAX_REWARD).toLocaleString()}. ${record}` : `Off. ${record}`;
+  }
 }
 
 function renderAll(): void {
@@ -320,6 +331,13 @@ function buildPanel(): HTMLDivElement {
         </div>
         <input class="ff-sip-cplx-toggle ff-sip-toggle" type="checkbox">
       </label>
+      <label class="ff-sip-toggle-row">
+        <div class="ff-sip-toggle-row__text">
+          <div class="ff-sip-toggle-row__title">Test Stand Your Ground</div>
+          <div class="ff-sip-toggle-row__status ff-sip-sg-status">Loading…</div>
+        </div>
+        <input class="ff-sip-sg-toggle ff-sip-toggle" type="checkbox">
+      </label>
       <div class="ff-sip-status"><div class="ff-sip-empty">Loading…</div></div>
     </div>
   `;
@@ -345,6 +363,10 @@ function buildPanel(): HTMLDivElement {
 
   const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
+
+  // stand_ground test
+  const sgToggle = el.querySelector<HTMLInputElement>('.ff-sip-sg-toggle');
+  sgToggle?.addEventListener('change', () => writeConfig({ standGroundTest: sgToggle.checked }));
 
   return el;
 }

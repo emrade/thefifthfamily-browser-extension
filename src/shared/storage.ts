@@ -34,6 +34,7 @@ import {
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
+import { STAND_GROUND_TEST_DEFAULT_MAX_REWARD } from './standGroundTest';
 
 // No job selected yet — the popup's job picker is what actually populates
 // careerId/careerName/energyCost/otEnergyCost, from a live CareerCatalogEntry,
@@ -59,6 +60,9 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   // non-smart scouting behavior — see `StreetIntelAutoConfig.scoutMode`.
   scoutMode: 'topPayout',
   complicationMode: 'reuse',
+  // stand_ground test (temporary — see docs/street-intel-stand-ground-test.md).
+  standGroundTest: false,
+  standGroundTestMaxReward: STAND_GROUND_TEST_DEFAULT_MAX_REWARD,
 };
 
 // All three default off, no exception for `watchEnabled` — every kill switch
