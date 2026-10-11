@@ -9,6 +9,35 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.40.0] - 2026-10-11
+
+### Added
+- **Fetch prices** on the Inventory Quick-Sell bar: taps $ for you on every
+  item that has no exact quick-sell price yet, sending the same two requests
+  a real tap does (the new sell sheet, then the quote). Nothing is sold.
+  One copy per item name, best rarity first, in runs of up to 10 with a few
+  seconds between items and a 30–75s break between runs (a new rarity also
+  starts a new run). Shows progress and a time estimate, can be stopped, and
+  picks up where it left off. Stops on leaving the inventory page or on any
+  response it doesn't recognise, and never runs alongside an Auto-Sell batch.
+
+### Fixed
+- **Inventory Quick-Sell total and Auto-Sell** broke when the game rebuilt
+  the Item Market on 2026-10-11: the $ button now opens the market's sell
+  sheet (`IMV2.sellSheet`) instead of `disposeItemV2(…,'quicksell')`, so
+  no card was recognised as sellable (no price tags, empty totals, nothing
+  to auto-sell). Both spellings are recognised now.
+- Quick-sell prices came from the old Item Market sell grid, which no longer
+  exists. They're now captured from the sell sheet (`item.base`) and its
+  quote whenever you tap $; prices collected before the change still apply.
+- The achievement chip now recognises the new Item Market page.
+
+### Removed
+- **Item Market Price Advisor** (weekly-sales badges, suggested price,
+  sort/hide-consumables toolbar): the page it attached to is gone, and the
+  new market shows cheapest listing, median, 7-day average and volume, price
+  limits and top buy order itself.
+
 ## [0.39.0] - 2026-10-11
 
 ### Added
