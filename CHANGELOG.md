@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.41.1] - 2026-10-12
+
+### Fixed
+- **Number fields in the popup** (Street Intel's minimum scouted success %,
+  Fury Catcher's energy floor and Energy Drinks per day) threw away a pasted
+  or typed number and went back to the old value. The popups redraw every
+  second for their countdowns, and each redraw reset the field before the
+  edit was saved (only on Enter or leaving the field). The field now keeps
+  what's being typed until it's saved; the arrows work as before.
+
+### Removed
+- **Test Stand Your Ground** (Street Intel), added in 0.41.0. It answered 12
+  complications with Stand Your Ground and won 9 (75%), about as often as
+  the existing choices but no better, and every scenario already has a
+  choice winning ~80% or more, so it isn't added as a fourth choice. Result
+  recorded in docs/street-intel-complication-tracking.md.
+
 ## [0.41.0] - 2026-10-11
 
 ### Added
