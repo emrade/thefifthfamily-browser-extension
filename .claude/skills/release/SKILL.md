@@ -78,8 +78,7 @@ failing build.
 Commit `package.json`, `manifest.json`, and `CHANGELOG.md` together as one
 `chore(release): bump version to x.y.z` commit (separate from any
 feature/fix commits already made in step 1 — don't squash them together).
-Follow the repo's normal commit conventions (see the top-level git
-instructions: Co-Authored-By trailer, no `--no-verify`, etc.).
+Follow the repo's normal commit conventions (no `--no-verify`, etc.).
 
 ## 7. Confirm AMO credentials are present
 
