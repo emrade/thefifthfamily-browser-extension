@@ -38,11 +38,8 @@ Every archive combined (480 resolved complications, 2026-08-10..10-04 —
   showed 65-82 against difficulties 30-50, consistent with a hidden stat
   roll). The card's "Lower/Higher complication risk" intel changes how *often*
   a complication happens (22% vs 32% of successful attempts), not the result.
-- **Untested lead: a fourth choice, `stand_ground`.** Used once manually
-  (2026-08-29) after a `steel_yourself` attempt, on "The evidence is heavier
-  than expected." — and won, in the scenario where `run` is 0/11. Not used by
-  the runner; whether the game offers it on every complication or only after
-  `steel_yourself` is unknown.
+- **Fourth choice, `stand_ground`: tested 2026-10-11/12, not adopted.** See
+  "Stand Your Ground test" below.
 
 How it's used (`src/shared/streetIntelComplications.ts`): the full
 scenario × choice table above is seeded into the code, and for each cell the
@@ -104,7 +101,7 @@ weak-choice rule needed. Since 08-11, a choice already at 0-for-2+ won 1 of
 its next 69 plays. Details: `street-intel-complication-findings.md`,
 `verification/street-intel/verify_complication_post_patch_blocked.py`.
 
-**Untested fourth choice, `stand_ground` (Defence).** The game's own dialog
+**Fourth choice, `stand_ground` (Defence).** The game's own dialog
 code (in the `panel.php?type=street_intel` response) renders "Stand Your
 Ground: Uses Defence" whenever `window.SI_V2` is true, and every panel
 since 2026-08-16 sets `window.SI_V2 = true` (08-10..15 panels didn't, so it
@@ -115,6 +112,47 @@ is 0/11). The runner and the hint only know fight/run/talk. The same dialog
 code confirms the buttons carry `data-choice=fight|run|talk|stand_ground`,
 which is what `complicationHint.ts` reads. The attempt response gives
 nothing else per complication: only `type` and `difficulty` (always 40).
+
+### Stand Your Ground test (2026-10-11/12): no better, not adopted
+
+0.41.0 added a temporary opt-in toggle that answered complications with
+`stand_ground` instead of the normal pick (removed afterwards). It ran from
+10-11 22:07 to about 10-12 13:00 UTC, with the reward cap raised to
+effectively unlimited. Archive:
+`fifth-family-archive-new-2026-10-12T12-57-47-712Z.ndjson.gz`.
+
+Result: **9 wins in 12 tries (75%)**, $1,380,155 lost on $7.77M of card
+rewards. The choices' own records in the same scenario (since 08-16) for
+comparison:
+
+| Scenario | Card | Result | Lost | Best other choice |
+|---|---|---|---|---|
+| The drop site is surrounded. | $143k | win | – | fight 5/6 |
+| Someone triggered a silent distress signal. | $6k | loss | $0 | run 10/14 |
+| The mark had backup you didn't see coming. | $548k | win | – | run 9/11 |
+| The evidence is heavier than expected. | $233k | win | – | fight 7/7 |
+| You hear footsteps behind the door. | $1.46M | win | – | run 12/13 |
+| Your contact is late and the area is getting hot. | $921k | win | – | run 11/13 |
+| An off-duty cop recognized your face. | $1.50M | loss | $1.20M | talk 6/6 |
+| The informant demands more money. | $177k | loss | $177k (all) | fight 4/4, talk 4/4 |
+| Police spotted you leaving the scene. | $1.02M | win | – | run 12/14 |
+| The client starts panicking. (×2) | $640k, $615k | win, win | – | talk 6/7 |
+| The target building went into lockdown. | $516k | win | – | fight 6/6 |
+
+(Plus the 08-29 manual win in "The evidence is heavier than expected.",
+so 2/2 there, where `run` is 0/11.)
+
+- It wins about as often as a good existing choice (~75-85%), not more.
+- Every scenario it was tried in already has a choice winning ~80-100%, so
+  it fills no gap. It won in six scenarios where another choice is blocked,
+  but a working choice already exists in each.
+- Nearly all the loss came from two scenarios where the normal pick has a
+  perfect record (off-duty cop, informant), so the test cost roughly the
+  full $1.38M over the normal picks.
+- One try per scenario at most: enough to rule out "much better" or
+  "broken", not to rank it per scenario. Not worth paying for more.
+
+The runner and the on-page hint stay on fight/run/talk.
 
 ## Why this exists
 

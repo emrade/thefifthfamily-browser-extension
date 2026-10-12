@@ -15,7 +15,6 @@ import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, st
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
 import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
-import { STAND_GROUND_CHOICE, STAND_GROUND_TEST_DEFAULT_MAX_REWARD, bumpStandGroundTestStats, shouldTestStandGround } from '@/shared/standGroundTest'; // stand_ground test
 import type {
   ComplicationChoiceKey,
   ComplicationTrackingBucket,
@@ -100,7 +99,6 @@ async function updateStatus(patch: Partial<StreetIntelAutoStatus>): Promise<Stre
     complicationTypeStats: current?.complicationTypeStats ?? {},
     lastCycleSkipped: current?.lastCycleSkipped ?? 0,
     modeTallies: current?.modeTallies ?? {},
-    standGroundTestStats: current?.standGroundTestStats, // stand_ground test
     ...patch,
   };
   await storage.setStreetIntelAutoStatus(next);
@@ -691,7 +689,6 @@ async function runIfEligibleOnce(): Promise<void> {
     let complicationAvoided: string | null = null;
     let complicationSuccess: boolean | null = null;
     let complicationCashLost = 0;
-    let standGroundTested = false; // stand_ground test
     // The scenario's own narrative text — see `ComplicationTypeStats`'s doc
     // comment in shared/types.ts for why this is captured. Not used for the
     // choice decision itself yet (sample sizes per scenario are still tiny),
@@ -705,20 +702,6 @@ async function runIfEligibleOnce(): Promise<void> {
         const picked = pickAvoidingBlocked(complicationType, complicationChoice, previousStatus?.complicationTypeStats);
         complicationChoice = picked.choice;
         complicationAvoided = picked.avoided;
-      }
-      // stand_ground test (temporary — docs/street-intel-stand-ground-test.md).
-      if (
-        shouldTestStandGround(
-          config.standGroundTest === true,
-          config.standGroundTestMaxReward ?? STAND_GROUND_TEST_DEFAULT_MAX_REWARD,
-          Number(attemptResp.reward_cash) || 0,
-          complicationType,
-          previousStatus?.standGroundTestStats,
-        )
-      ) {
-        complicationAvoided = complicationChoice;
-        complicationChoice = STAND_GROUND_CHOICE;
-        standGroundTested = true;
       }
       const compResp = await postAction('/actions/street_intel.php', {
         action: 'complication',
@@ -788,11 +771,6 @@ async function runIfEligibleOnce(): Promise<void> {
       haveResolvedComplication && complicationType !== null
         ? bumpComplicationTypeStats(previousStatus?.complicationTypeStats, complicationType, complicationChoice!, complicationSuccess!)
         : (previousStatus?.complicationTypeStats ?? {});
-    // stand_ground test: its own tally, never mixed into the ones above.
-    const standGroundTestStats =
-      standGroundTested && complicationSuccess !== null && complicationType !== null
-        ? bumpStandGroundTestStats(previousStatus?.standGroundTestStats, complicationType, complicationSuccess, complicationCashLost)
-        : previousStatus?.standGroundTestStats;
 
     await updateStatus({
       lastAttempt: {
@@ -814,7 +792,6 @@ async function runIfEligibleOnce(): Promise<void> {
         complicationAvoided,
         scoutMode: config.scoutMode,
         complicationMode: config.complicationMode,
-        complicationStandGroundTest: standGroundTested || undefined, // stand_ground test
       },
       nextEligibleAt,
       pausedReason: null,
@@ -827,17 +804,14 @@ async function runIfEligibleOnce(): Promise<void> {
       lastCycleAt: Date.now(),
       complicationStats,
       complicationTypeStats,
-      standGroundTestStats, // stand_ground test
       lastCycleSkipped: skipped,
       modeTallies: bumpModeTally(cycleTallies, tallyKey, {
         attempts: 1,
         attemptStamina: choice.opportunity.staminaCost,
         gross: rewardCash,
-        // stand_ground test complications are left out of the per-mode
-        // comparison (they're in `standGroundTestStats` instead).
-        cashLost: standGroundTested ? 0 : complicationCashLost,
-        complications: haveResolvedComplication && !standGroundTested ? 1 : 0,
-        complicationWins: haveResolvedComplication && !standGroundTested && complicationSuccess ? 1 : 0,
+        cashLost: complicationCashLost,
+        complications: haveResolvedComplication ? 1 : 0,
+        complicationWins: haveResolvedComplication && complicationSuccess ? 1 : 0,
       }),
     });
 

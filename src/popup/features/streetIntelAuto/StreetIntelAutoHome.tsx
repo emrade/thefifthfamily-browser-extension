@@ -3,7 +3,6 @@ import { storage } from '@/shared/storage';
 import { NumberInput } from '@/popup/views/NumberInput';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
-import { STAND_GROUND_TEST_DEFAULT_MAX_REWARD, describeStandGroundTest } from '@/shared/standGroundTest'; // stand_ground test
 
 const COMPLICATION_KEYS: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
 
@@ -115,17 +114,6 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, complicationMode: avoidBlocked ? 'avoidBlocked' : 'reuse' });
   }
 
-  // stand_ground test (temporary — docs/street-intel-stand-ground-test.md).
-  function setStandGroundTest(enabled: boolean) {
-    if (!config) return;
-    saveConfig({ ...config, standGroundTest: enabled });
-  }
-
-  function setStandGroundTestMaxReward(value: number) {
-    if (!config || !Number.isFinite(value)) return;
-    saveConfig({ ...config, standGroundTestMaxReward: Math.max(0, Math.round(value)) });
-  }
-
   if (!loaded || !config) return null;
 
   const modeTallies = Object.entries(status?.modeTallies ?? {}).filter(([, t]) => t.cycles > 0);
@@ -227,42 +215,6 @@ export function StreetIntelAutoHome() {
         />
       </label>
 
-      {/* stand_ground test (temporary — docs/street-intel-stand-ground-test.md) */}
-      <label class="ff-toggle-row">
-        <div class="ff-toggle-row__text">
-          <div class="ff-toggle-row__title">Test Stand Your Ground</div>
-          <div class="ff-toggle-row__status">
-            {config.standGroundTest
-              ? `Answers complications on cards up to $${(config.standGroundTestMaxReward ?? STAND_GROUND_TEST_DEFAULT_MAX_REWARD).toLocaleString()} with Stand Your Ground, to learn how often it wins. ${describeStandGroundTest(status?.standGroundTestStats)}`
-              : `Off — Stand Your Ground is never used. ${describeStandGroundTest(status?.standGroundTestStats)}`}
-          </div>
-        </div>
-        <input
-          type="checkbox"
-          class="ff-toggle"
-          checked={config.standGroundTest === true}
-          onChange={(e) => setStandGroundTest((e.target as HTMLInputElement).checked)}
-        />
-      </label>
-
-      {config.standGroundTest && (
-        <div class="ff-field">
-          <div class="ff-field__label">Stand Your Ground test: max card reward ($)</div>
-          <div class="ff-field__hint">
-            Only complications on cards paying this much or less are used for the test — a lost complication never takes
-            more than the card's reward. Stops by itself in a scenario after 0 wins in 2 tries, and everywhere if it wins
-            fewer than 3 of its first 6.
-          </div>
-          <NumberInput
-            class="ff-select ff-field__control"
-            min={0}
-            step={10000}
-            value={config.standGroundTestMaxReward ?? STAND_GROUND_TEST_DEFAULT_MAX_REWARD}
-            onCommit={setStandGroundTestMaxReward}
-          />
-        </div>
-      )}
-
       {modeTallies.length > 0 && (
         <>
           <div class="ff-field__hint">
@@ -328,11 +280,7 @@ export function StreetIntelAutoHome() {
           {status.lastAttempt.hadComplication && (
             <div class="ff-auto-row">
               Complication: chose {status.lastAttempt.complicationChoice}
-              {status.lastAttempt.complicationStandGroundTest
-                ? ` (Stand Your Ground test, instead of ${status.lastAttempt.complicationAvoided})`
-                : status.lastAttempt.complicationAvoided
-                  ? ` (avoided ${status.lastAttempt.complicationAvoided})`
-                  : ''}
+              {status.lastAttempt.complicationAvoided ? ` (avoided ${status.lastAttempt.complicationAvoided})` : ''}
               {status.lastAttempt.complicationSuccess === null
                 ? ' (result unknown)'
                 : status.lastAttempt.complicationSuccess
