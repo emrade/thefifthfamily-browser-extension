@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
+import { NumberInput } from '@/popup/views/NumberInput';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import type { FuryCatcherConfig, FuryCatcherStatus } from '@/shared/types';
@@ -133,13 +134,12 @@ export function FuryCatcherHome() {
       <div class="ff-field">
         <div class="ff-field__label">Energy floor</div>
         <div class="ff-field__hint">Energy the catcher never spends, so it's there for your other things.</div>
-        <input
+        <NumberInput
           class="ff-select ff-field__control"
-          type="number"
           min={0}
           max={100}
           value={config.energyFloor}
-          onChange={(e) => setNumber('energyFloor', Number((e.target as HTMLInputElement).value), 100)}
+          onCommit={(v) => setNumber('energyFloor', v, 100)}
         />
       </div>
 
@@ -148,13 +148,12 @@ export function FuryCatcherHome() {
         <div class="ff-field__hint">
           When Energy runs short and a Fury is ready, it drinks one (+10, two chases). Resets at 23:00 UTC. 0 = never.
         </div>
-        <input
+        <NumberInput
           class="ff-select ff-field__control"
-          type="number"
           min={0}
           max={200}
           value={config.dailyDrinkCap}
-          onChange={(e) => setNumber('dailyDrinkCap', Number((e.target as HTMLInputElement).value), 200)}
+          onCommit={(v) => setNumber('dailyDrinkCap', v, 200)}
         />
       </div>
 

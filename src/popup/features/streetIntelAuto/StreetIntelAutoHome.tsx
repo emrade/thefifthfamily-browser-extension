@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
+import { NumberInput } from '@/popup/views/NumberInput';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 import { STAND_GROUND_TEST_DEFAULT_MAX_REWARD, describeStandGroundTest } from '@/shared/standGroundTest'; // stand_ground test
@@ -167,13 +168,12 @@ export function StreetIntelAutoHome() {
           Opportunities are scouted before attempting — this skips one entirely (no attempt spent) if its best approach
           doesn't clear this floor, regardless of risk tier. All risk tiers are otherwise eligible.
         </div>
-        <input
+        <NumberInput
           class="ff-select ff-field__control"
-          type="number"
           min={0}
           max={100}
           value={config.minSuccessPct}
-          onChange={(e) => setMinSuccessPct(Number((e.target as HTMLInputElement).value))}
+          onCommit={setMinSuccessPct}
         />
       </div>
 
@@ -253,13 +253,12 @@ export function StreetIntelAutoHome() {
             more than the card's reward. Stops by itself in a scenario after 0 wins in 2 tries, and everywhere if it wins
             fewer than 3 of its first 6.
           </div>
-          <input
+          <NumberInput
             class="ff-select ff-field__control"
-            type="number"
             min={0}
             step={10000}
             value={config.standGroundTestMaxReward ?? STAND_GROUND_TEST_DEFAULT_MAX_REWARD}
-            onChange={(e) => setStandGroundTestMaxReward(Number((e.target as HTMLInputElement).value))}
+            onCommit={setStandGroundTestMaxReward}
           />
         </div>
       )}
