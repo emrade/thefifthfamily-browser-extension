@@ -9,6 +9,21 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.42.0] - 2026-10-14
+
+### Changed
+- **Inventory Auto-Sell sells through the game's new Bulk Sell** instead of
+  quoting and selling each item on its own. Items go in rounds of up to 15:
+  picked one at a time with the whole list re-quoted after each pick (as the
+  game's own Bulk Sell does), then sold in one request for exactly the final
+  quoted total. A 15-item batch is now about 17 requests instead of 30.
+  - The price cap is still checked per item: each pick's rise in the quote
+    is that item's price, and an item over the cap is unpicked again.
+  - The game only warns about Crime Req items in a bulk sale and sells them
+    anyway, so a warning for anything other than a spare copy the plan chose
+    to sell stops the batch before selling.
+  - Stopping mid-round sells nothing from that round.
+
 ## [0.41.1] - 2026-10-12
 
 ### Fixed
