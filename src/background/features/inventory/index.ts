@@ -1,26 +1,33 @@
 import { GAME_ORIGIN } from '@/shared/constants';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
-import type { InventoryLockResult, InventoryPriceResult, InventorySellResult } from '@/shared/types';
-import { ACTION_PACING_MS, postAction, sleep } from '../../gameAction';
+import type { InventoryBulkQuoteResult, InventoryBulkSellResult, InventoryLockResult, InventoryPriceResult } from '@/shared/types';
+import { postAction } from '../../gameAction';
 
 /**
  * Backs the Inventory Auto-Sell panel's two manual, confirm-first batches:
  * quick-selling every item that matches the player's criteria, and locking
  * one copy of each Crime Req item. Same shape as `features/garage`: one real
- * game action (or action pair) per exported function, called once per item
- * by the page's own batch loop.
+ * game action per exported function, called by the page's own batch loop
+ * (once per item for locks; once per tick and once per sale for selling).
  *
- * Request shapes, from every capture in the 2026-08-11 → 2026-10-03 archives:
+ * Request shapes, from every capture in the 2026-08-11 → 2026-10-14 archives:
  *
+ * - `POST /actions/shops_v2.php action=quicksell_bulk_quote&ids=A,B,C`
+ *   (32 seen, 2026-10-14, the inventory's Bulk Sell) →
+ *   `{ok, count, total, skipped: [], flagged: [{name, note}]}`. The page
+ *   re-quotes the whole picked list on every tick and untick, with the ids
+ *   always in number order. `flagged` lists Crime Req items with the crime
+ *   in `note` ("needed for Back Alley Shakedown"), by name only; it's a
+ *   warning, not a block: a flagged Brass Knuckles was sold. `skipped` was
+ *   always empty (locked items sit in their own tab and can't be picked).
+ * - `POST /actions/shops_v2.php action=quicksell_bulk&ids=…&expect=TOTAL`
+ *   (2 seen, 4 and 15 items) → `{ok, sold: [ids], message: "Sold 15 items
+ *   for $273,300"}`. Sent 3–4s after a final quote of the same list,
+ *   `expect` being that quote's `total`. No other fields on either action.
  * - `POST /actions/shops_v2.php action=dispose_quote&inv_id=N` (87 seen) →
  *   `{ok, name, cash, gold, capstone_warning?}`. `capstone_warning` (a crime
  *   name, e.g. "Debt Collection") only ever appears on Crime Req items.
- * - `POST /actions/shops_v2.php action=quicksell&inv_id=N` (61 seen) →
- *   `{ok, inv_id, remaining, message, kind:"quicksell", payout}`. Every one
- *   was preceded by a `dispose_quote` for the same `inv_id`, 0.8–5.6s
- *   earlier, every one echoed `remaining: 0`, and every `payout` equalled
- *   the quote's `cash`. Neither action has ever been seen with any other
- *   field, so `action`, `inv_id` and `_csrf` are the whole request.
+ *   Still what the sell sheet sends (`priceItem`); selling no longer uses it.
  * - `POST /actions/inventory.php action=lock&inv_id=N` (≈60 seen) →
  *   `{ok, locked: 1, message: "Item locked."}`. Unlock is its own
  *   `action=unlock`, not a toggle, so sending `lock` twice can't unlock.
@@ -37,10 +44,6 @@ import { ACTION_PACING_MS, postAction, sleep } from '../../gameAction';
  * so the page ends the whole batch (see feedback: pause on anything
  * unexpected rather than carrying on with the next item).
  */
-
-/** Quote → sale gap, total including `postAction`'s own pacing. The player's
- *  own 61 sales ran 0.8–5.6s apart, most of them 1–2.5s. */
-const QUOTE_TO_SELL_MS: [number, number] = [900, 2400];
 
 /** Another tab's batch counts as live for this long after its last call. A
  *  closed tab never sends `inventory-batch-finished`, so a lease that old is
@@ -83,46 +86,60 @@ function errorText(resp: any, fallback: string): string {
   return typeof resp?.error === 'string' ? resp.error : typeof resp?.message === 'string' ? resp.message : fallback;
 }
 
-export async function sellItem(
-  invId: number,
-  expectedName: string,
-  isCrime: boolean,
-  maxPrice: number | null,
-  tabId: number | undefined,
-): Promise<InventorySellResult> {
+/** The game always sends its picked ids in number order, whatever order they
+ *  were ticked in. */
+function sortedIds(invIds: number[]): string {
+  return [...invIds].sort((a, b) => a - b).join(',');
+}
+
+export async function bulkQuote(invIds: number[], tabId: number | undefined): Promise<InventoryBulkQuoteResult> {
   if (!claimLease(tabId)) return BUSY;
   try {
-    const quote = await postAction('/actions/shops_v2.php', { action: 'dispose_quote', inv_id: invId });
+    const quote = await postAction('/actions/shops_v2.php', { action: 'quicksell_bulk_quote', ids: sortedIds(invIds) });
+    lease = { tabId, at: Date.now() };
     if (quote.ok !== true) return { status: 'stopped', error: `Quote refused: ${errorText(quote, 'no reason given')}` };
-    if (typeof quote.cash !== 'number' || typeof quote.name !== 'string') {
+    const flagged = Array.isArray(quote.flagged) ? quote.flagged : null;
+    if (
+      typeof quote.count !== 'number' ||
+      typeof quote.total !== 'number' ||
+      !Array.isArray(quote.skipped) ||
+      !flagged ||
+      !flagged.every((f: any) => typeof f?.name === 'string' && typeof f?.note === 'string')
+    ) {
       return { status: 'stopped', error: 'The quote came back in a shape this tool doesn’t recognize, so nothing was sold.' };
     }
-    if (normalizeName(quote.name) !== normalizeName(expectedName)) {
-      return { status: 'stopped', error: `Quoted "${quote.name}" for a card named "${expectedName}", so it wasn't sold.` };
+    if (quote.skipped.length > 0) {
+      return { status: 'stopped', error: `The game skipped ${quote.skipped.length} of the picked items, which hasn't happened before, so nothing was sold.` };
     }
-    if (quote.capstone_warning && !isCrime) {
-      return {
-        status: 'stopped',
-        error: `${quote.name} came back tied to the crime "${quote.capstone_warning}" though its card isn't marked Crime Req, so it wasn't sold.`,
-      };
+    if (quote.count !== invIds.length) {
+      return { status: 'stopped', error: `The game quoted ${quote.count} items for ${invIds.length} picked, so nothing was sold.` };
     }
-    if (maxPrice != null && quote.cash > maxPrice) return { status: 'over-price', cash: quote.cash };
+    return { status: 'quoted', total: quote.total, flagged: flagged.map((f: any) => ({ name: f.name, note: f.note })) };
+  } catch (err) {
+    return { status: 'stopped', error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
-    await sleep(Math.max(0, randomBetween(QUOTE_TO_SELL_MS) - ACTION_PACING_MS));
-    lease = { tabId, at: Date.now() };
-
-    const sale = await postAction('/actions/shops_v2.php', { action: 'quicksell', inv_id: invId });
+export async function bulkSell(invIds: number[], expect: number, tabId: number | undefined): Promise<InventoryBulkSellResult> {
+  if (!claimLease(tabId)) return BUSY;
+  try {
+    const sale = await postAction('/actions/shops_v2.php', { action: 'quicksell_bulk', ids: sortedIds(invIds), expect });
     lease = { tabId, at: Date.now() };
     if (sale.ok !== true) return { status: 'stopped', error: `Sale refused: ${errorText(sale, 'no reason given')}` };
-    if (typeof sale.payout !== 'number' || Number(sale.inv_id) !== invId || sale.kind !== 'quicksell') {
+    if (!Array.isArray(sale.sold) || !sale.sold.every((id: unknown) => Number(id) > 0)) {
       return { status: 'stopped', error: 'The sale came back in a shape this tool doesn’t recognize. Check your inventory before running again.' };
     }
-
+    const sold = sale.sold.map(Number) as number[];
     const message = typeof sale.message === 'string' ? sale.message : '';
+    const asked = new Set(invIds);
+    const paid = Number(message.match(/\$([\d,]+)/)?.[1]?.replace(/,/g, ''));
     let stopAfter: string | undefined;
-    if (sale.payout !== quote.cash) stopAfter = `${quote.name} paid $${sale.payout.toLocaleString()}, not the quoted $${quote.cash.toLocaleString()}.`;
-    else if (Number(sale.remaining) !== 0) stopAfter = `${quote.name} left ${sale.remaining} behind after selling, which hasn't happened before.`;
-    return { status: 'sold', payout: sale.payout, message, stopAfter };
+    if (sold.length !== asked.size || !sold.every((id) => asked.has(id))) {
+      stopAfter = `The game sold ${sold.length} of the ${asked.size} items sent, not exactly those. Check your inventory before running again.`;
+    } else if (message && paid !== expect) {
+      stopAfter = `The game said "${message}", not the quoted $${expect.toLocaleString()}.`;
+    }
+    return { status: 'sold', sold, payout: expect, message, stopAfter };
   } catch (err) {
     return { status: 'stopped', error: err instanceof Error ? err.message : String(err) };
   }

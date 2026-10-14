@@ -154,20 +154,24 @@ export interface InventoryAutoSellCriteria {
   /** Highest upgrade level (`+N`) still sold; `null` = any level. */
   maxUpgrade: number | null;
   /** Items whose quick-sell price is above this are kept; `null` = no cap.
-   *  Checked against the game's own quote right before each sale, not just
+   *  Checked against the game's own quote as each item is picked, not just
    *  the estimate shown in the preview. */
   maxPrice: number | null;
   neverSell: string[];
 }
 
-/** One item through `dispose_quote` → `quicksell`. `stopped` means the batch
- *  must end: a rejection, an unrecognized response, or a quote that doesn't
- *  match the card it was sent for. `stopAfter` is the same for a sale that
- *  went through but came back looking wrong (paid something other than the
- *  quote, or left copies behind): counted as sold, and the batch still ends. */
-export type InventorySellResult =
-  | { status: 'sold'; payout: number; message: string; stopAfter?: string }
-  | { status: 'over-price'; cash: number }
+/** One `quicksell_bulk_quote` of the picked list. `stopped` means the batch
+ *  must end: a rejection, an unrecognized response, a `count` that isn't
+ *  the number of ids sent, or anything in `skipped`. */
+export type InventoryBulkQuoteResult =
+  | { status: 'quoted'; total: number; flagged: { name: string; note: string }[] }
+  | { status: 'stopped'; error: string };
+
+/** One `quicksell_bulk`. `stopAfter` is a sale that went through but came
+ *  back looking wrong (not exactly the ids sent, or a paid amount other than
+ *  `expect`): counted as sold, and the batch still ends. */
+export type InventoryBulkSellResult =
+  | { status: 'sold'; sold: number[]; payout: number; message: string; stopAfter?: string }
   | { status: 'stopped'; error: string };
 
 export type InventoryLockResult = { status: 'locked' } | { status: 'stopped'; error: string };

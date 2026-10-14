@@ -1,7 +1,13 @@
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { InventoryAutoSellCriteria, InventoryLockResult, InventorySellResult, QuickSellPriceBook } from '@/shared/types';
+import type {
+  InventoryAutoSellCriteria,
+  InventoryBulkQuoteResult,
+  InventoryBulkSellResult,
+  InventoryLockResult,
+  QuickSellPriceBook,
+} from '@/shared/types';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { priceFor, recordQuote, type CardPrice } from './quickSellTotal';
@@ -20,14 +26,18 @@ import { isQuickSellable, beginInventoryBatch, endInventoryBatch } from './share
  *
  * **Auto-sell.** The player picks rarities (required), and optionally slots,
  * a highest upgrade level, a price cap and never-sell names; a live preview
- * lists exactly what would go. On Confirm, each item is quoted and sold in
- * turn by background (`features/inventory`), with human-like gaps measured
- * from the player's own manual sales. Crime Req items keep one copy: a
+ * lists exactly what would go. On Confirm, they're sold the way the game's
+ * own Bulk Sell does it, up to 15 at a time: picked one by one with the
+ * list re-quoted after each pick, then sold in one request for exactly the
+ * final quote (calls sent by background, `features/inventory`), with gaps
+ * measured from the player's own bulk sales. Crime Req items keep one copy: a
  * locked copy if there is one, otherwise the best unlocked copy is held
  * back and only the rest are sold.
  *
  * Any rejection or unrecognized response ends the batch on the spot rather
- * than moving on to the next item; so does leaving the inventory page.
+ * than moving on to the next item; so does leaving the inventory page, and
+ * so does a Crime Req warning (`flagged`) for anything other than a spare
+ * crime copy the plan chose to sell: the game warns but still sells.
  * Nothing here runs in the background: no alarm, no trigger other than the
  * two Confirm buttons, and only one batch at a time (`beginInventoryBatch`,
  * shared with the Quick-Sell bar's price fetch, plus
@@ -41,9 +51,19 @@ const PANEL_ID = 'ff-as-panel';
 const STYLE_ID = 'ff-as-style';
 const CRIME_TAG_CLASS = 'ff-as-crime-tag';
 
-/** Sale → next quote gap, total including background's own pacing. The
- *  player's own back-to-back sales ran 0.8–8s apart, most of them 1–3.5s. */
-const BETWEEN_SALES_MS: [number, number] = [1100, 3600];
+/** Gaps around the game's Bulk Sell, totals including background's own
+ *  pacing, from the player's own runs (2026-10-14): ticks 0.4–2.6s apart,
+ *  2.6–20s from the last tick to pressing Sell (which re-quotes), and
+ *  3.0–4.1s from that quote to the sale. */
+const PICK_MS: [number, number] = [500, 2400];
+const REVIEW_MS: [number, number] = [2600, 9000];
+const QUOTE_TO_SELL_MS: [number, number] = [2900, 4300];
+/** Between one bulk sale and picking the next. No player data: a few
+ *  seconds, like starting a fresh selection. */
+const BETWEEN_ROUNDS_MS: [number, number] = [4000, 10000];
+/** Most items in one bulk sale. 15 is the largest the player has sent
+ *  (2026-10-14); the game showed no limit, but nothing bigger has been seen. */
+const MAX_PER_SALE = 15;
 /** Same for locks: the player's own lock runs went 1–3s per item. */
 const BETWEEN_LOCKS_MS: [number, number] = [1000, 2500];
 /** `postAction`'s fixed pause before every call, already part of each gap. */
@@ -354,7 +374,7 @@ function renderPreview(p: Plan): string {
     );
   }
   if (p.overCap.length) lines.push(`<div class="ff-as-note">${plural(p.overCap.length, 'item')} over your price cap kept.</div>`);
-  if (criteria.maxPrice != null && p.sell.length) lines.push(`<div class="ff-as-note">The cap is checked again against the game's own quote before each sale.</div>`);
+  if (criteria.maxPrice != null && p.sell.length) lines.push(`<div class="ff-as-note">The cap is checked again against the game's own quote as each item is picked.</div>`);
   return lines.join('');
 }
 
@@ -365,7 +385,7 @@ function renderControls(p: Plan, groups: CrimeGroup[]): string {
       <div class="ff-as-run">
         <div class="ff-as-run-text"><span class="ff-as-spin"></span>${esc(progressText)}</div>
         <div class="ff-as-bar"><div style="width:${pct}%"></div></div>
-        <button type="button" class="ff-as-btn ff-as-btn-ghost" data-action="stop" ${cancelRequested ? 'disabled' : ''}>${cancelRequested ? 'Stopping after this item…' : `Stop after this ${runningKind === 'sell' ? 'sale' : 'lock'}`}</button>
+        <button type="button" class="ff-as-btn ff-as-btn-ghost" data-action="stop" ${cancelRequested ? 'disabled' : ''}>${cancelRequested ? 'Stopping…' : runningKind === 'sell' ? 'Stop (this round goes unsold)' : 'Stop after this lock'}</button>
       </div>`;
   }
   if (mode === 'confirm-sell') {
@@ -516,52 +536,161 @@ async function runBatch(kind: 'sell' | 'lock', run: (s: Summary) => Promise<void
   }
 }
 
+/** Item names compared the way both sides spell them: the card's `data-name`
+ *  is lowercased with `'` decoded, the quote's flagged `name` is title case. */
+function sameName(a: string, b: string): boolean {
+  const norm = (n: string) => n.toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
+  return norm(a) === norm(b);
+}
+
+function flagKeys(flagged: { name: string; note: string }[]): string[] {
+  return flagged.map((f) => `${f.name}\u0000${f.note}`).sort();
+}
+
+function sameFlags(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((k, i) => k === b[i]);
+}
+
+function quoteList(invIds: number[]): Promise<InventoryBulkQuoteResult> {
+  return chrome.runtime.sendMessage({ type: 'inventory-bulk-quote-requested', invIds }) as Promise<InventoryBulkQuoteResult>;
+}
+
+/** Sells `sales` the way the game's Bulk Sell does: up to `MAX_PER_SALE`
+ *  items picked one at a time, the whole list quoted after each pick, a
+ *  final quote, then one `quicksell_bulk` for exactly that total. Each
+ *  pick's rise in the total is that item's own price, which is what the
+ *  price cap is checked against; an item over it is unpicked again (which
+ *  the game also re-quotes). Nothing in a round is sold until its last
+ *  step, so stopping mid-round sells none of that round. */
 function sellBatch(sales: PlannedSale[], maxPrice: number | null): Promise<void> {
   return runBatch('sell', async (s) => {
     progressTotal = sales.length;
-    for (let i = 0; i < sales.length; i++) {
+    progressDone = 0;
+    let next = 0;
+    let rounds = 0;
+
+    while (next < sales.length) {
+      if (rounds > 0) await sleep(gap(BETWEEN_ROUNDS_MS));
+      rounds++;
+
+      const picked: PlannedSale[] = [];
+      let total = 0;
+      let flags: string[] = [];
+
+      while (next < sales.length && picked.length < MAX_PER_SALE) {
+        if (cancelRequested) {
+          s.cancelled = true;
+          return;
+        }
+        const sale = sales[next++];
+        const { item } = sale;
+        const { card, leftPage } = liveCard(item.invId);
+        if (leftPage) {
+          s.stopped = 'you left the inventory page.';
+          return;
+        }
+        if (!card || card.getAttribute('data-locked') === '1') {
+          s.skipped++;
+          continue;
+        }
+        progressText = `Picking ${item.label} (${picked.length + 1} this round)`;
+        scheduleRender();
+        await sleep(gap(PICK_MS));
+
+        const ids = [...picked, sale].map((p) => p.item.invId);
+        const quote = await quoteList(ids);
+        if (quote.status === 'stopped') {
+          s.stopped = `${item.label}: ${quote.error}`;
+          return;
+        }
+        const price = quote.total - total;
+        const nextFlags = flagKeys(quote.flagged);
+        const added = nextFlags.filter((k) => !flags.includes(k));
+        const lost = flags.filter((k) => !nextFlags.includes(k));
+        if (lost.length || added.some((k) => !item.crime || !sameName(k.split('\u0000')[0], item.baseName))) {
+          const names = quote.flagged.map((f) => `${f.name} (${f.note})`).join(', ');
+          s.stopped = `${item.label}: the game's Crime Req warnings changed in a way that doesn't fit this item (${names || 'none'}), so nothing in this round was sold.`;
+          return;
+        }
+        if (price < 0) {
+          s.stopped = `${item.label}: adding it lowered the quote, so nothing in this round was sold.`;
+          return;
+        }
+        // So the next preview already shows the game's own price for it.
+        recordQuote(String(item.invId), item.baseName, price);
+
+        if (maxPrice != null && price > maxPrice) {
+          s.overPrice++;
+          // Unpicked again, which the game re-quotes too: the list must come
+          // back exactly as it was before this item. (Nothing to quote when
+          // it was the only one picked.)
+          if (picked.length === 0) continue;
+          await sleep(gap(PICK_MS));
+          const back = await quoteList(picked.map((p) => p.item.invId));
+          if (back.status === 'stopped') {
+            s.stopped = `${item.label}: ${back.error}`;
+            return;
+          }
+          if (back.total !== total || !sameFlags(flagKeys(back.flagged), flags)) {
+            s.stopped = `${item.label}: the quote changed after unpicking it, so nothing in this round was sold.`;
+            return;
+          }
+          continue;
+        }
+        picked.push(sale);
+        total = quote.total;
+        flags = nextFlags;
+      }
+      if (picked.length === 0) continue;
+
+      // The player looking over the list, then the final quote the game
+      // sends when Sell is pressed, then the sale itself.
       if (cancelRequested) {
         s.cancelled = true;
         return;
       }
-      const { item } = sales[i];
-      const { card, leftPage } = liveCard(item.invId);
-      if (leftPage) {
-        s.stopped = 'you left the inventory page.';
-        return;
-      }
-      if (!card || card.getAttribute('data-locked') === '1') {
-        s.skipped++;
-        continue;
-      }
-      progressDone = i;
-      progressText = `Selling ${item.label} (${i + 1} of ${sales.length})`;
+      progressText = `Selling ${plural(picked.length, 'item')} for ${money(total)}`;
       scheduleRender();
-      if (i > 0) await sleep(gap(BETWEEN_SALES_MS));
-
-      const result = (await chrome.runtime.sendMessage({
-        type: 'inventory-sell-item-requested',
-        invId: item.invId,
-        expectedName: item.baseName,
-        isCrime: item.crime,
-        maxPrice,
-      })) as InventorySellResult;
-
-      if (result.status === 'stopped') {
-        s.stopped = `${item.label}: ${result.error}`;
+      await sleep(gap(REVIEW_MS));
+      for (const { item } of picked) {
+        const { card, leftPage } = liveCard(item.invId);
+        if (leftPage) {
+          s.stopped = 'you left the inventory page.';
+          return;
+        }
+        if (!card || card.getAttribute('data-locked') === '1') {
+          s.stopped = `${item.label} was sold, moved or locked while being picked, so this round wasn't sold.`;
+          return;
+        }
+      }
+      const ids = picked.map((p) => p.item.invId);
+      const final = await quoteList(ids);
+      if (final.status === 'stopped') {
+        s.stopped = final.error;
         return;
       }
-      if (result.status === 'over-price') {
-        s.overPrice++;
-        // So the next preview already knows it's over the cap.
-        recordQuote(String(item.invId), item.baseName, result.cash);
-        continue;
+      if (final.total !== total || !sameFlags(flagKeys(final.flagged), flags)) {
+        s.stopped = `The final quote came back as ${money(final.total)}, not the ${money(total)} picked, so this round wasn't sold.`;
+        return;
       }
-      s.done++;
+      if (cancelRequested) {
+        s.cancelled = true;
+        return;
+      }
+      await sleep(gap(QUOTE_TO_SELL_MS));
+
+      const result = (await chrome.runtime.sendMessage({ type: 'inventory-bulk-sell-requested', invIds: ids, expect: total })) as InventoryBulkSellResult;
+      if (result.status === 'stopped') {
+        s.stopped = result.error;
+        return;
+      }
+      const sold = new Set(result.sold);
+      s.done += sold.size;
       s.payout += result.payout;
-      // Gone from the server, so the card shouldn't be offered again by a
+      progressDone += sold.size;
+      // Gone from the server, so the cards shouldn't be offered again by a
       // re-plan before the inventory reloads.
-      card.remove();
+      for (const { item } of picked) if (sold.has(item.invId)) liveCard(item.invId).card?.remove();
       if (result.stopAfter) {
         s.stopped = result.stopAfter;
         return;

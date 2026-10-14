@@ -33,7 +33,8 @@ import {
   lockItem as lockInventoryItem,
   priceItem as priceInventoryItem,
   releaseLease as releaseInventoryLease,
-  sellItem as sellInventoryItem,
+  bulkQuote as bulkQuoteInventory,
+  bulkSell as bulkSellInventory,
 } from './features/inventory';
 import { claimLine as claimAchievementLine, fetchCategory as fetchAchievementCategory } from './features/achievements';
 import {
@@ -271,10 +272,14 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return migrateGarageVehicle(msg.carId);
   }
 
-  // One item per message, called in a loop by the Inventory Auto-Sell
-  // panel's confirmed batches — see features/inventory.
-  if (msg.type === 'inventory-sell-item-requested') {
-    return sellInventoryItem(msg.invId, msg.expectedName, msg.isCrime, msg.maxPrice, sender.tab?.id);
+  // One call per message, in the Inventory Auto-Sell panel's confirmed
+  // batch loop — see features/inventory.
+  if (msg.type === 'inventory-bulk-quote-requested') {
+    return bulkQuoteInventory(msg.invIds, sender.tab?.id);
+  }
+
+  if (msg.type === 'inventory-bulk-sell-requested') {
+    return bulkSellInventory(msg.invIds, msg.expect, sender.tab?.id);
   }
 
   if (msg.type === 'inventory-lock-item-requested') {

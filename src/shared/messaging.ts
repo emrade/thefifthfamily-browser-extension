@@ -201,13 +201,13 @@ export type ExtensionMessage =
   // Same per-item shape, for a vehicle a Fit Parts plan found to be
   // `migrated: false` — see `GarageMigrateResult`'s own doc.
   | { type: 'garage-migrate-requested'; carId: number }
-  // Sent by the Inventory Auto-Sell panel's confirmed batch, once per item —
-  // same "one item per message, loop lives in the page" shape as the garage
-  // tools. Background runs the item's whole `dispose_quote` → `quicksell`
-  // pair, so the quote can be checked against the card (`expectedName`,
-  // `isCrime`, `maxPrice`) before the sale is sent. See
-  // background/features/inventory.
-  | { type: 'inventory-sell-item-requested'; invId: number; expectedName: string; isCrime: boolean; maxPrice: number | null }
+  // Sent by the Inventory Auto-Sell panel's confirmed batch, the way the
+  // game's own Bulk Sell does it: a `quicksell_bulk_quote` of the whole
+  // picked list after every item it picks, then one `quicksell_bulk` with
+  // the final quote's total as `expect`. The loop and every check against
+  // the cards live in the page. See background/features/inventory.
+  | { type: 'inventory-bulk-quote-requested'; invIds: number[] }
+  | { type: 'inventory-bulk-sell-requested'; invIds: number[]; expect: number }
   // Sent by the panel's "Lock one of each" batch, once per item.
   | { type: 'inventory-lock-item-requested'; invId: number }
   // Sent by the quick-sell bar's "Fetch prices" batch, once per item: what
