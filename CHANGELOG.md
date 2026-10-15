@@ -9,6 +9,39 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.44.0] - 2026-10-15
+
+### Added
+- **Real Estate advisor: what each property actually nets per day.** The
+  new default, "My collections", replays your last week of collections
+  against each property's vault: net per day on every card and row, what
+  overflowed, and Vault advice sized for the longest gap you stay within on
+  3 days in 4 (~15h for this account). Collection history starts from the
+  extension's own request archive (14 days), then the vault reminder records
+  each new collection. Measured on 8–14 Oct: $17.74M/day net, $194k/day
+  lost (1.1%), where the old fixed 24h cadence claimed 16%.
+- **Plans for properties you don't own yet**, locked districts included
+  (dimmed, "unlocks at level N"): buy, max Revenue, the Vault level that
+  holds your gap, what it then earns with your income bonus, and the
+  payback in days, plus a per-district total in the panel (Diamond District:
+  ~$1.41B, ~$17.2M/day, ~82 days). Upgrade prices come from a rule every
+  upgrade so far followed exactly (first Revenue step = price ÷ 48.125,
+  first Vault step = price ÷ 77).
+
+### Changed
+- The 12h / 24h / 48h chips are now a labelled "What if every …" option,
+  with a note saying which basis is shown. Loss lines say what they're out
+  of ("of $3,017,688 possible (40%)"). With no collections recorded yet, a
+  property shows what it makes at most and how often it needs collecting,
+  not a loss from a guessed cadence.
+
+### Fixed
+- **Real Estate upgrade prices were read as "maxed" since 2026-09-28**, when
+  the game added a fourth argument to its Upgrade buttons. Every "Upgrade
+  Vault → L? for $X" and "Max Revenue/Vault" line was missing, cards said
+  "Revenue and Vault both maxed (L11)", and an unmaxed vault could read
+  "Vault is already maxed".
+
 ## [0.43.0] - 2026-10-15
 
 ### Added
