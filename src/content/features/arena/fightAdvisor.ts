@@ -8,6 +8,7 @@ import {
   bossPotLimit,
   expectedPot,
   foldFight,
+  leanText,
   lineupBenchmark,
   recordLineup,
   recordFight,
@@ -294,9 +295,9 @@ function verdictWord(v: ArenaVerdict): string {
 }
 
 /** Short right-hand detail on a card's strip. */
-function verdictDetail(v: ArenaVerdict): string {
+function verdictDetail(v: ArenaVerdict, p: number): string {
   const score = v.score > 3 ? 'score 3+' : `score ${v.score.toFixed(2)}`;
-  return v.kind === 'coinflip' ? `leans ${v.leansWin ? 'win' : 'loss'} · ${score}` : score;
+  return v.kind === 'coinflip' ? `${leanText(p)} · ${score}` : score;
 }
 
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
@@ -306,7 +307,7 @@ function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void 
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
     `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
-    `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v)}</span>`;
+    `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v, p)}</span>`;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
   shownVerdicts.set(c.card.name, v);
   const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord, winChance: p, bounty: c.bounty };

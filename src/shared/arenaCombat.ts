@@ -176,7 +176,9 @@ export type ArenaVerdictKind = 'beatable' | 'coinflip' | 'avoid';
 export interface ArenaVerdict {
   kind: ArenaVerdictKind;
   score: number;
-  /** Only meaningful for `coinflip`. */
+  /** Only meaningful for `coinflip`: which of its two `WIN_CHANCE` cells
+   *  this fight falls in (regular: quoted ≥ 50%). The lean shown to the
+   *  player comes from the resulting win chance instead (`leanFor`). */
   leansWin: boolean;
   /** Highest STR at this card's level/DEF that still scores 1.0. */
   maxStrength: number;
@@ -257,9 +259,25 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
   };
 }
 
-/** Should the player take this fight? Beatable, or a coin-flip leaning win. */
-export function isRecommended(v: ArenaVerdict): boolean {
-  return v.kind === 'beatable' || (v.kind === 'coinflip' && v.leansWin);
+/** A coin-flip's lean, from its measured win chance rather than the quoted %
+ *  alone: only a band whose real record is clearly away from 50% leans. On
+ *  2026-10-15 every band's 90% range agreed with these cut-offs: regular
+ *  0.8–1.0 quoted 50%+ 73% (19/26), under 50% 24% (15/63), 1.0–1.2 quoted
+ *  50%+ 71% (48/68) all lean; 1.0–1.2 quoted under 50% won 16/29 (55%,
+ *  range 40–70%) and is even. Follows `WIN_CHANCE` whenever that's refit. */
+export const LEAN_WIN_AT = 0.6;
+export const LEAN_LOSS_AT = 0.4;
+
+export type ArenaLean = 'win' | 'even' | 'loss';
+
+export function leanFor(winChance: number): ArenaLean {
+  return winChance >= LEAN_WIN_AT ? 'win' : winChance <= LEAN_LOSS_AT ? 'loss' : 'even';
+}
+
+/** The lean as the badge words it. */
+export function leanText(winChance: number): string {
+  const lean = leanFor(winChance);
+  return lean === 'even' ? 'even' : `leans ${lean}`;
 }
 
 /** The real win rate for this verdict's band — see `WIN_CHANCE`. */

@@ -7,6 +7,8 @@ import {
   SCORE_BOSS_BEATABLE,
   addTallies,
   emptyTally,
+  leanFor,
+  leanText,
   type ArenaOpponentCard,
   type ArenaVerdict,
 } from '@/shared/arenaCombat';
@@ -130,9 +132,9 @@ function accentFor(v: ArenaVerdict): string {
   return v.kind === 'beatable' ? '#4ade80' : v.kind === 'avoid' ? '#f87171' : '#fbbf24';
 }
 
-function scoreText(v: ArenaVerdict): string {
+function scoreText(v: ArenaVerdict, winChance: number): string {
   const score = v.score > 3 ? 'score 3+' : `score ${v.score.toFixed(2)}`;
-  return v.kind === 'coinflip' ? `leans ${v.leansWin ? 'win' : 'loss'} · ${score}` : score;
+  return v.kind === 'coinflip' ? `${leanText(winChance)} · ${score}` : score;
 }
 
 /** The one reason that matters most, for the hover card. */
@@ -155,10 +157,17 @@ function notes(d: FightDetail): string[] {
     out.push('<b>A boss loss forfeits your unbanked pot.</b> Skipping means banking first. The plan above says how big a pot is still worth risking.');
   }
   if (v.kind === 'coinflip') {
+    const pct = `${Math.round(d.winChance * 100)}%`;
+    const like = card.isBoss
+      ? `bosses scoring ${SCORE_AVOID}–${SCORE_BOSS_BEATABLE} have won about ${pct}`
+      : card.quotedPct !== null
+        ? `a quoted ${v.leansWin ? '50%+' : 'under 50%'} at this score has won about ${pct}`
+        : `with no quoted %, ${card.passive ? 'a Passive opponent counts as quoted 50%+' : 'an active opponent counts as quoted under 50%'}, which at this score has won about ${pct}`;
+    const lean = leanFor(d.winChance);
     out.push(
-      v.leansWin
-        ? 'Leans win: ' + (card.isBoss ? 'bosses scoring 1.0+ have mostly been won.' : card.quotedPct !== null ? `a quoted 50%+ at this score has won about ${Math.round(d.winChance * 100)}%.` : 'Passive opponents in this band have won most of the time.')
-        : 'Leans loss: ' + (card.isBoss ? 'bosses this close have beaten you.' : `a quoted under 50% at this score has won about ${Math.round(d.winChance * 100)}%.`),
+      lean === 'even'
+        ? `Even: ${like}, too close to 50% to lean either way.`
+        : `Leans ${lean}: ${like}.`,
     );
   }
   return out;
@@ -182,7 +191,7 @@ export function showHover(anchor: HTMLElement, d: FightDetail): void {
   const el = hoverEl();
   el.innerHTML =
     `<div class="ff-arv-h-verdict"><span style="color:${accentFor(d.verdict)}">${word(d.verdict)}</span>` +
-    ` <span class="ff-arv-h-score">· ${scoreText(d.verdict)}</span></div>` +
+    ` <span class="ff-arv-h-score">· ${scoreText(d.verdict, d.winChance)}</span></div>` +
     `<div class="ff-arv-h-reason">${keyReason(d)}</div>` +
     `<div class="ff-arv-h-reason">Won ~${Math.round(d.winChance * 100)}% of the time${d.bounty !== null ? ` · +${d.bounty} to the pot` : ''}.</div>` +
     `<div class="ff-arv-h-hint">Click for the full breakdown</div>`;
@@ -275,7 +284,7 @@ export function openModal(d: FightDetail): void {
 
       <div class="ff-arv-m-verdict" style="color:${accent};border-color:${accent}55;border-left-color:${accent};background:${accent}14">
         <span class="ff-arv-m-verdict-word">${word(v)}</span>
-        <span class="ff-arv-m-verdict-detail">${scoreText(v)}</span>
+        <span class="ff-arv-m-verdict-detail">${scoreText(v, d.winChance)}</span>
       </div>
 
       <div class="ff-arv-m-sec">

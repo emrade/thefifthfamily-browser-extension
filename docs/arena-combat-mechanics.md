@@ -428,6 +428,12 @@ Banked pots are the season score, so this is what actually decides ranking.
   Beatable 315/315, Avoid 3/76; coin-flip 0.8–1.0: quoted ≥ 50% 19/26,
   under 15/63; 1.0–1.2: 48/68 vs 16/29. Bosses: 1.3+ 59/60, 0.8–1.3
   39/45, under 0.8 kept at 2 in 5 (only 3 fights).
+- **A coin-flip's lean comes from its win chance** (2026-10-15): 60%+ says
+  "leans win", 40% or less "leans loss", in between "even". The quoted %
+  still picks which row of the table a regular coin-flip uses. With the
+  numbers above, only 1.0–1.2 quoted under 50% (16/29, 55%) is "even"; its
+  90% range, 40–70%, can't be told from a coin toss. Bosses in the
+  coin-flip band (39/45) lean win.
 
 ### Why opponents got harder (Oct 1 season)
 
