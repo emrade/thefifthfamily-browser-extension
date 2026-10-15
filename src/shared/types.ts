@@ -235,6 +235,9 @@ export interface FightClubRecon {
  *  the overlay's own cadence chips, not a Settings toggle — it's read far more
  *  often than it's changed and belongs next to the numbers it drives. */
 export interface RealEstateAdvisorPreferences {
+  /** `measured`: figures from the player's own collections (the default);
+   *  `whatIf`: as if collecting exactly once every `cadenceHours`. */
+  basis: 'measured' | 'whatIf';
   cadenceHours: number;
 }
 
@@ -1599,6 +1602,11 @@ export interface RealEstateVault {
 export interface RealEstateVaultState {
   vaults: RealEstateVault[];
   notifiedAt: number | null;
+  /** Successful collections seen, newest last, the last
+   *  `REAL_ESTATE_COLLECTION_HISTORY_DAYS` days: the Real Estate advisor
+   *  measures what each property actually nets from these. Missing on a
+   *  record from before it was kept; filled from the request archive then. */
+  collections?: { at: number; key: string | null }[];
 }
 
 /** Expected points of each fresh lineup (four regulars, none fought yet)

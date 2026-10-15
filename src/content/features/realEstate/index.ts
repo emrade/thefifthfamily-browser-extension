@@ -2,7 +2,19 @@ import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import { analyzeProperty, type PropertyAdvice } from '@/shared/realEstateAdvisor';
+import { STORAGE_KEYS } from '@/shared/constants';
+import {
+  analyzeProperty,
+  measureFromCollections,
+  planProperty,
+  MEASURE_WINDOW_DAYS,
+  type CollectionEvent,
+  type MeasuredPortfolio,
+  type MeasuredProperty,
+  type PropertyAdvice,
+  type PropertyPlan,
+} from '@/shared/realEstateAdvisor';
+import type { RealEstateVaultState } from '@/shared/types';
 
 /**
  * Real Estate Advisor — an overlay on the live "Real Estate Empire" panel that
@@ -26,6 +38,17 @@ import { analyzeProperty, type PropertyAdvice } from '@/shared/realEstateAdvisor
  *    total, the collection-cadence assumption driving every number (adjustable
  *    live, since "how often do you actually collect" isn't something the game
  *    tracks), and the full recommendation with its cost.
+ * 3. A plan on each property not owned yet (other districts, locked ones
+ *    too): buy, max Revenue, the Vault level that holds the player's
+ *    collection gap, what it then earns, and how long it takes to pay back.
+ *
+ * Figures come in two bases (2026-10-15). "My collections", the default,
+ * replays the player's own last week of collections (recorded by the vault
+ * reminder in background/features/realEstate) against each property's vault:
+ * what each one actually netted per day, and Vault advice sized for the
+ * longest gap they stay within on 3 days in 4. "What if" keeps the old fixed cadences (collect exactly
+ * once every 12/24/48h), which overstated this account's loss 16× (16% at
+ * 24h against ~1% measured).
  *
  * Reads the live DOM directly rather than the captured API responses — same
  * choice Street Intel's highlights make, and for the same reason: the numbers
@@ -38,6 +61,9 @@ const CONTAINER_ID = 'ff-re-advisor';
 const STYLE_ID = 'ff-re-advisor-style';
 const CARD_SELECTOR = '.rev2-card.owned';
 const CADENCE_OPTIONS = [12, 24, 48] as const;
+/** Cadence used when the basis is "My collections" but there isn't a day of
+ *  them yet. */
+const FALLBACK_CADENCE_HOURS = 24;
 
 const STYLE = `
 #${CONTAINER_ID} {
@@ -158,10 +184,32 @@ const STYLE = `
 .ff-re-ribbon-amt small { font-size: 8px; font-weight: 700; opacity: .75; margin-left: 2px; }
 .ff-re-ribbon-loss { font-size: 8.5px; font-weight: 700; color: #fff; opacity: .95; }
 .ff-re-ribbon[data-ff-status="balanced"] .ff-re-ribbon-amt { color: #a7f3d0; }
+
+.ff-re-cadence-group { display: flex; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid rgba(255,255,255,0.08); }
+.ff-re-basis-note { margin: -6px 0 12px; font-size: 9.5px; color: #8b8578; line-height: 1.45; }
+.ff-re-plans { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); }
+.ff-re-plans-h { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b6455; margin-bottom: 8px; }
+.ff-re-plans-row { font-size: 10.5px; color: #ccc; line-height: 1.45; margin-bottom: 6px; }
+.ff-re-plans-row b { color: #fff; }
+.ff-re-plans-row.ff-re-locked { opacity: 0.6; }
+
+.ff-re-plan {
+  margin: 10px 0; padding: 8px 10px; border-radius: 8px;
+  background: rgba(201,168,76,0.07); border: 1px solid rgba(201,168,76,0.3);
+  font-size: 11px; line-height: 1.5; color: #d4d4d8;
+}
+.ff-re-plan.ff-re-locked { opacity: 0.6; }
+.ff-re-plan-h { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #d9c48a; margin-bottom: 3px; }
+.ff-re-plan b { color: #fff; font-family: 'Courier New', ui-monospace, monospace; }
+.ff-re-plan-sub { font-size: 10px; color: #a1a1aa; }
 `;
 
 interface ParsedCard {
   el: HTMLElement;
+  /** The game's property id (its Collect button), matching collections. */
+  key: string | null;
+  /** Income bonus shown under Hourly Income ("+19.75%"), or 0. */
+  bonusPct: number;
   title: string;
   hourly: number;
   vaultCap: number;
@@ -186,7 +234,11 @@ function parseLevelRow(card: Element, label: 'Revenue' | 'Vault'): { level: numb
     const levelMatch = row.querySelector('.rev2-level-v')?.textContent?.match(/L(\d+)/);
     if (!levelMatch) return null;
     const onclick = row.querySelector('.rev2-level-upgrade')?.getAttribute('onclick') ?? '';
-    const costMatch = onclick.match(/Rev2\.upgrade\(\d+,\s*'(?:revenue|vault)',\s*(\d+)\)/);
+    // The price is the third argument. Since 2026-09-28 the game passes a
+    // fourth (the tooltip text: 'Hourly income $125,737 &rarr; …'), so the
+    // price can be followed by a comma, not just the closing paren. Matching
+    // only `)` read every price as missing, i.e. "maxed".
+    const costMatch = onclick.match(/Rev2\.upgrade\(\d+,\s*'(?:revenue|vault)',\s*(\d+)\s*[,)]/);
     return { level: Number(levelMatch[1]), nextCost: costMatch ? Number(costMatch[1]) : null };
   }
   return null;
@@ -199,8 +251,12 @@ function parseCard(el: Element): ParsedCard | null {
   const revenue = parseLevelRow(el, 'Revenue');
   const vault = parseLevelRow(el, 'Vault');
   if (!title || !hourly || !vaultCap || !revenue || !vault) return null;
+  const key = el.querySelector('.rev2-btn-collect')?.getAttribute('onclick')?.match(/Rev2\.collect\((\d+)\)/)?.[1] ?? null;
+  const bonus = el.querySelector('.rev2-stat-base .up')?.textContent?.match(/([\d.]+)%/)?.[1];
   return {
     el: el as HTMLElement,
+    key,
+    bonusPct: bonus ? Number(bonus) : 0,
     title, hourly, vaultCap,
     vaultLevel: vault.level, nextVaultUpgradeCost: vault.nextCost,
     revenueLevel: revenue.level, nextRevenueUpgradeCost: revenue.nextCost,
@@ -237,7 +293,34 @@ function toAdviceInput(card: ParsedCard) {
   };
 }
 
-function renderRibbon(card: ParsedCard, advice: PropertyAdvice) {
+/** One owned property's figures under the current basis. */
+interface RowFigures {
+  /** Nets per day: measured, or modelled at the what-if cadence. */
+  netDaily: number;
+  lossDaily: number;
+  theoreticalDaily: number;
+  /** Vault advice, sized for the usual longest gap or the what-if cadence. */
+  advice: PropertyAdvice;
+  measured: boolean;
+}
+
+function figuresFor(card: ParsedCard, cadence: number, measured: MeasuredProperty | undefined): RowFigures {
+  const advice = analyzeProperty(toAdviceInput(card), cadence);
+  if (measured) {
+    return { netDaily: measured.netDaily, lossDaily: measured.lostDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: true };
+  }
+  return { netDaily: advice.effectiveDaily, lossDaily: advice.lossDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: false };
+}
+
+/** Losing at least this share of a property's income counts as leaking.
+ *  Below it (a stray long gap) the row stays green. */
+const LEAK_SHARE = 0.01;
+
+function isLeaking(f: RowFigures): boolean {
+  return f.lossDaily >= f.theoreticalDaily * LEAK_SHARE;
+}
+
+function renderRibbon(card: ParsedCard, f: RowFigures) {
   card.el.classList.add('ff-re-card');
   let ribbon = card.el.querySelector<HTMLDivElement>(':scope > .ff-re-ribbon');
   if (!ribbon) {
@@ -245,70 +328,71 @@ function renderRibbon(card: ParsedCard, advice: PropertyAdvice) {
     ribbon.className = 'ff-re-ribbon';
     card.el.prepend(ribbon);
   }
-  const amount = `<span class="ff-re-ribbon-amt">${formatMoney(advice.effectiveDaily)}<small>/24h</small></span>`;
-  if (advice.isOverflowing) {
-    ribbon.dataset.ffStatus = severity(advice.lossDaily / advice.theoreticalDaily);
-    ribbon.innerHTML = `${amount}<span class="ff-re-ribbon-loss">-${formatMoney(advice.lossDaily)}/day</span>`;
+  const amount = `<span class="ff-re-ribbon-amt">${formatMoney(f.netDaily)}<small>/day</small></span>`;
+  let html: string;
+  if (isLeaking(f)) {
+    ribbon.dataset.ffStatus = severity(f.lossDaily / f.theoreticalDaily);
+    html = `${amount}<span class="ff-re-ribbon-loss">-${formatMoney(f.lossDaily)}/day</span>`;
   } else {
     ribbon.dataset.ffStatus = 'balanced';
-    ribbon.innerHTML = amount;
+    html = amount;
   }
+  if (ribbon.innerHTML !== html) ribbon.innerHTML = html;
 }
 
-function renderRow(card: ParsedCard, advice: PropertyAdvice): string {
+function renderRow(card: ParsedCard, f: RowFigures, gapLabel: string): string {
+  const { advice } = f;
   const revenueLabel = card.revenueLevel >= 11 ? 'Revenue L11 (maxed)' : `Revenue L${card.revenueLevel}`;
   const vaultLabel = card.vaultLevel >= 11 ? 'Vault L11 (maxed)' : `Vault L${card.vaultLevel}`;
   const meta = `${revenueLabel} · ${vaultLabel} · fills in ${formatHours(advice.fillHours)}`;
+  const leaking = isLeaking(f);
 
-  let body: string;
-  if (advice.isOverflowing) {
-    const sev = severity(advice.lossDaily / advice.theoreticalDaily);
-    const gaugePct = Math.min(100, (advice.effectiveDaily / advice.theoreticalDaily) * 100);
-    let action: string;
-    if (advice.targetLevel === null) {
-      action = `Vault is already maxed — still short ${formatMoney(advice.residualLossAtTarget)}/day. Collect more often to close the rest.`;
-    } else if (advice.structurallyCapped) {
-      action = `Best possible: Vault → L${advice.targetLevel} for ${formatMoney(advice.costToTarget ?? 0)} — still short ${formatMoney(advice.residualLossAtTarget)}/day. Collect more often to close the rest.`;
-    } else {
-      action = `Upgrade Vault → L${advice.targetLevel} for ${formatMoney(advice.costToTarget ?? 0)}`;
-    }
+  let body = '';
+  if (leaking) {
+    const sev = severity(f.lossDaily / f.theoreticalDaily);
+    const gaugePct = Math.min(100, (f.netDaily / f.theoreticalDaily) * 100);
     body = `
-      <div class="ff-re-row-loss" data-ff-sev="${sev}">Losing ${formatMoney(advice.lossDaily)}/day</div>
-      <div class="ff-re-row-advice">${action}</div>
+      <div class="ff-re-row-loss" data-ff-sev="${sev}">${f.measured ? 'Lost' : 'Losing'} ${formatMoney(f.lossDaily)}/day</div>
       <div class="ff-re-row-gauge"><div class="ff-re-row-gauge-fill" data-ff-sev="${sev}" style="width:${gaugePct}%"></div></div>
     `;
-  } else {
-    body = `<div class="ff-re-row-ok">✓ Vault comfortably covers this cadence</div>`;
+  }
+  if (advice.isOverflowing) {
+    let action: string;
+    if (advice.targetLevel === null) {
+      action = `Vault is maxed and fills in ${formatHours(advice.fillHours)}, less than ${gapLabel}. Only collecting sooner closes it.`;
+    } else if (advice.structurallyCapped) {
+      action = `Best possible: Vault → L${advice.targetLevel} for ${formatMoney(advice.costToTarget ?? 0)}, still short of ${gapLabel}. Collect sooner to close the rest.`;
+    } else {
+      action = `Vault → L${advice.targetLevel} for ${formatMoney(advice.costToTarget ?? 0)} would hold ${gapLabel}.`;
+    }
+    body += `<div class="ff-re-row-advice">${action}</div>`;
+  } else if (!leaking) {
+    body += `<div class="ff-re-row-ok">✓ Vault holds ${gapLabel}</div>`;
   }
 
   // Revenue and Vault are independent purchases — maxing one says nothing
-  // about whether the other is worth touching (a property can need Revenue
-  // maxed but only a couple of Vault levels, or vice versa). Reported as two
-  // separate lines rather than one combined total so that never reads as a
-  // single bundled recommendation. The Vault-to-L11 cost is only shown when
-  // it's more than what's actually needed to stop the leak (`!structurallyCapped`,
-  // i.e. maxing is genuinely optional) — when Vault is already maxed for
-  // real, `costToTarget` above already said the same thing and repeating it
-  // here would just be the same number twice.
+  // about whether the other is worth touching. Reported as two separate
+  // lines rather than one combined total so that never reads as a single
+  // bundled recommendation. The Vault-to-L11 cost is only shown when maxing
+  // is genuinely optional (`!structurallyCapped`).
   const maxLines: string[] = [];
   if (advice.costToMaxRevenue > 0) {
     maxLines.push(`<div class="ff-re-row-max">Max Revenue → L11: ${formatMoney(advice.costToMaxRevenue)}</div>`);
   }
   if (advice.costToMaxVault > 0 && !advice.structurallyCapped) {
     const note = advice.isOverflowing
-      ? ` — optional beyond L${advice.targetLevel}, which already stops the leak`
-      : ' — optional, already covers this cadence';
+      ? ` — optional beyond L${advice.targetLevel}`
+      : ' — optional, already holds it';
     maxLines.push(`<div class="ff-re-row-max">Max Vault → L11: ${formatMoney(advice.costToMaxVault)}${note}</div>`);
   }
-  const maxLine = advice.costToMaxRevenue === 0 && advice.costToMaxVault === 0
-    ? `<div class="ff-re-row-max ff-re-row-max--done">✓ Revenue and Vault both maxed (L11)</div>`
-    : maxLines.join('');
+  const bothMaxed = card.revenueLevel >= 11 && card.vaultLevel >= 11;
+  const maxLine = bothMaxed ? `<div class="ff-re-row-max ff-re-row-max--done">✓ Revenue and Vault both maxed (L11)</div>` : maxLines.join('');
 
   return `
-    <div class="ff-re-row" data-ff-status="${advice.isOverflowing ? 'leaking' : 'balanced'}">
+    <div class="ff-re-row" data-ff-status="${leaking ? 'leaking' : 'balanced'}">
       <div class="ff-re-row-top">
         <span class="ff-re-row-name">${escapeHtml(card.title)}</span>
-        <span class="ff-re-row-amt">${formatMoney(advice.effectiveDaily)}<small>/24h</small></span>
+        <span class="ff-re-row-amt">${formatMoney(f.netDaily)}<small>/day</small></span>
       </div>
       <div class="ff-re-row-meta">${meta}</div>
       ${body}
@@ -317,8 +401,79 @@ function renderRow(card: ParsedCard, advice: PropertyAdvice): string {
   `;
 }
 
+// ---------------------------------------------------------------------------
+// Plans for properties not owned yet
+// ---------------------------------------------------------------------------
+
+interface UnownedCard {
+  el: HTMLElement;
+  title: string;
+  district: string;
+  /** Lowest player level the district allows, from its header ("L121–140"). */
+  minLevel: number | null;
+  price: number;
+  baseHourly: number;
+  baseVault: number;
+}
+
+function statByLabel(el: Element, label: string): number | null {
+  for (const stat of Array.from(el.querySelectorAll('.rev2-stats > div'))) {
+    if (stat.querySelector('.rev2-stat-l')?.textContent?.trim() === label) return parseMoney(stat.querySelector('.rev2-stat-v')?.textContent);
+  }
+  return null;
+}
+
+function parseUnownedCard(el: Element): UnownedCard | null {
+  const title = el.querySelector('.rev2-card-title')?.textContent?.trim();
+  const price = statByLabel(el, 'Cost');
+  const baseHourly = statByLabel(el, 'Base Hourly');
+  const baseVault = statByLabel(el, 'Base Vault');
+  if (!title || !price || !baseHourly || !baseVault) return null;
+  const district = el.querySelector('.rev2-card-district')?.textContent?.trim() ?? '';
+  const head = el.closest('.rev2-grid')?.previousElementSibling;
+  const range = head?.classList.contains('rev2-district-head') ? head.textContent?.match(/L(\d+)\s*[–-]/) : null;
+  return { el: el as HTMLElement, title, district, minLevel: range ? Number(range[1]) : null, price, baseHourly, baseVault };
+}
+
+function formatShort(n: number): string {
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  return `$${Math.round(n / 1000)}k`;
+}
+
+function isLocked(card: UnownedCard): boolean {
+  return card.minLevel !== null && playerLevel !== null && playerLevel < card.minLevel;
+}
+
+function renderPlan(card: UnownedCard, plan: PropertyPlan, gapLabel: string): void {
+  let el = card.el.querySelector<HTMLDivElement>(':scope > .ff-re-plan');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'ff-re-plan';
+    const stats = card.el.querySelector(':scope > .rev2-stats');
+    if (stats) stats.after(el);
+    else card.el.append(el);
+  }
+  const locked = isLocked(card);
+  el.classList.toggle('ff-re-locked', locked);
+  const html = `
+    <div class="ff-re-plan-h">FF plan${locked ? ` · unlocks at level ${card.minLevel}` : ''}</div>
+    <div>Buy ${formatShort(plan.price)} → Revenue L11 ${formatShort(plan.revenueCost)} → Vault L${plan.vaultLevel} ${formatShort(plan.vaultCost)} = <b>${formatShort(plan.total)}</b></div>
+    <div>Earns ~<b>${formatShort(plan.hourly)}</b>/h (${formatShort(plan.daily)}/day) · pays back in ~<b>${Math.round(plan.paybackDays)}</b> days</div>
+    <div class="ff-re-plan-sub">Vault L${plan.vaultLevel} holds ~${formatHours(plan.vaultHours)}, enough for ${gapLabel}. Upgrade prices estimated from your own upgrades; the first real price confirms them.</div>
+  `;
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
+
+// ---------------------------------------------------------------------------
+// State and refresh
+// ---------------------------------------------------------------------------
+
 let panelEl: HTMLDivElement | null = null;
-let cadenceHours = 24;
+let basis: 'measured' | 'whatIf' = 'measured';
+let cadenceHours = FALLBACK_CADENCE_HOURS;
+let collections: CollectionEvent[] = [];
+let playerLevel: number | null = null;
 // Skips re-touching the DOM when nothing the game reports has actually
 // changed since the last pass — without this, every mutation this feature's
 // own ribbons/panel writes would re-trigger the same document-wide observer
@@ -327,57 +482,109 @@ let cadenceHours = 24;
 // injected elements), so our writes can't feed back into it.
 let lastSignature = '';
 
-function computeSignature(cards: ParsedCard[]): string {
-  return `${cadenceHours}|${cards
-    .map((c) => [c.title, c.hourly, c.vaultCap, c.vaultLevel, c.nextVaultUpgradeCost, c.revenueLevel, c.nextRevenueUpgradeCost].join(','))
-    .join(';')}`;
+function computeSignature(cards: ParsedCard[], unowned: UnownedCard[]): string {
+  return [
+    basis,
+    cadenceHours,
+    playerLevel,
+    collections.length ? collections[collections.length - 1].at : 0,
+    // The measured window slides with time; re-measure at most hourly.
+    Math.floor(Date.now() / 3_600_000),
+    cards.map((c) => [c.key, c.title, c.hourly, c.vaultCap, c.vaultLevel, c.nextVaultUpgradeCost, c.revenueLevel, c.nextRevenueUpgradeCost, c.bonusPct].join(',')).join(';'),
+    unowned.map((u) => [u.title, u.price, u.baseHourly, u.baseVault, u.minLevel].join(',')).join(';'),
+  ].join('|');
 }
 
 function refresh(force: boolean) {
   if (!panelEl) return;
   const cardEls = Array.from(document.querySelectorAll(CARD_SELECTOR));
-  const visible = cardEls.length > 0;
+  const unownedEls = Array.from(document.querySelectorAll('.rev2-card:not(.owned)'));
+  const visible = cardEls.length > 0 || unownedEls.length > 0;
   panelEl.classList.toggle('ff-re-visible', visible);
   if (!visible && !force) return;
 
   const cards = cardEls.map(parseCard).filter((c): c is ParsedCard => c !== null);
-  const signature = computeSignature(cards);
+  const unowned = unownedEls.map(parseUnownedCard).filter((c): c is UnownedCard => c !== null);
+  const signature = computeSignature(cards, unowned);
   if (!force && signature === lastSignature) return;
   lastSignature = signature;
 
-  const advice = cards.map((card) => ({ card, advice: analyzeProperty(toAdviceInput(card), cadenceHours) }));
+  const measured: MeasuredPortfolio | null =
+    basis === 'measured'
+      ? measureFromCollections(
+          cards.filter((c) => c.key !== null).map((c) => ({ key: c.key!, hourly: c.hourly, cap: c.vaultCap })),
+          collections,
+        )
+      : null;
+  // What a vault has to hold: the usual longest gap, or the what-if cadence.
+  const cadence = basis === 'measured' ? Math.max(1, Math.ceil(measured?.usualLongestGapHours ?? FALLBACK_CADENCE_HOURS)) : cadenceHours;
+  const gapLabel = basis === 'measured' && measured ? `your longest gap on most days (~${cadence}h)` : `${cadence}h between collections`;
 
-  for (const { card, advice: a } of advice) renderRibbon(card, a);
+  const rows = cards.map((card) => ({ card, f: figuresFor(card, cadence, card.key ? measured?.byKey.get(card.key) : undefined) }));
+  for (const { card, f } of rows) renderRibbon(card, f);
 
-  const leaking = advice.filter((x) => x.advice.isOverflowing).sort((a, b) => b.advice.lossDaily - a.advice.lossDaily);
-  const balanced = advice.filter((x) => !x.advice.isOverflowing);
+  const leaking = rows.filter((x) => isLeaking(x.f)).sort((a, b) => b.f.lossDaily - a.f.lossDaily);
+  const rest = rows.filter((x) => !isLeaking(x.f));
+  const totalTheoretical = rows.reduce((sum, x) => sum + x.f.theoreticalDaily, 0);
+  const totalNet = rows.reduce((sum, x) => sum + x.f.netDaily, 0);
+  const totalLoss = rows.reduce((sum, x) => sum + x.f.lossDaily, 0);
 
-  const totalTheoretical = advice.reduce((sum, x) => sum + x.advice.theoreticalDaily, 0);
-  const totalEffective = advice.reduce((sum, x) => sum + x.advice.effectiveDaily, 0);
-  const totalLoss = totalTheoretical - totalEffective;
+  const noteEl = panelEl.querySelector('.ff-re-basis-note');
+  if (noteEl) {
+    noteEl.innerHTML =
+      basis === 'whatIf'
+        ? `What if you collected exactly once every ${cadenceHours}h. Your real figures are under “My collections”.`
+        : measured
+          ? `Measured from your ${measured.collections} collections over the last ${formatHours(measured.spanHours)} (up to ${MEASURE_WINDOW_DAYS} days), at today’s rates. Collections on another device aren’t seen and look like one long gap.`
+          : `Not enough collections seen yet (a day’s worth is needed). Until then this shows a ${FALLBACK_CADENCE_HOURS}h cadence.`;
+  }
 
   const summaryEl = panelEl.querySelector('.ff-re-summary');
   if (summaryEl) {
-    if (totalLoss < 1) {
-      summaryEl.innerHTML = `<div class="ff-re-summary-ok">✓ Every property is earning its full ${formatMoney(totalTheoretical)}/24h — nothing overflowing at this cadence.</div>`;
-    } else {
-      const pct = Math.round((totalLoss / totalTheoretical) * 100);
-      summaryEl.innerHTML = `
-        <div class="ff-re-summary-line"><b>${formatMoney(totalEffective)}</b> / ${formatMoney(totalTheoretical)} possible per day</div>
-        <div class="ff-re-summary-loss">Losing ${formatMoney(totalLoss)}/day (${pct}%) across ${leaking.length} propert${leaking.length === 1 ? 'y' : 'ies'}</div>
-      `;
-    }
+    const lossShare = totalTheoretical > 0 ? totalLoss / totalTheoretical : 0;
+    const lossLine =
+      totalLoss < 1
+        ? `<div class="ff-re-summary-ok">✓ Nothing overflowing${basis === 'measured' && measured ? '' : ' at this cadence'}.</div>`
+        : `<div class="ff-re-summary-loss">${measured ? 'Lost' : 'Losing'} ${formatMoney(totalLoss)}/day (${(lossShare * 100).toFixed(lossShare < 0.1 ? 1 : 0)}%)${leaking.length ? ` · mostly ${escapeHtml(leaking[0].card.title)}` : ''}</div>`;
+    summaryEl.innerHTML = `
+      <div class="ff-re-summary-line"><b>${formatMoney(totalNet)}</b> / ${formatMoney(totalTheoretical)} possible per day</div>
+      ${lossLine}
+    `;
   }
 
   const rowsEl = panelEl.querySelector('.ff-re-rows');
-  if (rowsEl) {
-    rowsEl.innerHTML = [...leaking, ...balanced].map((x) => renderRow(x.card, x.advice)).join('');
-  }
+  if (rowsEl) rowsEl.innerHTML = [...leaking, ...rest].map((x) => renderRow(x.card, x.f, gapLabel)).join('');
 
   const alertEl = panelEl.querySelector('.ff-re-badge-alert');
   if (alertEl) {
     alertEl.textContent = String(leaking.length);
     alertEl.classList.toggle('ff-re-show', leaking.length > 0);
+  }
+
+  // Plans: the bonus is the player's, read off any owned card.
+  const bonusPct = cards.find((c) => c.bonusPct > 0)?.bonusPct ?? 0;
+  const byDistrict = new Map<string, { plans: PropertyPlan[]; locked: boolean; minLevel: number | null }>();
+  for (const card of unowned) {
+    const plan = planProperty(card.price, card.baseHourly, card.baseVault, bonusPct, cadence);
+    renderPlan(card, plan, gapLabel);
+    const d = byDistrict.get(card.district) ?? { plans: [], locked: isLocked(card), minLevel: card.minLevel };
+    d.plans.push(plan);
+    byDistrict.set(card.district, d);
+  }
+  const plansEl = panelEl.querySelector<HTMLElement>('.ff-re-plans');
+  if (plansEl) {
+    plansEl.style.display = byDistrict.size ? '' : 'none';
+    plansEl.innerHTML =
+      `<div class="ff-re-plans-h">Not owned yet · buy, max Revenue, Vault for ${gapLabel}</div>` +
+      [...byDistrict.entries()]
+        .map(([name, d]) => {
+          const total = d.plans.reduce((s, p) => s + p.total, 0);
+          const daily = d.plans.reduce((s, p) => s + p.daily, 0);
+          return `<div class="ff-re-plans-row${d.locked ? ' ff-re-locked' : ''}"><b>${escapeHtml(name || 'Unknown district')}</b>${
+            d.locked ? ` · unlocks at level ${d.minLevel}` : ''
+          }<br>${d.plans.length} propert${d.plans.length === 1 ? 'y' : 'ies'}: ~<b>${formatShort(total)}</b> → ~${formatShort(daily)}/day, pays back in ~${Math.round(total / daily)} days</div>`;
+        })
+        .join('');
   }
 }
 
@@ -385,25 +592,29 @@ function setExpanded(next: boolean) {
   panelEl?.classList.toggle('ff-re-expanded', next);
 }
 
-async function setCadence(hours: number) {
-  cadenceHours = hours;
+function markChips() {
   panelEl?.querySelectorAll<HTMLButtonElement>('.ff-re-chip').forEach((chip) => {
-    chip.classList.toggle('ff-re-chip-active', Number(chip.dataset.hours) === hours);
+    const active = chip.dataset.basis === 'measured' ? basis === 'measured' : basis === 'whatIf' && Number(chip.dataset.hours) === cadenceHours;
+    chip.classList.toggle('ff-re-chip-active', active);
   });
+}
+
+async function setBasis(next: 'measured' | 'whatIf', hours = cadenceHours) {
+  basis = next;
+  cadenceHours = hours;
+  markChips();
   refresh(true);
   try {
-    await storage.setRealEstateAdvisorPreferences({ cadenceHours: hours });
+    await storage.setRealEstateAdvisorPreferences({ basis, cadenceHours });
   } catch (err) {
-    console.error(LOG_PREFIX, 'failed to save real estate advisor cadence', err);
+    console.error(LOG_PREFIX, 'failed to save real estate advisor basis', err);
   }
 }
 
 function buildPanel(): HTMLDivElement {
   const el = document.createElement('div');
   el.id = CONTAINER_ID;
-  const chips = CADENCE_OPTIONS
-    .map((h) => `<button class="ff-re-chip${h === cadenceHours ? ' ff-re-chip-active' : ''}" type="button" data-hours="${h}">${h}h</button>`)
-    .join('');
+  const chips = CADENCE_OPTIONS.map((h) => `<button class="ff-re-chip" type="button" data-hours="${h}">${h}h</button>`).join('');
   el.innerHTML = `
     <button class="ff-re-badge" type="button">
       ${brandBadgeHtml('Real Estate')}
@@ -416,36 +627,61 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-re-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-re-cadence">
-        <span class="ff-re-cadence-label">Collect every</span>
-        ${chips}
+        <button class="ff-re-chip" type="button" data-basis="measured">My collections</button>
+        <span class="ff-re-cadence-group"><span class="ff-re-cadence-label">What if every</span>${chips}</span>
       </div>
+      <div class="ff-re-basis-note"></div>
       <div class="ff-re-summary"></div>
       <div class="ff-re-rows"></div>
+      <div class="ff-re-plans"></div>
     </div>
   `;
 
   el.querySelector('.ff-re-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-re-close')?.addEventListener('click', () => setExpanded(false));
   el.querySelectorAll<HTMLButtonElement>('.ff-re-chip').forEach((chip) => {
-    chip.addEventListener('click', () => void setCadence(Number(chip.dataset.hours)));
+    chip.addEventListener('click', () =>
+      void (chip.dataset.basis === 'measured' ? setBasis('measured') : setBasis('whatIf', Number(chip.dataset.hours))),
+    );
   });
 
   return el;
+}
+
+function applyVaultState(state: RealEstateVaultState | null | undefined) {
+  collections = state?.collections ?? [];
 }
 
 export async function initRealEstateAdvisor(): Promise<void> {
   injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + STYLE);
 
   try {
-    const prefs = await storage.getRealEstateAdvisorPreferences();
+    const [prefs, vaults, stats] = await Promise.all([
+      storage.getRealEstateAdvisorPreferences(),
+      storage.getRealEstateVaults(),
+      storage.getLatestStats(),
+    ]);
+    basis = prefs.basis;
     cadenceHours = prefs.cadenceHours;
+    applyVaultState(vaults);
+    playerLevel = stats?.level ?? null;
   } catch (err) {
-    console.error(LOG_PREFIX, 'failed to load real estate advisor preferences', err);
+    console.error(LOG_PREFIX, 'failed to load real estate advisor state', err);
   }
 
   panelEl = buildPanel();
+  markChips();
   (document.body ?? document.documentElement).appendChild(panelEl);
   refresh(true);
+
+  // New collections (recorded by the background) and a level-up both change
+  // what's shown without the game re-rendering anything.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (STORAGE_KEYS.REAL_ESTATE_VAULTS in changes) applyVaultState(changes[STORAGE_KEYS.REAL_ESTATE_VAULTS].newValue as RealEstateVaultState | undefined);
+    if (STORAGE_KEYS.LATEST_STATS in changes) playerLevel = (changes[STORAGE_KEYS.LATEST_STATS].newValue as { level?: number } | undefined)?.level ?? playerLevel;
+    if (STORAGE_KEYS.REAL_ESTATE_VAULTS in changes || STORAGE_KEYS.LATEST_STATS in changes) refresh(false);
+  });
 
   // Same "watch the live DOM, react to what's actually there" approach as
   // Fight Club's toolbar and Street Intel's highlights — the game swaps panel

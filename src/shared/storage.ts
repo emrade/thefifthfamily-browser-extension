@@ -93,6 +93,7 @@ const DEFAULT_FURY_CATCHER_CONFIG: FuryCatcherConfig = {
 // Estate advisor's derivation) — a reasonable default for any install,
 // adjustable live from the overlay's own cadence chips.
 const DEFAULT_REAL_ESTATE_ADVISOR_PREFERENCES: RealEstateAdvisorPreferences = {
+  basis: 'measured',
   cadenceHours: 24,
 };
 
