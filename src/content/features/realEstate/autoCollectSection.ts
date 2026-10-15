@@ -169,9 +169,9 @@ function render(): void {
 
   const hint =
     tooLong && firstFill
-      ? `<div class="ff-re-auto-warn">Your ${escapeHtml(firstFill.name)} fills ${firstFill.hours.toFixed(1)}h after a collection, so at ${config.intervalHours}h it will already be losing money.</div>`
+      ? `<div class="ff-re-auto-warn">Too long: an empty ${escapeHtml(firstFill.name)} vault is full after ${firstFill.hours.toFixed(1)}h, so by ${config.intervalHours}h it's already losing money. Set it under ${Math.floor(firstFill.hours)}h.</div>`
       : firstFill
-        ? `<div class="ff-re-auto-hint">Your ${escapeHtml(firstFill.name)} fills first, ${firstFill.hours.toFixed(1)}h after a collection. Keep this below that.</div>`
+        ? `<div class="ff-re-auto-hint">✓ Good: an empty ${escapeHtml(firstFill.name)} vault takes ${firstFill.hours.toFixed(1)}h to fill (your first to fill), so ${config.intervalHours}h collects before anything is lost.</div>`
         : '';
 
   const html = `
