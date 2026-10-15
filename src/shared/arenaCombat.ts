@@ -7,8 +7,10 @@ import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './type
  * and a verdict, and verdicts plus bounties into an expected pot. Re-derived
  * against every real fight in the archives by
  * verification/arena/verify_combat_rule.py (2026-10-05, 387 fights: regular
- * score ≥ 1.2 won 176/176, < 0.8 won 3/57; boss ≥ 1.3 won 24/24). Update the
- * coefficients here and there together.
+ * score ≥ 1.2 won 176/176, < 0.8 won 3/57; boss ≥ 1.3 won 24/24; re-run
+ * 2026-10-15 with the minimum-damage cap, 684 fights: regular ≥ 1.2 won
+ * 320/320, boss ≥ 1.3 won 58/60). Update the coefficients here and there
+ * together.
  */
 
 /** Mean of the five "minimum damage" steps, as a fraction of the attacker's
@@ -17,6 +19,41 @@ import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './type
  *  for the player and 9.1% for opponents; one shared 8.8% fits the actual
  *  results best (only the ratio between the two sides matters). */
 export const FLOOR_FRACTION = 0.088;
+
+/** No minimum-damage hit has ever logged more than this (2026-09-09 →
+ *  10-15, every hit in the archives). It only bites once base damage passes
+ *  ~600 (the top step reaching 75), which almost nobody's did until the
+ *  player's 850-HP loadout (base ~807, 2026-10-13): there about 2 in 5 of
+ *  their minimum-damage hits would otherwise go over it. Uncapped, that
+ *  season rated three regular losses Beatable (Elizium, Sovereign, Bars,
+ *  1.27–1.31); capped they score 1.18–1.20. */
+export const MIN_DAMAGE_CAP = 75;
+
+/** The five minimum-damage steps are 3:4:5:6:7 of a common unit (the
+ *  player's were 21/28/35/42/49 at base ~431, then 24/33/41/49/58 at ~480),
+ *  so their mean is `FLOOR_FRACTION` of base. */
+const MIN_DAMAGE_STEPS = [3, 4, 5, 6, 7].map((n) => (FLOOR_FRACTION * n) / 5);
+
+/** Expected minimum-damage hit for a mean base damage: the five steps'
+ *  mean, each capped at `MIN_DAMAGE_CAP`. */
+export function minDamage(base: number): number {
+  return MIN_DAMAGE_STEPS.reduce((sum, step) => sum + Math.min(MIN_DAMAGE_CAP, step * base), 0) / MIN_DAMAGE_STEPS.length;
+}
+
+/** Lowest base damage whose expected minimum-damage hit reaches `hit`;
+ *  Infinity when the cap puts it out of reach. */
+function baseForMinDamage(hit: number): number {
+  if (hit > MIN_DAMAGE_CAP) return Infinity;
+  let lo = 0;
+  let hi = MIN_DAMAGE_CAP / MIN_DAMAGE_STEPS[0];
+  if (minDamage(hi) < hit) return Infinity;
+  for (let i = 0; i < 50; i++) {
+    const mid = (lo + hi) / 2;
+    if (minDamage(mid) >= hit) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
 
 /** Score bands. ≥ BEATABLE has won every time so far; < AVOID almost never. */
 export const SCORE_BEATABLE = 1.2;
@@ -124,14 +161,14 @@ export function opponentHp(card: Pick<ArenaOpponentCard, 'isBoss' | 'level'>): n
 }
 
 function myHitOn(card: ArenaOpponentCard, me: ArenaMyProfile): number {
-  return Math.max(FLOOR_FRACTION * me.baseDamage, me.baseDamage - card.defence);
+  return Math.max(minDamage(me.baseDamage), me.baseDamage - card.defence);
 }
 
 /** > 1 means the player is expected to outlast this opponent: rounds they
  *  need to kill the player ÷ rounds the player needs to kill them. */
 export function killRaceScore(card: ArenaOpponentCard, me: ArenaMyProfile): number {
   const base = opponentBase(card);
-  const theirHit = Math.max(FLOOR_FRACTION * base, base - me.reduction);
+  const theirHit = Math.max(minDamage(base), base - me.reduction);
   const roundsToKillMe = me.maxHp / theirHit;
   const roundsToKillThem = opponentHp(card) / myHitOn(card, me);
   return roundsToKillMe / roundsToKillThem;
@@ -142,9 +179,12 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
   const hp = opponentHp(card);
   const mine = myHitOn(card, me);
   const base = opponentBase(card);
-  const theirHit = Math.max(FLOOR_FRACTION * base, base - me.reduction);
-  // Score = 1 with their hits on the floor: base = myHp·mine / (floor·theirHp).
-  const breakEvenBase = (me.maxHp * mine) / (FLOOR_FRACTION * hp);
+  const theirHit = Math.max(minDamage(base), base - me.reduction);
+  // Score = 1 when their hit = myHp·mine / theirHp: the lower of the base
+  // whose minimum damage gets there and the base that gets there by beating
+  // the player's reduction.
+  const breakEvenHit = (me.maxHp * mine) / hp;
+  const breakEvenBase = Math.min(baseForMinDamage(breakEvenHit), me.reduction + breakEvenHit);
   const beatableAt = card.isBoss ? SCORE_BOSS_BEATABLE : SCORE_BEATABLE;
   const kind: ArenaVerdictKind = score >= beatableAt ? 'beatable' : score < SCORE_AVOID ? 'avoid' : 'coinflip';
   // Regular: the game's quoted % decides the lean when it's on the card;

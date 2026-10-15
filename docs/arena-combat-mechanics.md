@@ -113,7 +113,17 @@ always go to the death: 2–35 rounds observed, and the loser is always at
 3. **Otherwise** damage is a random **minimum damage** drawn from 5 steps
    scaled to the attacker's mean base. Measured mean: **8.5%** of base for
    you, **9.1%** for opponents. For you right now the steps are
-   21 / 28 / 35 / 42 / 49.
+   21 / 28 / 35 / 42 / 49 (always 3:4:5:6:7 of one unit).
+   **Each step is capped at 75**: in 15,340 logged minimum-damage hits
+   (2026-09-09 → 10-15), 820 had a top step above 75 and none logged more.
+   The cap starts to bite once base passes ~600 and takes every step past
+   ~1,140. Before the 850-HP loadout (base ~807, Oct 13) it almost never
+   came up; with it, about 2 in 5 of your minimum-damage hits are clipped,
+   so extra STR barely helps against anyone whose DEF is above your base.
+   Ignoring the cap rated three regular losses Beatable (Elizium,
+   Sovereign, Bars: 1.27–1.31; capped 1.18–1.20).
+   `verify_combat_rule.py` section 10 reports every damage term's largest
+   logged value, so the next cap shows up as soon as the data reaches it.
 4. **Dodge** → 0. **Block** → × **0.2**. **Crit** → × 1.3–1.5 (usually 1.35).
    Each happens when its roll is below the stated chance (dodge 99.6%,
    block 99.4%, crit 98.5% of logged hits).

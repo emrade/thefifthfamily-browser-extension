@@ -46,6 +46,13 @@ regular "quoted ≥ 50" 297/331 vs score 293/331; boss score ≥ 1.3 won 24/24,
 1.1–1.3 won 23/27. See docs/arena-combat-mechanics.md's "Pot, bounty and
 Refresh" section.
 
+Extended 2026-10-15 (section 10): minimum damage is capped at 75, which the
+score now models, and a ceilings report lists the largest logged value of
+each damage term next to what the formula alone would give, so a cap shows
+up as soon as the data reaches it. Run that day: 684 fights; 820 of 15,340
+minimum-damage hits had a top step above 75 and none logged more; regular
+score ≥ 1.2 won 320/320 (uncapped 321/324), boss ≥ 1.3 won 58/60.
+
 ```
 python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 ```

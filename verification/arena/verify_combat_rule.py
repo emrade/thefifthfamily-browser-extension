@@ -21,6 +21,10 @@ Reports, in order:
      1.3 boss "Beatable" line), plus the old vs new coin-flip lean rule.
   9. Bounty economics: bounty = slot base x a multiplier set by
      threat_ratio, win rate by bounty, and points_earned == bounty.
+ 10. Ceilings: the largest value ever logged for each damage term (minimum
+     damage, crit and block multipliers, dodge / crit / block chances), next
+     to what the formula alone would give. A cap or limit shows up here as
+     soon as the data reaches it, rather than after it starts costing fights.
 
 Run: python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 
@@ -46,6 +50,14 @@ under 50% won only 10/24, so the coin-flip lean now follows the quote).
 Bounty and quoted % now come from the card itself: `open_next_page` quotes
 pile up across pages and go stale for an opponent met again (with them,
 only 156 of 187 wins matched their bounty; with the card, 230/230).
+
+2026-10-15: minimum damage is capped at 75. The player's 850-HP loadout
+(base ~807) put about 2 in 5 of their minimum-damage hits past it, and the
+uncapped score rated three regular losses Beatable (1.27-1.31). The review
+on 10-05 fitted the mean minimum damage but never looked for a maximum; only
+80 of 9,784 minimum-damage hits before then could have reached the cap.
+Section 10 now reports every term's ceiling. Run that day: 684 fights;
+regular score >= 1.2 won 320/320 (uncapped: 321/324), boss >= 1.3 won 58/60.
 """
 
 import argparse
@@ -64,6 +76,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from archive_paths import find_archives as find_default_archives  # noqa: E402
 
 FLOOR_FRACTION = 0.088  # min-damage mean / attacker mean base: measured 8.5% (you) and 9.1% (opponents); 8.8% shared fits results best
+MIN_DAMAGE_CAP = 75  # no minimum-damage hit has ever logged more (section 10)
+# The five minimum-damage steps are 3:4:5:6:7 of a common unit (21/28/35/42/49).
+MIN_DAMAGE_STEPS = [FLOOR_FRACTION * n / 5 for n in (3, 4, 5, 6, 7)]
+
+
+def min_damage(base):
+    """Expected minimum-damage hit: the five steps' mean, each capped."""
+    return sum(min(MIN_DAMAGE_CAP, s * base) for s in MIN_DAMAGE_STEPS) / len(MIN_DAMAGE_STEPS)
 
 
 
@@ -220,8 +240,8 @@ def score(f, my):
         op_base, op_hp = 0.4824 * STR + 9.85, 95 + 5 * f["lvl"]
     else:
         op_base, op_hp = 0.5546 * STR - 6.77, 7.19 * f["lvl"] - 49
-    theirs = max(FLOOR_FRACTION * op_base, op_base - my["red"])
-    mine = max(FLOOR_FRACTION * my["base"], my["base"] - DEF)
+    theirs = max(min_damage(op_base), op_base - my["red"])
+    mine = max(min_damage(my["base"]), my["base"] - DEF)
     return (my["hp"] / theirs) / (op_hp / mine)
 
 
@@ -360,6 +380,33 @@ def main():
         g = [f for f in reg if f["bounty"] == bnt]
         if len(g) >= 5:
             print(f"   bounty {bnt:4}: won {rate(g)}")
+
+    report_ceilings(hits)
+
+
+def report_ceilings(hits):
+    print("\n== 10. Ceilings: largest logged value per damage term ==")
+    floor_hits = [h for h in hits if h["action"] == "hit" and h.get("min_dmg") is not None and 0 < h["base_dmg"] < h["reduction"]]
+    top = MIN_DAMAGE_STEPS[-1]
+    over = [h for h in floor_hits if top * h["base_dmg"] > MIN_DAMAGE_CAP]
+    print(f"   min_dmg: largest logged {max(h['min_dmg'] for h in floor_hits)} (cap in the model: {MIN_DAMAGE_CAP})")
+    print(f"   min_dmg: largest the uncapped top step would give {max(top * h['base_dmg'] for h in floor_hits):.0f}")
+    print(f"   floor hits whose top step passes the cap: {len(over)}/{len(floor_hits)}; "
+          f"of those logged above the cap: {sum(h['min_dmg'] > MIN_DAMAGE_CAP for h in over)}")
+    for side in ("attacker", "defender"):
+        g = [h for h in floor_hits if h["side"] == side]
+        if g:
+            print(f"   {side:8}: base {min(h['base_dmg'] for h in g)}-{max(h['base_dmg'] for h in g)}, "
+                  f"min_dmg {min(h['min_dmg'] for h in g)}-{max(h['min_dmg'] for h in g)}")
+    for key, act in (("crit_mult", "critical"), ("block_mult", "blocked")):
+        v = [h[key] for h in hits if h["action"] == act and isinstance(h.get(key), (int, float))]
+        if v:
+            print(f"   {key}: {min(v)}-{max(v)} (n={len(v)})")
+    for key in ("dodge_chance", "crit_chance", "block_chance"):
+        v = [h[key] for h in hits if isinstance(h.get(key), (int, float))]
+        if v:
+            top_vals = collections.Counter(x for x in v if x >= max(v) - 0.5)
+            print(f"   {key}: {min(v)}-{max(v)}  (hits at the top: {sum(top_vals.values())})")
 
 
 if __name__ == "__main__":
