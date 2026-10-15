@@ -22,6 +22,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   crimesAuto: 'Crimes Auto',
   arena: 'Arena',
   furyCatcher: 'Fury Catcher',
+  realEstate: 'Real Estate',
+  realEstateAuto: 'Real Estate Auto-Collect',
 };
 
 export interface FeatureHealth {

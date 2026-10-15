@@ -126,3 +126,14 @@ export function FlameIcon() {
     </svg>
   );
 }
+
+export function BuildingIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M4 21V5l8-2v18" />
+      <path d="M12 9h8v12" />
+      <path d="M2 21h20" />
+      <path d="M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2" />
+    </svg>
+  );
+}

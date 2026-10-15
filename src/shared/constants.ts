@@ -35,6 +35,8 @@ export const STORAGE_KEYS = {
   INVENTORY_AUTO_SELL_CRITERIA: 'ff_inventory_auto_sell_criteria',
   FURY_CATCHER_CONFIG: 'ff_fury_catcher_config',
   FURY_CATCHER_STATUS: 'ff_fury_catcher_status',
+  REAL_ESTATE_AUTO_CONFIG: 'ff_real_estate_auto_config',
+  REAL_ESTATE_AUTO_STATUS: 'ff_real_estate_auto_status',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack
@@ -57,6 +59,7 @@ export const ALARM_NAMES = {
   ARENA_WATCH: 'ff-arena-watch',
   FURY_CATCHER: 'ff-fury-catcher',
   REAL_ESTATE_VAULT: 'ff-real-estate-vault',
+  REAL_ESTATE_AUTO: 'ff-real-estate-auto',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -471,3 +474,24 @@ export const ARENA_WATCH_REPEAT_MS = 15 * 60_000;
 // and sounds again).
 export const ARENA_REMINDER_NOTIFICATION_ID = 'ff-arena-reminder';
 export const REAL_ESTATE_VAULT_NOTIFICATION_ID = 'ff-real-estate-vault';
+
+// --- Real Estate Auto-Collect -------------------------------------------------
+//
+// A safety net, not a second collector (player's choice, 2026-10-15): it only
+// collects once this long has passed since the last collection, the player's
+// own included, so on a day they check in by hand it never runs. 12h sits
+// under the Underground Fight Club's ~14h fill, the first big vault to fill.
+export const REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS = 12;
+export const REAL_ESTATE_AUTO_MIN_INTERVAL_HOURS = 2;
+export const REAL_ESTATE_AUTO_MAX_INTERVAL_HOURS = 48;
+
+/** Added to every scheduled check, so it isn't on the exact minute each time. */
+export const REAL_ESTATE_AUTO_JITTER_MS: [number, number] = [60_000, 10 * 60_000];
+
+/** Retry when the check couldn't run (no game session yet, offline). */
+export const REAL_ESTATE_AUTO_RETRY_MS = 30 * 60_000;
+
+export const REAL_ESTATE_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
+
+/** Auto-collect runs kept for the popup's history list. */
+export const REAL_ESTATE_AUTO_HISTORY_MAX = 30;

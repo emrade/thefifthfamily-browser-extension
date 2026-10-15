@@ -73,6 +73,11 @@ export const NOTIFICATION_DEFINITIONS = [
     description:
       'Notify when property vaults earning at least a tenth of your hourly income are full and the rest is going to waste. Once per collection; checks the live vaults first, so a collection on another device cancels it.',
   },
+  {
+    id: 'realEstateAutoStopped',
+    label: 'Real Estate Auto-Collect Stopped',
+    description: 'Notify when Real Estate Auto-Collect stops itself after an unrecognized response, so you know to collect by hand.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

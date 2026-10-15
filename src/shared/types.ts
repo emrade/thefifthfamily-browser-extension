@@ -1609,6 +1609,58 @@ export interface RealEstateVaultState {
   collections?: { at: number; key: string | null }[];
 }
 
+export interface RealEstateAutoConfig {
+  enabled: boolean;
+  /** Collect once this many hours have passed since the last collection,
+   *  whoever made it. */
+  intervalHours: number;
+}
+
+/** One auto-collect: what the game's Collect All paid and what the deposit
+ *  after it banked. */
+export interface RealEstateAutoRun {
+  at: number;
+  /** Collect All's `total`, the figure its own "Collected $X" message shows. */
+  collected: number;
+  /** Collect All's `devotion_skim`: the share that went to the family. */
+  devotion: number;
+  properties: number;
+  /** "Deposited $X" from the deposit after it (all cash on hand, so it can
+   *  include more than this collection), or `null` when it didn't bank. */
+  banked: number | null;
+  /** Hours since the previous collection when it ran. */
+  afterHours: number;
+}
+
+export interface RealEstateAutoTally {
+  runs: number;
+  collected: number;
+  banked: number;
+}
+
+export interface RealEstateAutoStatus {
+  /** Newest first, capped at `REAL_ESTATE_AUTO_HISTORY_MAX`. */
+  history: RealEstateAutoRun[];
+  /** Game day (23:00 UTC reset) that `today` counts. */
+  todayKey: string;
+  today: RealEstateAutoTally;
+  lifetime: RealEstateAutoTally;
+  nextCheckAt: number | null;
+  lastCheckAt: number | null;
+  /** Last collection by anyone, as of the last check. */
+  lastCollectionAt: number | null;
+  note: string | null;
+  /** Set while checks can't run (no game session, offline, jail): the vault
+   *  reminder keeps notifying during it, since nothing is collecting. */
+  blockedSince: number | null;
+  /** The Collect All idempotency key of a request with no definitive answer
+   *  (network error), reused on the retry the way the page does, so a
+   *  collect that did land isn't paid twice. */
+  pendingKey: string | null;
+  pausedMessage: string | null;
+  pausedAt: number | null;
+}
+
 /** Expected points of each fresh lineup (four regulars, none fought yet)
  *  the fight advisor has seen with the current loadout: what a Refresh
  *  re-roll is measured against. A new locked max HP starts it over. */

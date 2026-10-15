@@ -3,8 +3,8 @@ import { LiveStats } from './LiveStats';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, FuryCatcherConfig, StreetIntelAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, FlameIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
+import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, FuryCatcherConfig, RealEstateAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
+import { ArchiveIcon, BriefcaseIcon, BuildingIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, FlameIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenFightClub: () => void;
@@ -14,6 +14,7 @@ interface HomeProps {
   onOpenPetCouriers: () => void;
   onOpenCrimesAuto: () => void;
   onOpenFuryCatcher: () => void;
+  onOpenRealEstateAuto: () => void;
   onOpenSettings: () => void;
 }
 
@@ -33,6 +34,7 @@ export function Home(props: HomeProps) {
   const [courierAutoConfig, setCourierAutoConfig] = useState<CourierAutoConfig | null>(null);
   const [crimesAutoConfig, setCrimesAutoConfig] = useState<CrimesAutoConfig | null>(null);
   const [furyCatcherConfig, setFuryCatcherConfig] = useState<FuryCatcherConfig | null>(null);
+  const [realEstateAutoConfig, setRealEstateAutoConfig] = useState<RealEstateAutoConfig | null>(null);
   // The icon badge's own count, read back rather than re-derived — the badge
   // already *is* "how many pets need attention right now," so this row just
   // surfaces the same number instead of running its own separate computation
@@ -63,6 +65,10 @@ export function Home(props: HomeProps) {
       .getFuryCatcherConfig()
       .then(setFuryCatcherConfig)
       .catch((err) => console.error(LOG_PREFIX, 'failed to read fury catcher config', err));
+    storage
+      .getRealEstateAutoConfig()
+      .then(setRealEstateAutoConfig)
+      .catch((err) => console.error(LOG_PREFIX, 'failed to read real estate auto config', err));
     chrome.action
       .getBadgeText({})
       .then(setCourierBadge)
@@ -97,6 +103,8 @@ export function Home(props: HomeProps) {
   const crimesAutoStatus = crimesAutoConfig?.enabled ? 'Running' : 'Off';
 
   const furyCatcherStatus = furyCatcherConfig?.enabled ? 'Running' : 'Off';
+
+  const realEstateAutoStatus = realEstateAutoConfig?.enabled ? `Collects after ${realEstateAutoConfig.intervalHours}h without one` : 'Off';
 
 
   // Only broken features are listed. A healthy extension shows nothing here — this
@@ -187,6 +195,15 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">Fury Catcher</div>
           <div class="ff-nav-row__status">{furyCatcherStatus}</div>
+        </div>
+        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      </button>
+
+      <button class="ff-nav-row" onClick={props.onOpenRealEstateAuto}>
+        <div class="ff-nav-row__icon"><BuildingIcon /></div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Real Estate Auto-Collect</div>
+          <div class="ff-nav-row__status">{realEstateAutoStatus}</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

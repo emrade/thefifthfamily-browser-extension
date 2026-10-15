@@ -135,6 +135,10 @@ export type ExtensionMessage =
   // and returns the fresh `FuryCatcherStatus`. For an energy refill done by
   // hand that the scheduled wait didn't account for.
   | { type: 'fury-catcher-check-requested' }
+  // Sent from the Real Estate Auto-Collect popup tab's "Check Now": runs a
+  // check right now (collects only if it's due) and returns the fresh
+  // `RealEstateAutoStatus`.
+  | { type: 'real-estate-auto-check-requested' }
   // Sent from the in-page Street Racing overlay on mount/refresh — same
   // "live fetch+parse only background can do" exception as
   // 'career-catalog-requested'. Returns a fresh `RaceCatalog` (car, weather,

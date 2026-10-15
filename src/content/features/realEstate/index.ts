@@ -15,6 +15,7 @@ import {
   type PropertyPlan,
 } from '@/shared/realEstateAdvisor';
 import type { RealEstateVaultState } from '@/shared/types';
+import { autoSectionStyle, mountAutoCollect, setFirstFill } from './autoCollectSection';
 
 /**
  * Real Estate Advisor — an overlay on the live "Real Estate Empire" panel that
@@ -123,6 +124,21 @@ const STYLE = `
 }
 .ff-re-close:hover { color: #fff; }
 
+.ff-re-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+#${CONTAINER_ID} .ff-re-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 0; padding: 7px 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px; color: #9ca3af; font-size: 10px; font-weight: 800; line-height: 1.2; white-space: nowrap; cursor: pointer;
+}
+#${CONTAINER_ID} .ff-re-tab:hover { color: #ccc; }
+#${CONTAINER_ID} .ff-re-tab.ff-re-tab-on { background: rgba(201,168,76,0.16); border-color: rgba(201,168,76,0.55); color: #f4d160; }
+/* Auto-Collect's state at a glance, so a stop shows from the Advisor tab. */
+.ff-re-tab[data-ff-state]::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #52525b; }
+.ff-re-tab[data-ff-state="on"]::after { background: #10b981; }
+.ff-re-tab[data-ff-state="stopped"]::after { background: #ef4444; }
+.ff-re-pane { display: none; }
+.ff-re-pane.ff-re-pane-on { display: block; }
+
 .ff-re-cadence { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
 .ff-re-cadence-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b6455; margin-right: 2px; }
 .ff-re-chip {
@@ -202,6 +218,17 @@ const STYLE = `
 .ff-re-plan-h { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #d9c48a; margin-bottom: 3px; }
 .ff-re-plan b { color: #fff; font-family: 'Courier New', ui-monospace, monospace; }
 .ff-re-plan-sub { font-size: 10px; color: #a1a1aa; }
+
+.ff-re-fill {
+  display: flex; justify-content: space-between; gap: 6px;
+  margin: 8px 0 12px; padding: 6px 12px; border-radius: 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11.5px; font-weight: 800; line-height: 1.4;
+}
+.ff-re-fill small { font-weight: 600; opacity: 0.8; }
+.ff-re-fill[data-ff-fill="ok"] { background: rgba(52,211,153,0.1); color: #6ee7b7; }
+.ff-re-fill[data-ff-fill="soon"] { background: rgba(251,191,36,0.16); color: #fbbf24; border: 1px solid rgba(251,191,36,0.4); }
+.ff-re-fill[data-ff-fill="full"] { background: rgba(239,68,68,0.16); color: #f87171; border: 1px solid rgba(239,68,68,0.45); }
 `;
 
 interface ParsedCard {
@@ -477,12 +504,99 @@ function renderPlan(card: UnownedCard, plan: PropertyPlan, gapLabel: string): vo
 }
 
 // ---------------------------------------------------------------------------
+// Vault fill badge
+// ---------------------------------------------------------------------------
+
+/** Amber once a vault is this close to full. */
+const FILL_WARN_HOURS = 2;
+/** A property earning less than this share of income (the Dive Bar, 0.1%)
+ *  filling early doesn't matter; the first one above it does. */
+const MEANINGFUL_SHARE = 0.02;
+
+/** Each property's vault as first shown at its current amount: the game only
+ *  re-renders the amount when the panel reloads, so the countdown runs from
+ *  when this amount appeared. Vaults grow by whole hours of income, so it
+ *  can be up to an hour out either way. */
+const vaultSeen = new Map<string, { vault: number; at: number }>();
+
+function formatLeft(ms: number): string {
+  const mins = Math.max(1, Math.round(ms / 60_000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h === 0 ? `${m}m` : m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function renderFillBadge(): void {
+  const now = Date.now();
+  const props: { title: string; hourly: number; left: number }[] = [];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR))) {
+    const card = parseCard(el);
+    const vault = parseMoney(el.querySelector('.rev2-vault-row .n')?.textContent);
+    if (!card || vault === null || card.hourly <= 0) continue;
+    const id = card.key ?? card.title;
+    let seen = vaultSeen.get(id);
+    if (!seen || seen.vault !== vault) {
+      seen = { vault, at: now };
+      vaultSeen.set(id, seen);
+    }
+    const left = vault >= card.vaultCap ? 0 : seen.at + ((card.vaultCap - vault) / card.hourly) * 3_600_000 - now;
+    props.push({ title: card.title, hourly: card.hourly, left });
+  }
+
+  let badge = document.querySelector<HTMLDivElement>('.ff-re-fill');
+  const total = props.reduce((sum, p) => sum + p.hourly, 0);
+  // Tiny earners (the Dive Bar) filling don't count; they'd keep it red.
+  const big = props.filter((p) => p.hourly >= total * MEANINGFUL_SHARE).sort((a, b) => a.left - b.left);
+  if (!big.length) {
+    badge?.remove();
+    return;
+  }
+
+  const full = big.filter((p) => p.left <= 0);
+  let state: 'ok' | 'soon' | 'full';
+  let html: string;
+  if (full.length) {
+    state = 'full';
+    const losing = props.filter((p) => p.left <= 0).reduce((sum, p) => sum + p.hourly, 0);
+    const more = full.length > 1 ? ` and ${full.length - 1} more` : '';
+    html = `<span>${escapeHtml(full[0].title)}${more} full</span><small>losing ${formatMoney(losing)}/h</small>`;
+  } else {
+    const next = big[0];
+    state = next.left <= FILL_WARN_HOURS * 3_600_000 ? 'soon' : 'ok';
+    const at = new Date(now + next.left).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    html = `<span>${escapeHtml(next.title)} fills first, in ~${formatLeft(next.left)}</span><small>at ${at}</small>`;
+  }
+
+  if (!badge) {
+    const anchor = document.querySelector('.rev2-collect-all') ?? document.querySelector('.rev2-grid');
+    if (!anchor) return;
+    badge = document.createElement('div');
+    badge.className = 'ff-re-fill';
+    if (anchor.classList.contains('rev2-collect-all')) anchor.after(badge);
+    else anchor.before(badge);
+  }
+  if (badge.dataset.ffFill !== state) badge.dataset.ffFill = state;
+  if (badge.innerHTML !== html) badge.innerHTML = html;
+}
+
+/** For the Auto-Collect interval hint: the first vault worth caring about to
+ *  fill after a collection. */
+function firstBigFill(cards: ParsedCard[]): { hours: number; name: string } | null {
+  const live = cards.filter((c) => c.hourly > 0);
+  const total = live.reduce((sum, c) => sum + c.hourly, 0);
+  const big = live.filter((c) => c.hourly >= total * MEANINGFUL_SHARE).sort((a, b) => a.vaultCap / a.hourly - b.vaultCap / b.hourly)[0];
+  return big ? { hours: big.vaultCap / big.hourly, name: big.title } : null;
+}
+
+// ---------------------------------------------------------------------------
 // State and refresh
 // ---------------------------------------------------------------------------
 
 let panelEl: HTMLDivElement | null = null;
 let basis: 'measured' | 'whatIf' = 'measured';
 let cadenceHours = FALLBACK_CADENCE_HOURS;
+/** The advisor and Auto-Collect are separate jobs, so they get a tab each. */
+let activeTab: 'advisor' | 'auto' = 'advisor';
 let collections: CollectionEvent[] = [];
 let playerLevel: number | null = null;
 // Skips re-touching the DOM when nothing the game reports has actually
@@ -534,6 +648,8 @@ function refresh(force: boolean) {
   const noData = basis === 'measured' && !measured;
   const rows = cards.map((card) => ({ card, f: figuresFor(card, cadence, card.key ? measured?.byKey.get(card.key) : undefined, noData) }));
   for (const { card, f } of rows) renderRibbon(card, f);
+  renderFillBadge();
+  if (cards.length) setFirstFill(firstBigFill(cards));
 
   const leaking = rows.filter((x) => isLeaking(x.f)).sort((a, b) => b.f.lossDaily - a.f.lossDaily);
   const rest = rows.filter((x) => !isLeaking(x.f));
@@ -606,6 +722,12 @@ function setExpanded(next: boolean) {
   panelEl?.classList.toggle('ff-re-expanded', next);
 }
 
+function setTab(next: 'advisor' | 'auto') {
+  activeTab = next;
+  panelEl?.querySelectorAll<HTMLElement>('.ff-re-tab').forEach((t) => t.classList.toggle('ff-re-tab-on', t.dataset.tab === next));
+  panelEl?.querySelectorAll<HTMLElement>('.ff-re-pane').forEach((p) => p.classList.toggle('ff-re-pane-on', p.dataset.pane === next));
+}
+
 function markChips() {
   panelEl?.querySelectorAll<HTMLButtonElement>('.ff-re-chip').forEach((chip) => {
     const active = chip.dataset.basis === 'measured' ? basis === 'measured' : basis === 'whatIf' && Number(chip.dataset.hours) === cadenceHours;
@@ -640,19 +762,29 @@ function buildPanel(): HTMLDivElement {
         ${brandBadgeHtml('Real Estate Advisor')}
         <button class="ff-re-close" type="button" title="Collapse">✕</button>
       </div>
-      <div class="ff-re-cadence">
-        <button class="ff-re-chip" type="button" data-basis="measured">My collections</button>
-        <span class="ff-re-cadence-group"><span class="ff-re-cadence-label">What if every</span>${chips}</span>
+      <div class="ff-re-tabs">
+        <button class="ff-re-tab" type="button" data-tab="advisor">Advisor</button>
+        <button class="ff-re-tab" type="button" data-tab="auto">Auto-Collect</button>
       </div>
-      <div class="ff-re-basis-note"></div>
-      <div class="ff-re-summary"></div>
-      <div class="ff-re-rows"></div>
-      <div class="ff-re-plans"></div>
+      <div class="ff-re-pane" data-pane="advisor">
+        <div class="ff-re-cadence">
+          <button class="ff-re-chip" type="button" data-basis="measured">My collections</button>
+          <span class="ff-re-cadence-group"><span class="ff-re-cadence-label">What if every</span>${chips}</span>
+        </div>
+        <div class="ff-re-basis-note"></div>
+        <div class="ff-re-summary"></div>
+        <div class="ff-re-rows"></div>
+        <div class="ff-re-plans"></div>
+      </div>
+      <div class="ff-re-pane ff-re-auto" data-pane="auto"></div>
     </div>
   `;
 
   el.querySelector('.ff-re-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-re-close')?.addEventListener('click', () => setExpanded(false));
+  el.querySelectorAll<HTMLButtonElement>('.ff-re-tab').forEach((tab) => {
+    tab.addEventListener('click', () => setTab(tab.dataset.tab === 'auto' ? 'auto' : 'advisor'));
+  });
   el.querySelectorAll<HTMLButtonElement>('.ff-re-chip').forEach((chip) => {
     chip.addEventListener('click', () =>
       void (chip.dataset.basis === 'measured' ? setBasis('measured') : setBasis('whatIf', Number(chip.dataset.hours))),
@@ -667,7 +799,7 @@ function applyVaultState(state: RealEstateVaultState | null | undefined) {
 }
 
 export async function initRealEstateAdvisor(): Promise<void> {
-  injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + STYLE);
+  injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + STYLE + autoSectionStyle(`#${CONTAINER_ID}`));
 
   try {
     const [prefs, vaults, stats] = await Promise.all([
@@ -686,6 +818,9 @@ export async function initRealEstateAdvisor(): Promise<void> {
   panelEl = buildPanel();
   markChips();
   (document.body ?? document.documentElement).appendChild(panelEl);
+  setTab(activeTab);
+  const autoEl = panelEl.querySelector<HTMLElement>('.ff-re-auto');
+  if (autoEl) void mountAutoCollect(autoEl, panelEl.querySelector<HTMLElement>('.ff-re-tab[data-tab="auto"]'));
   refresh(true);
 
   // New collections (recorded by the background) and a level-up both change
@@ -701,6 +836,13 @@ export async function initRealEstateAdvisor(): Promise<void> {
   // Fight Club's toolbar and Street Intel's highlights — the game swaps panel
   // content via innerHTML on the same page, so there's no navigation event to
   // hook instead.
-  const observer = new MutationObserver(() => refresh(false));
+  // The fill badge changes with the vault amounts (not in the signature) and
+  // with the clock, so it's redrawn on every pass and each minute; it only
+  // writes when its text changes, so its own writes settle.
+  const observer = new MutationObserver(() => {
+    refresh(false);
+    renderFillBadge();
+  });
+  setInterval(renderFillBadge, 60_000);
   observer.observe(document.documentElement, { childList: true, subtree: true });
 }

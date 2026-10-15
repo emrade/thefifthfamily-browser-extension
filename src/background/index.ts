@@ -55,6 +55,11 @@ import {
   handleMessage as handleRealEstateVaults,
   init as initRealEstateVaults,
 } from './features/realEstate/vaultReminder';
+import {
+  handleAlarm as handleRealEstateAutoAlarm,
+  init as initRealEstateAuto,
+  runCheckNow as runRealEstateAutoCheckNow,
+} from './features/realEstate/autoCollect';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
@@ -105,6 +110,10 @@ initArena();
 // Re-arms the Real Estate vault reminder from its stored vaults — see
 // features/realEstate/vaultReminder.ts.
 initRealEstateVaults();
+
+// Re-arms Real Estate Auto-Collect (if on) and watches its config and the
+// vaults — see features/realEstate/autoCollect.ts.
+initRealEstateAuto();
 
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
 // No config gate: unlike the two auto-runners above, this is read-only data
@@ -213,6 +222,11 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Sent by the Fury Catcher's popup tab and in-page overlay "Check Now".
   if (msg.type === 'fury-catcher-check-requested') {
     return runFuryCatcherCheckNow();
+  }
+
+  // Sent by the Real Estate Auto-Collect popup tab's "Check Now".
+  if (msg.type === 'real-estate-auto-check-requested') {
+    return runRealEstateAutoCheckNow();
   }
 
   // Sent by the in-page Street Racing overlay on mount/refresh — see that
@@ -361,4 +375,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
   handleFuryCatcherAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleFuryCatcherAlarm failed', err));
   handleRealEstateVaultAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateVaultAlarm failed', err));
+  handleRealEstateAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateAutoAlarm failed', err));
 });

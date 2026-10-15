@@ -26,7 +26,10 @@ import type { RealEstateVault, RealEstateVaultState } from '@/shared/types';
  *
  * No kill switch of its own, same as the Arena page reminder: the player
  * silences it with the `realEstateVaultFull` notification preference, which
- * also stops the confirm read.
+ * also stops the confirm read. It also stays quiet while Auto-Collect
+ * (autoCollect.ts) is on and getting through, and speaks up again while
+ * that's blocked or after it pauses itself (player's choice, 2026-10-15:
+ * hear about it only when the automation can't cover it).
  */
 
 const FEATURE_KEY = 'realEstate';
@@ -106,7 +109,7 @@ export async function handleMessage(msg: ExtensionMessage): Promise<void> {
   }
 }
 
-async function readLiveVaults(): Promise<RealEstateVault[] | null> {
+export async function readLiveVaults(): Promise<RealEstateVault[] | null> {
   try {
     const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=properties&_t=${Date.now()}`, { credentials: 'include' });
     const html = unwrapPanelHtml(await res.text());
@@ -137,6 +140,16 @@ function describe(alert: VaultAlert): string {
   return `${who} ${names.length === 1 ? 'is' : 'are'} full: about ${money(alert.wastedPerHour)}/hr is going to waste until you collect.${next}`;
 }
 
+/** Auto-Collect on, and its last check not blocked (no session, offline,
+ *  jail). Read from storage rather than imported, since autoCollect.ts
+ *  imports this module. */
+async function autoCollectCovering(): Promise<boolean> {
+  const config = await storage.getRealEstateAutoConfig();
+  if (!config.enabled) return false;
+  const status = await storage.getRealEstateAutoStatus();
+  return !status?.blockedSince;
+}
+
 // Two alarm deliveries (a dormant worker can fire one alarm twice) must not
 // both read and notify.
 let checkInFlight = false;
@@ -147,6 +160,7 @@ export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   try {
     const prefs = await storage.getNotificationPreferences();
     if (!prefs.realEstateVaultFull) return;
+    if (await autoCollectCovering()) return;
     const state = await storage.getRealEstateVaults();
     if (!state || state.notifiedAt !== null) return;
 

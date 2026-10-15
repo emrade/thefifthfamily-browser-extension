@@ -11,9 +11,10 @@ import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoH
 import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
 import { CrimesAutoHome } from './features/crimesAuto/CrimesAutoHome';
 import { FuryCatcherHome } from './features/furyCatcher/FuryCatcherHome';
+import { RealEstateAutoHome } from './features/realEstateAuto/RealEstateAutoHome';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'furyCatcher' | 'settings';
+type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'furyCatcher' | 'realEstateAuto' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('home');
@@ -46,6 +47,7 @@ export function App() {
             onOpenPetCouriers={() => setView('petCouriers')}
             onOpenCrimesAuto={() => setView('crimesAuto')}
             onOpenFuryCatcher={() => setView('furyCatcher')}
+            onOpenRealEstateAuto={() => setView('realEstateAuto')}
             onOpenSettings={() => setView('settings')}
           />
         )}
@@ -56,6 +58,7 @@ export function App() {
         {view === 'petCouriers' && <PetCouriersHome />}
         {view === 'crimesAuto' && <CrimesAutoHome />}
         {view === 'furyCatcher' && <FuryCatcherHome />}
+        {view === 'realEstateAuto' && <RealEstateAutoHome />}
         {view === 'settings' && <Settings />}
       </main>
 

@@ -13,6 +13,8 @@ import type {
   CrimesAutoStatus,
   FightClubFilterPrefs,
   FuryCatcherConfig,
+  RealEstateAutoConfig,
+  RealEstateAutoStatus,
   FuryCatcherStatus,
   FightClubHeroStats,
   InventoryAutoSellCriteria,
@@ -30,6 +32,7 @@ import {
   CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
   FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
   FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
+  REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
   STORAGE_KEYS,
   STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 } from './constants';
@@ -87,6 +90,12 @@ const DEFAULT_FURY_CATCHER_CONFIG: FuryCatcherConfig = {
   enabled: false,
   energyFloor: FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
   dailyDrinkCap: FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
+};
+
+// Off by default, same convention as every other auto feature.
+const DEFAULT_REAL_ESTATE_AUTO_CONFIG: RealEstateAutoConfig = {
+  enabled: false,
+  intervalHours: REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
 };
 
 // 24h matches this account's own observed collection habit (see the Real
@@ -291,6 +300,15 @@ export const storage = {
 
   getFuryCatcherStatus: () => get<FuryCatcherStatus | null>(STORAGE_KEYS.FURY_CATCHER_STATUS, null),
   setFuryCatcherStatus: (v: FuryCatcherStatus) => set(STORAGE_KEYS.FURY_CATCHER_STATUS, v),
+
+  getRealEstateAutoConfig: async (): Promise<RealEstateAutoConfig> => {
+    const stored = await get<Partial<RealEstateAutoConfig>>(STORAGE_KEYS.REAL_ESTATE_AUTO_CONFIG, {});
+    return { ...DEFAULT_REAL_ESTATE_AUTO_CONFIG, ...stored };
+  },
+  setRealEstateAutoConfig: (v: RealEstateAutoConfig) => set(STORAGE_KEYS.REAL_ESTATE_AUTO_CONFIG, v),
+
+  getRealEstateAutoStatus: () => get<RealEstateAutoStatus | null>(STORAGE_KEYS.REAL_ESTATE_AUTO_STATUS, null),
+  setRealEstateAutoStatus: (v: RealEstateAutoStatus) => set(STORAGE_KEYS.REAL_ESTATE_AUTO_STATUS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

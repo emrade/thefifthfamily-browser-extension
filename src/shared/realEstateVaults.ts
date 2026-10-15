@@ -98,3 +98,20 @@ export function vaultAlert(vaults: RealEstateVault[]): VaultAlert | null {
   }
   return null;
 }
+
+/**
+ * Hours since the vaults were last emptied, as of `now`: what each vault
+ * holds over its hourly income, aged from when it was read, and the longest
+ * of those. A vault grows by whole hours of income, so this reads up to an
+ * hour short. A full vault only proves its own fill time had passed, which
+ * is still a lower bound. `null` with no vaults to go by.
+ */
+export function hoursSinceCollected(vaults: RealEstateVault[], now = Date.now()): number | null {
+  let best: number | null = null;
+  for (const p of vaults) {
+    if (p.hourly <= 0) continue;
+    const h = Math.min(p.vault, p.cap) / p.hourly + Math.max(0, now - p.at) / 3_600_000;
+    if (best === null || h > best) best = h;
+  }
+  return best;
+}
