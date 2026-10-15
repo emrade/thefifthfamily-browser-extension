@@ -9,6 +9,31 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.45.1] - 2026-10-16
+
+### Fixed
+- **Arena: bosses whose hits sit right at your armour were rated far too
+  safe.** Ethan Walsh (Iron River, STR 2,853) showed "Coin-flip ~87%" and
+  said it was worth risking a pot of up to ~964. Your armour (~1,379) was
+  only just above his estimated damage (~1,386 from STR), and real boss
+  damage lands up to ~12% off that estimate. At +10% his score falls from
+  1.11 to 0.46. Since 15 Oct, minimum damage has been capped at 75, which
+  is correct for every hit logged, but it turned such a boss from Avoid
+  into a coin-flip. A boss whose hits would get through at 15% more damage
+  is now scored as if they do, and its badge says "may hit through". Ethan
+  now shows Avoid ~40%, with a pot limit of ~96. Across every archived
+  fight this only changes two Iron River bosses, both already Avoid. The
+  boss STR limit in the hover card and the plan follows the same line
+  (~2,465 instead of ~2,976 at your armour).
+
+### Changed
+- A coin-flip that is won 80%+ of the time is now labelled **Likely**
+  (bosses scoring 0.8–1.3, won ~87%), so it no longer reads as 50/50.
+  Regular coin-flips, at 73% at most, keep "Coin-flip".
+- New `docs/testing-in-firefox.md`: trying an unreleased build in Firefox
+  as a temporary add-on, on your real data, and why a Chrome copy with its
+  own old data shows different verdicts.
+
 ## [0.45.0] - 2026-10-15
 
 ### Added
