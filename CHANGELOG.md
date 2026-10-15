@@ -9,6 +9,45 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.43.0] - 2026-10-15
+
+### Added
+- **Real Estate vault reminder.** One notification per collection once the
+  property vaults already full earn at least a tenth of your hourly income
+  (with the current portfolio, ~15h after collecting, when the Underground
+  Fight Club fills), naming what's full, how much per hour is going to
+  waste, and the next to fill. Timed from the Properties panels and
+  collections the page already loads; one read of the same panel right
+  before notifying confirms it, so a collection on another device moves it
+  instead of raising a false alert. Silenced (read included) with the new
+  "Real Estate Vaults Full" notification setting. It never collects.
+- **Arena Refresh numbers.** The Refresh line now shows what one re-roll
+  averages against this lineup, and what re-rolling until something beats
+  it costs (about how many re-rolls) and gains. A paid Refresh gets only
+  the numbers, no verdict: whether the points are worth the MG is yours.
+
+### Changed
+- **Arena minimum damage uses a rolled ceiling (45–75 per hit)**, not a
+  fixed cap at 75. Same maximum, but at the 850-HP loadout a minimum hit
+  averages ~55, not ~64. Beatable lines stay at 1.2 (regular) and 1.3
+  (boss): replayed with only earlier fights, regular Beatable won 315/315
+  and boss Beatable 59/60. Win chances refitted on 685 fights.
+- **Attack order sorts by win chance** (score only breaks ties), so it is
+  really riskiest first.
+- **Coin-flip lean comes from the measured win chance**: 60%+ "leans win",
+  40% or less "leans loss", in between "even". Regular 1.0–1.2 quoted under
+  50% (won 16/29) now shows "even"; boss coin-flips lean win (39/45).
+- **The Refresh benchmark is measured per loadout**: the average of the
+  fresh lineups seen with the current gear (at least 8, last 60), instead
+  of a fixed 87. With the 850-HP loadout a re-roll averages ~153, so the
+  old benchmark said "keep" to almost every lineup.
+
+### Fixed
+- The "breaks armour" label only shows when real damage beats the minimum
+  damage, matching the damage figure next to it.
+- Boss notes no longer say every 1.3+ boss has been won, and the verdict
+  legend shows the boss Coin-flip range up to 1.3.
+
 ## [0.42.0] - 2026-10-14
 
 ### Changed
