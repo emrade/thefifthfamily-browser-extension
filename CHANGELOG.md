@@ -9,6 +9,30 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.45.0] - 2026-10-15
+
+### Added
+- **Real Estate Auto-Collect**, a safety net for days you miss (off by
+  default). Once a set number of hours (default 12h, 2–48h) pass without a
+  collection by anyone, it does the same Collect All the game sends and
+  banks the cash. Every collection you make restarts its countdown, so on a
+  normal day it never steps in. It tracks what it collected and banked
+  (today, all-time, last 30 runs), waits out jail or hospital, and pauses
+  itself with a notification on anything unexpected. Over September and
+  October it would have cut overflow losses from $3.61M to $0.40M. Controls
+  live on the Real Estate panel's new Auto-Collect tab (with an
+  on/off/stopped dot on the tab) as well as in the popup, and they say
+  whether your setting collects before your first important vault fills.
+  While it's on and getting through, the vault-full reminder stays quiet.
+- **Vault fill badge** under the game's Collect All button: "Collect All
+  within 7h 15m (by 7:09 AM)", which property's vault fills first and what
+  it then loses per hour, or "Collect All now" in red with the hourly loss
+  once vaults are full. Tap the ⓘ to see how it's worked out. Properties
+  earning under 2% of your income (the Dive Bar) don't count.
+
+### Changed
+- The Real Estate panel is split into **Advisor** and **Auto-Collect** tabs.
+
 ## [0.44.0] - 2026-10-15
 
 ### Added
