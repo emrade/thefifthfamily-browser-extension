@@ -302,14 +302,20 @@ interface RowFigures {
   /** Vault advice, sized for the usual longest gap or the what-if cadence. */
   advice: PropertyAdvice;
   measured: boolean;
+  /** "My collections" with none recorded yet: show what the property makes
+   *  and how often it needs collecting, not a loss from a guessed cadence. */
+  noData: boolean;
 }
 
-function figuresFor(card: ParsedCard, cadence: number, measured: MeasuredProperty | undefined): RowFigures {
+function figuresFor(card: ParsedCard, cadence: number, measured: MeasuredProperty | undefined, noData: boolean): RowFigures {
   const advice = analyzeProperty(toAdviceInput(card), cadence);
-  if (measured) {
-    return { netDaily: measured.netDaily, lossDaily: measured.lostDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: true };
+  if (noData) {
+    return { netDaily: advice.theoreticalDaily, lossDaily: 0, theoreticalDaily: advice.theoreticalDaily, advice, measured: false, noData };
   }
-  return { netDaily: advice.effectiveDaily, lossDaily: advice.lossDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: false };
+  if (measured) {
+    return { netDaily: measured.netDaily, lossDaily: measured.lostDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: true, noData };
+  }
+  return { netDaily: advice.effectiveDaily, lossDaily: advice.lossDaily, theoreticalDaily: advice.theoreticalDaily, advice, measured: false, noData };
 }
 
 /** Losing at least this share of a property's income counts as leaking.
@@ -328,7 +334,7 @@ function renderRibbon(card: ParsedCard, f: RowFigures) {
     ribbon.className = 'ff-re-ribbon';
     card.el.prepend(ribbon);
   }
-  const amount = `<span class="ff-re-ribbon-amt">${formatMoney(f.netDaily)}<small>/day</small></span>`;
+  const amount = `<span class="ff-re-ribbon-amt">${formatMoney(f.netDaily)}<small>/day${f.noData ? ' max' : ''}</small></span>`;
   let html: string;
   if (isLeaking(f)) {
     ribbon.dataset.ffStatus = severity(f.lossDaily / f.theoreticalDaily);
@@ -348,15 +354,20 @@ function renderRow(card: ParsedCard, f: RowFigures, gapLabel: string): string {
   const leaking = isLeaking(f);
 
   let body = '';
-  if (leaking) {
+  if (f.noData) {
+    body = `<div class="ff-re-row-ok">Collect at least every ${formatHours(advice.fillHours)} to get all of it.</div>`;
+  } else if (leaking) {
     const sev = severity(f.lossDaily / f.theoreticalDaily);
     const gaugePct = Math.min(100, (f.netDaily / f.theoreticalDaily) * 100);
+    const pct = Math.round((f.lossDaily / f.theoreticalDaily) * 100);
     body = `
-      <div class="ff-re-row-loss" data-ff-sev="${sev}">${f.measured ? 'Lost' : 'Losing'} ${formatMoney(f.lossDaily)}/day</div>
+      <div class="ff-re-row-loss" data-ff-sev="${sev}">${f.measured ? 'Lost' : 'Losing'} ${formatMoney(f.lossDaily)}/day of ${formatMoney(f.theoreticalDaily)} possible (${pct}%)</div>
       <div class="ff-re-row-gauge"><div class="ff-re-row-gauge-fill" data-ff-sev="${sev}" style="width:${gaugePct}%"></div></div>
     `;
   }
-  if (advice.isOverflowing) {
+  if (f.noData) {
+    // No gap to size a vault for yet.
+  } else if (advice.isOverflowing) {
     let action: string;
     if (advice.targetLevel === null) {
       action = `Vault is maxed and fills in ${formatHours(advice.fillHours)}, less than ${gapLabel}. Only collecting sooner closes it.`;
@@ -392,7 +403,7 @@ function renderRow(card: ParsedCard, f: RowFigures, gapLabel: string): string {
     <div class="ff-re-row" data-ff-status="${leaking ? 'leaking' : 'balanced'}">
       <div class="ff-re-row-top">
         <span class="ff-re-row-name">${escapeHtml(card.title)}</span>
-        <span class="ff-re-row-amt">${formatMoney(f.netDaily)}<small>/day</small></span>
+        <span class="ff-re-row-amt">${formatMoney(f.netDaily)}<small>/day${f.noData ? ' max' : ''}</small></span>
       </div>
       <div class="ff-re-row-meta">${meta}</div>
       ${body}
@@ -520,7 +531,8 @@ function refresh(force: boolean) {
   const cadence = basis === 'measured' ? Math.max(1, Math.ceil(measured?.usualLongestGapHours ?? FALLBACK_CADENCE_HOURS)) : cadenceHours;
   const gapLabel = basis === 'measured' && measured ? `your longest gap on most days (~${cadence}h)` : `${cadence}h between collections`;
 
-  const rows = cards.map((card) => ({ card, f: figuresFor(card, cadence, card.key ? measured?.byKey.get(card.key) : undefined) }));
+  const noData = basis === 'measured' && !measured;
+  const rows = cards.map((card) => ({ card, f: figuresFor(card, cadence, card.key ? measured?.byKey.get(card.key) : undefined, noData) }));
   for (const { card, f } of rows) renderRibbon(card, f);
 
   const leaking = rows.filter((x) => isLeaking(x.f)).sort((a, b) => b.f.lossDaily - a.f.lossDaily);
@@ -536,7 +548,7 @@ function refresh(force: boolean) {
         ? `What if you collected exactly once every ${cadenceHours}h. Your real figures are under “My collections”.`
         : measured
           ? `Measured from your ${measured.collections} collections over the last ${formatHours(measured.spanHours)} (up to ${MEASURE_WINDOW_DAYS} days), at today’s rates. Collections on another device aren’t seen and look like one long gap.`
-          : `Not enough collections seen yet (a day’s worth is needed). Until then this shows a ${FALLBACK_CADENCE_HOURS}h cadence.`;
+          : `No collections recorded in this browser yet (a day’s worth is needed). Until then each property shows what it makes at most and how often it needs collecting; plans assume a ${FALLBACK_CADENCE_HOURS}h gap.`;
   }
 
   const summaryEl = panelEl.querySelector('.ff-re-summary');
@@ -546,7 +558,9 @@ function refresh(force: boolean) {
       totalLoss < 1
         ? `<div class="ff-re-summary-ok">✓ Nothing overflowing${basis === 'measured' && measured ? '' : ' at this cadence'}.</div>`
         : `<div class="ff-re-summary-loss">${measured ? 'Lost' : 'Losing'} ${formatMoney(totalLoss)}/day (${(lossShare * 100).toFixed(lossShare < 0.1 ? 1 : 0)}%)${leaking.length ? ` · mostly ${escapeHtml(leaking[0].card.title)}` : ''}</div>`;
-    summaryEl.innerHTML = `
+    summaryEl.innerHTML = noData
+      ? `<div class="ff-re-summary-line">Up to <b>${formatMoney(totalTheoretical)}</b> per day, collected in time</div>`
+      : `
       <div class="ff-re-summary-line"><b>${formatMoney(totalNet)}</b> / ${formatMoney(totalTheoretical)} possible per day</div>
       ${lossLine}
     `;
