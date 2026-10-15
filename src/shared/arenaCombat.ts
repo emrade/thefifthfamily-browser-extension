@@ -126,6 +126,29 @@ export function recordLineup(
   };
 }
 
+/** What re-rolling until something better turns up is worth, from the
+ *  same fresh lineups as `lineupBenchmark` (null until there are enough).
+ *  A Refresh can't be undone, so a re-roll can land lower; keep re-rolling
+ *  and the lineup you stop on is one that beats `current`. Measured
+ *  2026-10-15 at max HP 850: a 105-bounty Beatable lineup ~155, one with a
+ *  Beatable 140 ~184, one where the 140 is Avoid ~51; about half of all
+ *  re-rolls had a Beatable 140. */
+export function rerollOutlook(
+  record: ArenaLineupPoints | null,
+  maxHp: number,
+  excludeKey: string | null,
+  current: number,
+): { seen: number; beatShare: number; beatMean: number } | null {
+  const others = record && record.maxHp === maxHp ? record.lineups.filter((l) => l.key !== excludeKey) : [];
+  if (others.length < ARENA_LINEUP_MIN_SAMPLES) return null;
+  const better = others.filter((l) => l.points > current);
+  return {
+    seen: others.length,
+    beatShare: better.length / others.length,
+    beatMean: better.length ? better.reduce((s, l) => s + l.points, 0) / better.length : current,
+  };
+}
+
 /** What an average re-roll banks with this loadout: the mean of the other
  *  fresh lineups seen with it (the one on screen left out), or
  *  `TYPICAL_LINEUP_POINTS` until there are enough. */

@@ -11,6 +11,7 @@ import {
   leanText,
   lineupBenchmark,
   recordLineup,
+  rerollOutlook,
   recordFight,
   profileFromPreview,
   sampleFromAttack,
@@ -481,27 +482,40 @@ function paint(): void {
     );
   }
 
-  // Refresh: worth it when this lineup's expected pot is under what an
-  // average re-roll banks. Refresh only replaces the four regulars (never
-  // the boss) and locks after the first attack.
+  // Refresh. The free one gets a verdict: worth it when this lineup's
+  // expected pot is under what an average re-roll banks. A paid one only
+  // gets the numbers, since whether points are worth the MG is the
+  // player's call. Refresh only replaces the four regulars (never the boss)
+  // and locks after the first attack.
   const refresh = noneFoughtYet && scored.length > 0 ? refreshOffer() : null;
   if (refresh) {
     const lineup = expectedPot(ordered);
     const costNote = refresh.free ? 'The free Refresh' : `Refresh (${escapeHtml(refresh.cost) || 'paid'})`;
     const bossNote = bossIsSkip ? ' The boss is a likely skip, so these four are most of the page.' : '';
     const bigKeeper = ordered.find((f) => f.bounty >= 100 && f.p >= 0.75);
-    if (lineup < bench.points) {
-      lines.push(
-        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${fmt(bench.points)} (${benchNote}).${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.</span></div>`,
-      );
+    const diff = bench.points - lineup;
+    const signed = `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}`;
+    const outlook = rerollOutlook(lineupRecord, profile.maxHp, freshKey, lineup);
+    let chase = '';
+    if (outlook && outlook.beatShare === 0) {
+      chase = ` None of the last ${outlook.seen} fresh lineups with this gear beat this one.`;
+    } else if (outlook) {
+      const tries = 1 / outlook.beatShare;
+      const triesText = tries < 1.5 ? 'about 1 re-roll' : `about ${tries < 10 ? tries.toFixed(1) : fmt(tries)} re-rolls`;
+      chase = ` Re-rolling until one beats it takes ${triesText}${refresh.free ? ' (the first is free)' : ''} and should end near <b>~${fmt(outlook.beatMean)}</b> (+${fmt(outlook.beatMean - lineup)}).`;
+    }
+    let text: string;
+    if (!refresh.free) {
+      text = `This lineup should bank <b>~${fmt(lineup)}</b>; one re-roll (${escapeHtml(refresh.cost) || 'paid'}) averages ~${fmt(bench.points)}, ${signed} (${benchNote}).${chase}${bossNote}`;
+    } else if (lineup < bench.points) {
+      text = `Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${fmt(bench.points)}, ${signed} (${benchNote}).${chase}${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.`;
     } else {
       const why = bigKeeper
         ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v)}, and `
         : '';
-      lines.push(
-        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).</span></div>`,
-      );
+      text = `Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).${chase}`;
     }
+    lines.push(`<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">${text}</span></div>`);
   }
 
   const surprise = trackRecord?.surprise;
