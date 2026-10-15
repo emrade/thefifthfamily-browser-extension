@@ -17,5 +17,5 @@ import { ALARM_NAMES } from './constants';
  * tables survive this call.
  */
 export async function resetAllData(): Promise<void> {
-  await Promise.all([clearAllData(), storage.clearAll(), chrome.alarms.clear(ALARM_NAMES.TRAVEL_ARRIVAL)]);
+  await Promise.all([clearAllData(), storage.clearAll(), chrome.alarms.clear(ALARM_NAMES.TRAVEL_ARRIVAL), chrome.alarms.clear(ALARM_NAMES.REAL_ESTATE_VAULT)]);
 }

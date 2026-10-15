@@ -1,4 +1,4 @@
-import type { CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload } from './types';
+import type { CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
 import { LOG_PREFIX } from './log';
 
 /**
@@ -38,6 +38,11 @@ export type ExtensionMessage =
   // the district table, which only background has. See travelAdapter.ts.
   | { type: 'travel-started'; destinationCityName: string; method: 'walk' | 'taxi'; travelTimeSeconds: number; timestamp: number }
   | { type: 'travel-cancelled'; timestamp: number }
+  // Real Estate vault reminder (background/features/realEstate): every owned
+  // property's vault as a Properties panel showed it, and each successful
+  // collection (one property, or all of them for `propertyKey: null`).
+  | { type: 'real-estate-vaults-observed'; at: number; vaults: Omit<RealEstateVault, 'at'>[] }
+  | { type: 'real-estate-collected'; at: number; propertyKey: string | null }
   // The freshest CSRF token seen on any captured POST body — cached by background
   // for the pet-courier automation's own outgoing action calls. Sent on every
   // observed token, not just changes; background only writes to storage when the

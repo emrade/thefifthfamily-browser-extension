@@ -16,6 +16,7 @@ import {
 import { initStreetIntelStatusPanel } from './features/streetIntel/statusPanel';
 import { initCourierPanel } from './features/smuggling/courierPanel';
 import { initRealEstateAdvisor } from './features/realEstate';
+import { handleCapturedRequest as handleRealEstateVaults } from './features/realEstate/vaultCapture';
 import { initMenagerieAssistant } from './features/menagerieAssistant';
 import { initStockMarketStatus } from './features/stockMarket';
 import { initStreetRacingOverlay } from './features/streetRacing/overlay';
@@ -31,7 +32,15 @@ import { initFuryCatcherPanel } from './features/halloween/furyCatcherPanel';
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
 // matching dispatch on the message side.
-const handlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArenaFightAdvisor, handleInventoryQuickSell];
+const handlers = [
+  handlePlayerStats,
+  handleSmuggling,
+  handleFightClub,
+  handleStreetIntel,
+  handleArenaFightAdvisor,
+  handleInventoryQuickSell,
+  handleRealEstateVaults,
+];
 
 // Bridge from the MAIN-world fetch/XHR hook (mainWorldHook.ts) — that script has no
 // chrome.* API access, so it can only forward raw bytes via postMessage; all parsing

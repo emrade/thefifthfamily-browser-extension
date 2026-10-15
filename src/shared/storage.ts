@@ -1,4 +1,5 @@
 import type {
+  RealEstateVaultState,
   ArenaLineupPoints,
   ArenaMyProfile,
   ArenaTrackRecord,
@@ -274,6 +275,9 @@ export const storage = {
 
   // Fresh lineups' expected points this loadout, written by the fight
   // advisor; `null` until its first.
+  getRealEstateVaults: () => get<RealEstateVaultState | null>(STORAGE_KEYS.REAL_ESTATE_VAULTS, null),
+  setRealEstateVaults: (v: RealEstateVaultState) => set(STORAGE_KEYS.REAL_ESTATE_VAULTS, v),
+
   getArenaLineupPoints: () => get<ArenaLineupPoints | null>(STORAGE_KEYS.ARENA_LINEUP_POINTS, null),
   setArenaLineupPoints: (v: ArenaLineupPoints) => set(STORAGE_KEYS.ARENA_LINEUP_POINTS, v),
 

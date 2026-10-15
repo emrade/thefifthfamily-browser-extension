@@ -1581,6 +1581,26 @@ export interface ArenaTrackRecord {
   startedAt: number;
 }
 
+/** One owned property's vault as last seen (Properties panel) or as a
+ *  collection left it. See shared/realEstateVaults.ts. */
+export interface RealEstateVault {
+  /** The game's property id (from its Collect button), or the name. */
+  key: string;
+  name: string;
+  hourly: number;
+  cap: number;
+  /** What the vault held at `at`. */
+  vault: number;
+  at: number;
+}
+
+/** The vault reminder's record: every owned property, and whether this
+ *  round (since the last collection seen) has already been notified. */
+export interface RealEstateVaultState {
+  vaults: RealEstateVault[];
+  notifiedAt: number | null;
+}
+
 /** Expected points of each fresh lineup (four regulars, none fought yet)
  *  the fight advisor has seen with the current loadout: what a Refresh
  *  re-roll is measured against. A new locked max HP starts it over. */

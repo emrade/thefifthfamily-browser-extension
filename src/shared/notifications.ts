@@ -67,6 +67,12 @@ export const NOTIFICATION_DEFINITIONS = [
     description:
       'Notify when a new Arena page is ready to open, or when an opened page still has fights left, an unlocked boss, or an unbanked pot. Repeats every 15 minutes until the page is banked.',
   },
+  {
+    id: 'realEstateVaultFull',
+    label: 'Real Estate Vaults Full',
+    description:
+      'Notify when property vaults earning at least a tenth of your hourly income are full and the rest is going to waste. Once per collection; checks the live vaults first, so a collection on another device cancels it.',
+  },
 ] as const;
 
 export type NotificationId = (typeof NOTIFICATION_DEFINITIONS)[number]['id'];

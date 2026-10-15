@@ -30,6 +30,7 @@ export const STORAGE_KEYS = {
   ARENA_MY_PROFILE: 'ff_arena_my_profile',
   ARENA_TRACK_RECORD: 'ff_arena_track_record',
   ARENA_LINEUP_POINTS: 'ff_arena_lineup_points',
+  REAL_ESTATE_VAULTS: 'ff_real_estate_vaults',
   QUICK_SELL_PRICE_BOOK: 'ff_quick_sell_price_book',
   INVENTORY_AUTO_SELL_CRITERIA: 'ff_inventory_auto_sell_criteria',
   FURY_CATCHER_CONFIG: 'ff_fury_catcher_config',
@@ -55,6 +56,7 @@ export const ALARM_NAMES = {
   CRIMES_AUTO: 'ff-crimes-auto',
   ARENA_WATCH: 'ff-arena-watch',
   FURY_CATCHER: 'ff-fury-catcher',
+  REAL_ESTATE_VAULT: 'ff-real-estate-vault',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -468,3 +470,4 @@ export const ARENA_WATCH_REPEAT_MS = 15 * 60_000;
 // one instead of piling up (the watcher clears it first, so it still pops
 // and sounds again).
 export const ARENA_REMINDER_NOTIFICATION_ID = 'ff-arena-reminder';
+export const REAL_ESTATE_VAULT_NOTIFICATION_ID = 'ff-real-estate-vault';

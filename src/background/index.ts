@@ -50,6 +50,11 @@ import {
   pollNow as pollStockMarketNow,
   resume as resumeStockMarketTracker,
 } from './features/stockMarket';
+import {
+  handleAlarm as handleRealEstateVaultAlarm,
+  handleMessage as handleRealEstateVaults,
+  init as initRealEstateVaults,
+} from './features/realEstate/vaultReminder';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
@@ -63,7 +68,7 @@ import type { CourierStatus } from '@/shared/types';
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
 // content/index.ts for the matching dispatch on the capture side.
-const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArena];
+const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArena, handleRealEstateVaults];
 
 async function handleMessage(msg: ExtensionMessage) {
   for (const handle of messageHandlers) await handle(msg);
@@ -96,6 +101,10 @@ initFuryCatcher();
 // Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
 // init.
 initArena();
+
+// Re-arms the Real Estate vault reminder from its stored vaults — see
+// features/realEstate/vaultReminder.ts.
+initRealEstateVaults();
 
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
 // No config gate: unlike the two auto-runners above, this is read-only data
@@ -351,4 +360,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleCrimesAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCrimesAutoAlarm failed', err));
   handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
   handleFuryCatcherAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleFuryCatcherAlarm failed', err));
+  handleRealEstateVaultAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateVaultAlarm failed', err));
 });
