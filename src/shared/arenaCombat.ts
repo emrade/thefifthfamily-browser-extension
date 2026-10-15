@@ -1,4 +1,4 @@
-import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './types';
+import type { ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './types';
 
 /**
  * The Arena V2 kill-race model from docs/arena-combat-mechanics.md, as pure
@@ -99,9 +99,45 @@ const WIN_CHANCE = {
 
 /** Expected points a fresh set of four regular opponents banks when played
  *  riskiest first, from 136 real lineups: mean 87 (103 last season, 77 this
- *  one). A lineup under this is worth re-rolling; one at or above it is
- *  worth keeping. */
+ *  one). Only the fallback: it moves a lot with the loadout (re-checked
+ *  2026-10-15 on 287 lineups: mean 55 at max HP 710, 109 at 737, 86 at 804,
+ *  153 at 850), so the advisor measures the lineups it sees itself
+ *  (`lineupBenchmark`) and uses this until it has enough of them. */
 export const TYPICAL_LINEUP_POINTS = 87;
+
+/** Fresh lineups needed with the current loadout before their own average
+ *  replaces `TYPICAL_LINEUP_POINTS` (a lineup's expected points spread
+ *  roughly ±45, so 8 puts the mean within ~±16). */
+export const ARENA_LINEUP_MIN_SAMPLES = 8;
+export const ARENA_LINEUP_MAX_SAMPLES = 60;
+
+/** Adds one fresh lineup's expected points. A lineup already counted (same
+ *  key) is left alone, so repaints don't count it twice; a new max HP starts
+ *  the record over. */
+export function recordLineup(
+  prev: ArenaLineupPoints | null,
+  lineup: { maxHp: number; key: string; points: number; at: number },
+): ArenaLineupPoints {
+  const same = prev !== null && prev.maxHp === lineup.maxHp ? prev.lineups : [];
+  if (same.some((l) => l.key === lineup.key)) return prev!;
+  return {
+    maxHp: lineup.maxHp,
+    lineups: [...same, { key: lineup.key, points: lineup.points, at: lineup.at }].slice(-ARENA_LINEUP_MAX_SAMPLES),
+  };
+}
+
+/** What an average re-roll banks with this loadout: the mean of the other
+ *  fresh lineups seen with it (the one on screen left out), or
+ *  `TYPICAL_LINEUP_POINTS` until there are enough. */
+export function lineupBenchmark(
+  record: ArenaLineupPoints | null,
+  maxHp: number,
+  excludeKey: string | null,
+): { points: number; measured: number | null } {
+  const others = record && record.maxHp === maxHp ? record.lineups.filter((l) => l.key !== excludeKey) : [];
+  if (others.length < ARENA_LINEUP_MIN_SAMPLES) return { points: TYPICAL_LINEUP_POINTS, measured: null };
+  return { points: others.reduce((s, l) => s + l.points, 0) / others.length, measured: others.length };
+}
 
 /** Within the coin-flip band, a quoted % at or above this leans to a win.
  *  Re-checked 2026-10-05 on 98 coin-flip fights: quoted ≥ 50% won 37/50,

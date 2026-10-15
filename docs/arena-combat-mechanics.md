@@ -418,6 +418,11 @@ Banked pots are the season score, so this is what actually decides ranking.
   105/140 is Beatable. Backtested on the account owner's 48 real refreshes:
   where this rule says re-roll (46), the re-roll raised the expected pot by
   **+46** on average; where it says keep (2), re-rolling lost 16.
+  *2026-10-15:* that average moves a lot with your gear (287 lineups: 55 at
+  max HP 710, 109 at 737, 86 at 804, **153 at 850**), so a fixed 87 said
+  "keep" to almost every lineup with the 850-HP loadout. The advisor now
+  averages the fresh lineups it sees with the current loadout (at least 8,
+  last 60, the one on screen left out) and falls back to 87 until then.
 - **Win chances used** (real record per verdict band, 685 fights to
   2026-10-15, each scored with only the fights before it): regular
   Beatable 315/315, Avoid 3/76; coin-flip 0.8–1.0: quoted ≥ 50% 19/26,

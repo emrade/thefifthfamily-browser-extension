@@ -1,4 +1,5 @@
 import type {
+  ArenaLineupPoints,
   ArenaMyProfile,
   ArenaTrackRecord,
   ArenaWatchStatus,
@@ -270,6 +271,11 @@ export const storage = {
   // until its first judged fight.
   getArenaTrackRecord: () => get<ArenaTrackRecord | null>(STORAGE_KEYS.ARENA_TRACK_RECORD, null),
   setArenaTrackRecord: (v: ArenaTrackRecord) => set(STORAGE_KEYS.ARENA_TRACK_RECORD, v),
+
+  // Fresh lineups' expected points this loadout, written by the fight
+  // advisor; `null` until its first.
+  getArenaLineupPoints: () => get<ArenaLineupPoints | null>(STORAGE_KEYS.ARENA_LINEUP_POINTS, null),
+  setArenaLineupPoints: (v: ArenaLineupPoints) => set(STORAGE_KEYS.ARENA_LINEUP_POINTS, v),
 
   // Same merge-with-defaults/simple-nullable split as the Crimes Auto pair.
   getFuryCatcherConfig: async (): Promise<FuryCatcherConfig> => {

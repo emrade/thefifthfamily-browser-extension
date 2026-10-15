@@ -1580,3 +1580,13 @@ export interface ArenaTrackRecord {
   surprise: { name: string; kind: 'beatable' | 'avoid'; won: boolean; score: number; at: number } | null;
   startedAt: number;
 }
+
+/** Expected points of each fresh lineup (four regulars, none fought yet)
+ *  the fight advisor has seen with the current loadout: what a Refresh
+ *  re-roll is measured against. A new locked max HP starts it over. */
+export interface ArenaLineupPoints {
+  maxHp: number;
+  /** Newest last, one per distinct lineup, capped at
+   *  `ARENA_LINEUP_MAX_SAMPLES`. */
+  lineups: { key: string; points: number; at: number }[];
+}

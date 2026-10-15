@@ -5,10 +5,11 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import {
-  TYPICAL_LINEUP_POINTS,
   bossPotLimit,
   expectedPot,
   foldFight,
+  lineupBenchmark,
+  recordLineup,
   recordFight,
   profileFromPreview,
   sampleFromAttack,
@@ -18,7 +19,7 @@ import {
   type ArenaVerdict,
   type PotFight,
 } from '@/shared/arenaCombat';
-import type { ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
+import type { ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 
 /**
@@ -33,7 +34,8 @@ import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail }
  * fought to unlock the boss, and an early loss only wipes a small pot), the
  * boss is worth fighting only while the pot is under `bossPotLimit`, and a
  * lineup is worth re-rolling when its expected pot is under what an average
- * re-roll banks (`TYPICAL_LINEUP_POINTS`).
+ * re-roll banks: the mean of the fresh lineups seen with this loadout
+ * (`lineupBenchmark`), or `TYPICAL_LINEUP_POINTS` until there are enough.
  * Win chances behind all three are the real record of each verdict band
  * (`winChance`). The model and its evidence are in docs/arena-combat-mechanics.md
  * and shared/arenaCombat.ts. The game's own "% CHANCE" badge is left alone;
@@ -118,6 +120,7 @@ const SURPRISE_SHOW_MS = 24 * 60 * 60_000;
 
 let profile: ArenaMyProfile | null = null;
 let trackRecord: ArenaTrackRecord | null = null;
+let lineupRecord: ArenaLineupPoints | null = null;
 /** The verdict each opponent's card showed at its latest paint, by name, so
  *  a fight's result can be scored against what the player saw before
  *  attacking. Never cleared on repaint: the game reloads the page right
@@ -360,6 +363,22 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 }
 
+/** Counts a fresh lineup towards the Refresh benchmark (once per lineup). */
+function noteLineup(maxHp: number, key: string, points: number): void {
+  const next = recordLineup(lineupRecord, { maxHp, key, points, at: Date.now() });
+  if (next === lineupRecord) return;
+  lineupRecord = next;
+  storage.setArenaLineupPoints(next).catch((err) => console.error(LOG_PREFIX, 'arena lineup save failed', err));
+}
+
+/** Identifies a lineup across repaints and tabs. */
+function lineupKey(cards: CardOnPage[]): string {
+  return cards
+    .map(({ card: c, bounty }) => [c.name, c.level, c.strength, c.defence, c.agility, c.dexterity, bounty].join('|'))
+    .sort()
+    .join('#');
+}
+
 function paint(): void {
   paintQueued = false;
   const root = document.querySelector<HTMLElement>('.ar-opps');
@@ -420,6 +439,19 @@ function paint(): void {
     );
   }
 
+  // Fresh lineups (four regulars, none fought, every bounty readable) feed
+  // the Refresh benchmark, but only with this loadout's measured numbers.
+  const lockedHp = readLockedMaxHp();
+  const stale = lockedHp !== null && lockedHp !== profile.maxHp;
+  const noneFoughtYet = regulars.length > 0 && regulars.every((c) => c.live);
+  const fresh = noneFoughtYet && scored.length === 4 && regulars.every((c) => c.bounty !== null);
+  const freshKey = fresh ? lineupKey(regulars) : null;
+  if (freshKey && profile.source === 'fights' && !stale) noteLineup(profile.maxHp, freshKey, expectedPot(ordered));
+  const bench = lineupBenchmark(lineupRecord, profile.maxHp, freshKey);
+  const benchNote = bench.measured
+    ? `the average of the last ${bench.measured} fresh lineups you've seen with this gear`
+    : 'an average from past seasons, until a few more fresh lineups with this gear have been seen';
+
   let bossIsSkip = false;
   if (boss && bossVerdict) {
     const fam = boss.familyLabel ? `${escapeHtml(boss.familyLabel)}, ` : '';
@@ -441,7 +473,7 @@ function paint(): void {
       bossIsSkip = pot > limit;
     } else {
       what = `${word} (${chance}) — fight it only if your pot is under <b>~${fmt(limit)}</b> when you get there; above that, <span class="ff-arv-warn">bank and skip it</span>.`;
-      bossIsSkip = limit < TYPICAL_LINEUP_POINTS;
+      bossIsSkip = limit < bench.points;
     }
     lines.push(
       `<div class="ff-arv-line"><span class="ff-arv-label">Boss</span><span class="ff-arv-text">${escapeHtml(boss.card.name)} (${fam}STR ${fmt(boss.card.strength)}, your break-even ~${fmt(bossVerdict.maxStrength)}): ${what}</span></div>`,
@@ -451,23 +483,22 @@ function paint(): void {
   // Refresh: worth it when this lineup's expected pot is under what an
   // average re-roll banks. Refresh only replaces the four regulars (never
   // the boss) and locks after the first attack.
-  const noneFoughtYet = regulars.length > 0 && regulars.every((c) => c.live);
   const refresh = noneFoughtYet && scored.length > 0 ? refreshOffer() : null;
   if (refresh) {
     const lineup = expectedPot(ordered);
     const costNote = refresh.free ? 'The free Refresh' : `Refresh (${escapeHtml(refresh.cost) || 'paid'})`;
     const bossNote = bossIsSkip ? ' The boss is a likely skip, so these four are most of the page.' : '';
     const bigKeeper = ordered.find((f) => f.bounty >= 100 && f.p >= 0.75);
-    if (lineup < TYPICAL_LINEUP_POINTS) {
+    if (lineup < bench.points) {
       lines.push(
-        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${TYPICAL_LINEUP_POINTS}.${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.</span></div>`,
+        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${fmt(bench.points)} (${benchNote}).${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.</span></div>`,
       );
     } else {
       const why = bigKeeper
         ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v)}, and `
         : '';
       lines.push(
-        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, more than the ~${TYPICAL_LINEUP_POINTS} an average re-roll banks.</span></div>`,
+        `<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).</span></div>`,
       );
     }
   }
@@ -481,8 +512,6 @@ function paint(): void {
     );
   }
 
-  const lockedHp = readLockedMaxHp();
-  const stale = lockedHp !== null && lockedHp !== profile.maxHp;
   const source =
     profile.source === 'fights'
       ? `measured from ${profile.fightCount} fight${profile.fightCount === 1 ? '' : 's'}`
@@ -549,10 +578,11 @@ export function initArenaFightAdvisor(): void {
   injectStyleOnce(STYLE_ID, CSS);
   injectDetailStyles();
   wireDetailEvents();
-  Promise.all([storage.getArenaMyProfile(), storage.getArenaTrackRecord()])
-    .then(([p, r]) => {
+  Promise.all([storage.getArenaMyProfile(), storage.getArenaTrackRecord(), storage.getArenaLineupPoints()])
+    .then(([p, r, l]) => {
       profile = p;
       trackRecord = r;
+      lineupRecord = l;
       schedulePaint();
     })
     .catch((err) => console.error(LOG_PREFIX, 'arena advisor storage read failed', err));
@@ -565,6 +595,10 @@ export function initArenaFightAdvisor(): void {
     if (area !== 'local') return;
     if (STORAGE_KEYS.ARENA_MY_PROFILE in changes) {
       profile = (changes[STORAGE_KEYS.ARENA_MY_PROFILE].newValue as ArenaMyProfile | undefined) ?? null;
+      schedulePaint();
+    }
+    if (STORAGE_KEYS.ARENA_LINEUP_POINTS in changes) {
+      lineupRecord = (changes[STORAGE_KEYS.ARENA_LINEUP_POINTS].newValue as ArenaLineupPoints | undefined) ?? null;
       schedulePaint();
     }
     if (STORAGE_KEYS.ARENA_TRACK_RECORD in changes) {

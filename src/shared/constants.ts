@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   ARENA_WATCH_STATUS: 'ff_arena_watch_status',
   ARENA_MY_PROFILE: 'ff_arena_my_profile',
   ARENA_TRACK_RECORD: 'ff_arena_track_record',
+  ARENA_LINEUP_POINTS: 'ff_arena_lineup_points',
   QUICK_SELL_PRICE_BOOK: 'ff_quick_sell_price_book',
   INVENTORY_AUTO_SELL_CRITERIA: 'ff_inventory_auto_sell_criteria',
   FURY_CATCHER_CONFIG: 'ff_fury_catcher_config',
