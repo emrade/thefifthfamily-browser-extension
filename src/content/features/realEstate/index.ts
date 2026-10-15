@@ -220,12 +220,21 @@ const STYLE = `
 .ff-re-plan-sub { font-size: 10px; color: #a1a1aa; }
 
 .ff-re-fill {
-  display: flex; justify-content: space-between; gap: 6px;
-  margin: 8px 0 12px; padding: 6px 12px; border-radius: 8px;
+  margin: 8px 0 12px; padding: 7px 12px; border-radius: 8px;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 11.5px; font-weight: 800; line-height: 1.4;
 }
-.ff-re-fill small { font-weight: 600; opacity: 0.8; }
+.ff-re-fill-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ff-re-fill-head { display: flex; align-items: baseline; gap: 6px; }
+.ff-re-fill-info {
+  flex: none; width: 15px; height: 15px; border-radius: 50%; border: 1px solid currentColor;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 800; font-style: italic; font-family: Georgia, serif; line-height: 1;
+  opacity: 0.75; cursor: pointer; user-select: none; position: relative; top: 2px;
+}
+.ff-re-fill-info:hover { opacity: 1; }
+.ff-re-fill-sub { margin-top: 2px; padding-left: 21px; font-size: 10px; font-weight: 600; opacity: 0.85; }
+.ff-re-fill-why { margin-top: 6px; padding: 6px 0 0 21px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 10px; font-weight: 500; line-height: 1.5; color: #d4d4d8; }
 .ff-re-fill[data-ff-fill="ok"] { background: rgba(52,211,153,0.1); color: #6ee7b7; }
 .ff-re-fill[data-ff-fill="soon"] { background: rgba(251,191,36,0.16); color: #fbbf24; border: 1px solid rgba(251,191,36,0.4); }
 .ff-re-fill[data-ff-fill="full"] { background: rgba(239,68,68,0.16); color: #f87171; border: 1px solid rgba(239,68,68,0.45); }
@@ -519,6 +528,11 @@ const MEANINGFUL_SHARE = 0.02;
  *  can be up to an hour out either way. */
 const vaultSeen = new Map<string, { vault: number; at: number }>();
 
+/** The ⓘ explanation under the badge, toggled by tapping it (hover titles
+ *  don't work on a phone). */
+let fillWhyOpen = false;
+const fillLastHtml = new WeakMap<HTMLElement, string>();
+
 function formatLeft(ms: number): string {
   const mins = Math.max(1, Math.round(ms / 60_000));
   const h = Math.floor(mins / 60);
@@ -554,29 +568,52 @@ function renderFillBadge(): void {
 
   const full = big.filter((p) => p.left <= 0);
   let state: 'ok' | 'soon' | 'full';
-  let html: string;
+  let head: string;
+  let sub: string;
   if (full.length) {
     state = 'full';
     const losing = props.filter((p) => p.left <= 0).reduce((sum, p) => sum + p.hourly, 0);
-    const more = full.length > 1 ? ` and ${full.length - 1} more` : '';
-    html = `<span>${escapeHtml(full[0].title)}${more} full</span><small>losing ${formatMoney(losing)}/h</small>`;
+    const who = full.length > 1 ? `${escapeHtml(full[0].title)} + ${full.length - 1} more are` : `${escapeHtml(full[0].title)} is`;
+    head = 'Collect All now';
+    sub = `${who} full, losing ${formatMoney(losing)}/h`;
   } else {
     const next = big[0];
     state = next.left <= FILL_WARN_HOURS * 3_600_000 ? 'soon' : 'ok';
     const at = new Date(now + next.left).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    html = `<span>${escapeHtml(next.title)} fills first, in ~${formatLeft(next.left)}</span><small>at ${at}</small>`;
+    head = `Collect All within ${formatLeft(next.left)} <small style="font-weight:600;opacity:0.8">(by ${at})</small>`;
+    sub = `Then ${escapeHtml(next.title)}'s vault is full and starts losing ${formatMoney(next.hourly)}/h`;
   }
+  const why = fillWhyOpen
+    ? `<div class="ff-re-fill-why">Collect All empties every vault at once, so this counts down to the first one that fills, since from then on money is lost. It ignores properties earning under ${MEANINGFUL_SHARE * 100}% of your income (like the Dive Bar), whose overflow is too small to matter.</div>`
+    : '';
+  const html = `
+    <div class="ff-re-fill-top">
+      <span class="ff-re-fill-head"><span class="ff-re-fill-info" title="What is this?">i</span><span>${head}</span></span>
+    </div>
+    <div class="ff-re-fill-sub">${sub}</div>
+    ${why}`.trim();
 
   if (!badge) {
     const anchor = document.querySelector('.rev2-collect-all') ?? document.querySelector('.rev2-grid');
     if (!anchor) return;
     badge = document.createElement('div');
     badge.className = 'ff-re-fill';
+    badge.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('.ff-re-fill-info')) return;
+      fillWhyOpen = !fillWhyOpen;
+      renderFillBadge();
+    });
     if (anchor.classList.contains('rev2-collect-all')) anchor.after(badge);
     else anchor.before(badge);
   }
   if (badge.dataset.ffFill !== state) badge.dataset.ffFill = state;
-  if (badge.innerHTML !== html) badge.innerHTML = html;
+  // Compared with what was last written, not innerHTML: the browser
+  // re-serializes it (escaped names, quotes), and a rewrite on every pass
+  // would retrigger the page observer that calls this.
+  if (fillLastHtml.get(badge) !== html) {
+    fillLastHtml.set(badge, html);
+    badge.innerHTML = html;
+  }
 }
 
 /** For the Auto-Collect interval hint: the first vault worth caring about to
