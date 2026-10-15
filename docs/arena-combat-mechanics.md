@@ -99,8 +99,10 @@ So the best source is the combat logs of your fights after lock-in:
 
 ## How a fight works
 
-Each round, either side may get a **first strike** (a "snap shot" at about
-half base damage; chance based on AGI). Then you hit, then they hit. Fights
+Each round, either side may get a **first strike** (a "snap shot": chance
+based on AGI; no dodge, block or crit roll; against a boss its reduction
+is 0.6 × the boss's DEF, and below that it deals the full minimum damage,
+not half). Then you hit, then they hit. Fights
 always go to the death: 2–35 rounds observed, and the loser is always at
 0 HP.
 
@@ -109,24 +111,31 @@ always go to the death: 2–35 rounds observed, and the loser is always at
 1. **Base damage** is rolled around the attacker's mean (about 0.86–1.17×).
    A miss logs base damage 0, so leave misses out of any average (including
    them drags it down about 5%).
-2. **If base > the defender's reduction:** damage ≈ `base − reduction`.
-3. **Otherwise** damage is a random **minimum damage** drawn from 5 steps
-   scaled to the attacker's mean base. Measured mean: **8.5%** of base for
-   you, **9.1%** for opponents. For you right now the steps are
-   21 / 28 / 35 / 42 / 49 (always 3:4:5:6:7 of one unit).
-   **Each step is capped at 75**: in 15,340 logged minimum-damage hits
-   (2026-09-09 → 10-15), 820 had a top step above 75 and none logged more.
-   The cap starts to bite once base passes ~600 and takes every step past
-   ~1,140. Before the 850-HP loadout (base ~807, Oct 13) it almost never
-   came up; with it, about 2 in 5 of your minimum-damage hits are clipped,
-   so extra STR barely helps against anyone whose DEF is above your base.
-   Ignoring the cap rated three regular losses Beatable (Elizium,
-   Sovereign, Bars: 1.27–1.31; capped 1.18–1.20).
-   `verify_combat_rule.py` section 10 reports every damage term's largest
-   logged value, so the next cap shows up as soon as the data reaches it.
-4. **Dodge** → 0. **Block** → × **0.2**. **Crit** → × 1.3–1.5 (usually 1.35).
-   Each happens when its roll is below the stated chance (dodge 99.6%,
-   block 99.4%, crit 98.5% of logged hits).
+2. **Damage is the larger of `base − reduction` and a random minimum
+   damage** (step 3). So the floor still applies just above the armour
+   crossover: base 267 against reduction 235 dealt 35, not 32.
+3. **Minimum damage** is one of 5 steps scaled to the attacker's mean
+   base. Measured mean: **8.5%** of base for you, **9.1%** for opponents.
+   For you on Sep 24 the steps were 21 / 28 / 35 / 42 / 49 (always 3:4:5:6:7
+   of one unit). **Each hit is the lower of its step and a ceiling rolled
+   from 45 to 75** (*corrected 2026-10-15*; that morning's version capped
+   every step at a fixed 75). Every logged `min_dmg` fits, and none is over
+   75. With your 850-HP loadout (steps 42/56/70/84/98) the logged values
+   cover every number from 45 to 75 and average ~55, where a fixed cap
+   would give only 42/56/70/75 and average ~64. The ceiling starts to bite
+   once base passes ~370 and makes 60 the most a minimum-damage hit can
+   average, so extra STR barely helps against anyone whose DEF is above
+   your base. Ignoring it rated three regular losses Beatable (Elizium,
+   Sovereign, Bars: 1.27–1.31; with it 1.11–1.13). Found by the
+   [2026-10-15 investigation](arena-combat-investigation-2026-10-15.md).
+   `verify_combat_rule.py` section 10 compares the logged mean with each
+   model, and reports every damage term's largest logged value.
+4. **Dodge** → 0. **Block** → × **0.2**. **Crit** → × 1.3–2.55. Checked in
+   that order, each on its own roll, and each happens when the roll is **at
+   or below** the stated chance; a block means no crit roll. This matches
+   all 22,278 logged hits (roll < chance: 21,969). Crits used to be ~1.35;
+   with the 850-HP loadout they average ~2.1 and vary by opponent (more
+   against lower DEX). See the investigation for the fit.
 
 **95% of all hits (5,134 of 5,404) fall in case 3.** Reduction is
 usually far above base damage, so most fights are minimum-damage against
@@ -314,6 +323,10 @@ them. By kill-race score:
 | 1.1–1.3 | 23/27 (all four non–Iron River losses: 1.13–1.22) |
 | < 0.8 (all Iron River) | 2/5 |
 
+*2026-10-15, 103 bosses, rolled ceiling, each scored with only earlier
+fights:* 1.3+ won **59/60** (the loss: Rachel Kim, 1.33, Oct 10), 0.8–1.3
+won 39/45, < 0.8 won 1/3. Priya Nair's Oct 15 loss scores 1.28.
+
 So the boss "Beatable" line is now **1.3** (regular stays 1.2), and whether
 to fight a boss depends on the pot riding on it — see below.
 
@@ -405,9 +418,11 @@ Banked pots are the season score, so this is what actually decides ranking.
   105/140 is Beatable. Backtested on the account owner's 48 real refreshes:
   where this rule says re-roll (46), the re-roll raised the expected pot by
   **+46** on average; where it says keep (2), re-rolling lost 16.
-- **Win chances used** (real record per verdict band, all 387 fights):
-  regular Beatable 176/176, Avoid 3/57; coin-flip 0.8–1.0: quoted ≥ 50%
-  12/17, under 7/33; 1.0–1.2: 25/33 vs 7/15. Bosses as in the table above.
+- **Win chances used** (real record per verdict band, 685 fights to
+  2026-10-15, each scored with only the fights before it): regular
+  Beatable 315/315, Avoid 3/76; coin-flip 0.8–1.0: quoted ≥ 50% 19/26,
+  under 15/63; 1.0–1.2: 48/68 vs 16/29. Bosses: 1.3+ 59/60, 0.8–1.3
+  39/45, under 0.8 kept at 2 in 5 (only 3 fights).
 
 ### Why opponents got harder (Oct 1 season)
 

@@ -58,11 +58,27 @@ on 10-05 fitted the mean minimum damage but never looked for a maximum; only
 80 of 9,784 minimum-damage hits before then could have reached the cap.
 Section 10 now reports every term's ceiling. Run that day: 684 fights;
 regular score >= 1.2 won 320/320 (uncapped: 321/324), boss >= 1.3 won 58/60.
+
+2026-10-15, later (after docs/arena-combat-investigation-2026-10-15.md):
+  - The cap is a ceiling rolled from 45 to 75 per hit, not a fixed 75: same
+    maximum, but at base 700+ the logged mean is ~55 where a fixed cap gives
+    ~64. Section 10 now compares the two.
+  - Each fight is scored with the player medians of the fights *before* it
+    (every attack folds in, matched to a card or not, restarting at a new max
+    HP), as the advisor does; the old season-wide medians used later fights.
+    A season's first fight has nothing earlier and is left out.
+  - Card names are HTML-decoded: bosses with an apostrophe in their name never
+    matched their card, and 7 fights were dropped.
+  - Dice: dodge, then block, then crit, each roll <= chance (all 22,278 hits).
+  - Section 11: card HP (CP minus the four stats) against actual HP.
+Run that day: 691 fights, 685 scored; regular >= 1.2 won 315/315, boss >= 1.3
+won 59/60.
 """
 
 import argparse
 import collections
 import gzip
+from html import unescape
 import json
 import sys
 import math
@@ -76,14 +92,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from archive_paths import find_archives as find_default_archives  # noqa: E402
 
 FLOOR_FRACTION = 0.088  # min-damage mean / attacker mean base: measured 8.5% (you) and 9.1% (opponents); 8.8% shared fits results best
-MIN_DAMAGE_CAP = 75  # no minimum-damage hit has ever logged more (section 10)
+# Each minimum-damage hit is min(step, a ceiling rolled from 45 to 75); see section 10.
+MIN_DAMAGE_CEILINGS = range(45, 76)
+MIN_DAMAGE_CAP = MIN_DAMAGE_CEILINGS[-1]  # no minimum-damage hit has ever logged more
 # The five minimum-damage steps are 3:4:5:6:7 of a common unit (21/28/35/42/49).
 MIN_DAMAGE_STEPS = [FLOOR_FRACTION * n / 5 for n in (3, 4, 5, 6, 7)]
 
 
-def min_damage(base):
-    """Expected minimum-damage hit: the five steps' mean, each capped."""
-    return sum(min(MIN_DAMAGE_CAP, s * base) for s in MIN_DAMAGE_STEPS) / len(MIN_DAMAGE_STEPS)
+def under_ceiling(x):
+    return sum(min(x, c) for c in MIN_DAMAGE_CEILINGS) / len(MIN_DAMAGE_CEILINGS)
+
+
+def min_damage(base, ceiling=under_ceiling):
+    """Expected minimum-damage hit: the five steps' mean, each under the rolled ceiling."""
+    return sum(ceiling(s * base) for s in MIN_DAMAGE_STEPS) / len(MIN_DAMAGE_STEPS)
+
+
+def fixed_cap(x):
+    """The 2026-10-15 morning model, kept for comparison in section 10."""
+    return min(x, MIN_DAMAGE_CAP)
 
 
 
@@ -127,6 +154,9 @@ def parse_cards(html):
         c = m.group(1)
         g = lambda p: (re.search(p, c, re.S) or [None, None])[1]
         name = g(r'ar-opp-name">([^<]*)<')
+        # The page escapes names ("Nico &#039;Iron Claw&#039;"); the attack
+        # response doesn't. Undecoded, those bosses never matched their card.
+        name = unescape(name) if name else name
         stats = [g(p) for p in (r"STR ([\d,]+)", r"DEF ([\d,]+)", r"AGI ([\d,]+)", r"DEX ([\d,]+)")]
         if not name or not all(stats):
             continue
@@ -158,8 +188,32 @@ def mean_pos(xs):
     return statistics.mean(xs) if xs else None
 
 
+PROFILE_MAX_SAMPLES = 250  # ARENA_PROFILE_MAX_SAMPLES in src/shared/arenaCombat.ts
+
+
+class Profile:
+    """The player's numbers as the advisor holds them (`foldFight`): the
+    medians of every earlier fight at the same locked max HP, restarting
+    whenever max HP changes. Every attack folds in, matched to a card or not."""
+
+    def __init__(self):
+        self.hp, self.base, self.red = None, [], []
+
+    def current(self):
+        if not self.base:
+            return None
+        return {"hp": self.hp, "base": statistics.median(self.base), "red": statistics.median(self.red)}
+
+    def fold(self, hp, base, red):
+        if hp != self.hp:
+            self.hp, self.base, self.red = hp, [], []
+        self.base = (self.base + [base])[-PROFILE_MAX_SAMPLES:]
+        self.red = (self.red + [red])[-PROFILE_MAX_SAMPLES:]
+
+
 def build_fights(rows):
     quotes, boss_quote, cards, fights, hits = {}, None, {}, [], []
+    profile = Profile()
     for row in rows:
         req = row.get("requestBody") or ""
         b = body(row)
@@ -179,6 +233,18 @@ def build_fights(rows):
             oid = re.search(r"opponent_id=(\d+)", req).group(1)
             is_boss = oid == "0"
             card = cards.get(b["defender"])
+            rounds = b.get("rounds") or []
+            atk = [x["attacker"] for x in rounds if isinstance(x.get("attacker"), dict) and "base_dmg" in x["attacker"]]
+            dfd = [x["defender"] for x in rounds if isinstance(x.get("defender"), dict) and "base_dmg" in x["defender"]]
+            # Scored with what was known before this fight, then folded in.
+            my = profile.current() if profile.hp == b["att_max_hp"] else None
+            # Misses log base_dmg 0; including them drags the mean down ~5%.
+            my_base = mean_pos([h["base_dmg"] for h in atk])
+            # Per fight, the upper middle, as `sampleFromAttack` takes it.
+            reds = [h["reduction"] for h in dfd if h.get("reduction")]
+            my_red = statistics.median_high(reds) if reds else None
+            if my_base and my_red:
+                profile.fold(b["att_max_hp"], my_base, my_red)
             if is_boss:
                 # The boss's own card first: `boss_quote` is whichever boss the
                 # last *captured* page open offered, stale when a page open
@@ -211,9 +277,6 @@ def build_fights(rows):
                      "bounty": card["bounty"] if card["bounty"] is not None else qq.get("bounty"),
                      "threat_ratio": qq.get("threat_ratio") if same else None,
                      "multiplier": qq.get("multiplier") if same else None}
-            rounds = b.get("rounds") or []
-            atk = [x["attacker"] for x in rounds if isinstance(x.get("attacker"), dict) and "base_dmg" in x["attacker"]]
-            dfd = [x["defender"] for x in rounds if isinstance(x.get("defender"), dict) and "base_dmg" in x["defender"]]
             nz = lambda L, k: statistics.median([h[k] for h in L if h.get(k)]) if any(h.get(k) for h in L) else None
             for side, L in (("attacker", atk), ("defender", dfd)):
                 hits.extend(dict(h, side=side) for h in L)
@@ -223,11 +286,9 @@ def build_fights(rows):
                 "bounty": q.get("bounty"), "threat": q.get("threat_ratio"), "mult": q.get("multiplier"),
                 "pts": b.get("points_earned"),
                 "stats": stats, "passive": passive, "lvl": b["def_level"],
-                "my_hp": b["att_max_hp"], "op_hp": b["def_max_hp"],
-                # Misses log base_dmg 0; including them drags the mean down ~5%.
-                "my_base": mean_pos([h["base_dmg"] for h in atk]),
-                "op_base": mean_pos([h["base_dmg"] for h in dfd]),
-                "my_red": nz(dfd, "reduction"), "op_red": nz(atk, "reduction"),
+                "my_hp": b["att_max_hp"], "op_hp": b["def_max_hp"], "my": my,
+                "my_base": my_base, "op_base": mean_pos([h["base_dmg"] for h in dfd]),
+                "my_red": my_red, "op_red": nz(atk, "reduction"),
             })
     return fights, hits
 
@@ -290,10 +351,18 @@ def main():
         print(f"   {label:7} max HP    = {a:7.1f} + {b_:.3f}*level r={r:.3f} resid sd={res:.1f}")
 
     print("\n== 4. Dice ==")
-    for name, act, ck, rk in (("dodge", "miss", "dodge_chance", "dodge_roll"), ("crit", "critical", "crit_chance", "crit_roll"), ("block", "blocked", "block_chance", "block_roll")):
-        g = [h for h in hits if rk in h]
-        ok = sum((h[rk] < h[ck]) == (h["action"] == act) for h in g)
-        print(f"   {name:5}: roll<chance matches outcome in {ok}/{len(g)} ({ok / len(g):.1%})")
+    def outcome(h, hit_if):
+        if hit_if(h["dodge_roll"], h["dodge_chance"]):
+            return "miss"
+        if hit_if(h["block_roll"], h["block_chance"]):
+            return "blocked"
+        if hit_if(h["crit_roll"], h["crit_chance"]):
+            return "critical"
+        return "hit"
+    rolled = [h for h in hits if all(k in h for k in ("dodge_roll", "block_roll", "crit_roll"))]
+    for label, hit_if in (("roll <= chance", lambda r, c: r <= c), ("roll < chance", lambda r, c: r < c)):
+        ok = sum(outcome(h, hit_if) == h["action"] for h in rolled)
+        print(f"   dodge, then block, then crit, each {label}: matches {ok}/{len(rolled)}")
     bm = collections.Counter(h.get("block_mult") for h in hits if h["action"] == "blocked")
     cm = collections.Counter(h.get("crit_mult") for h in hits if h["action"] == "critical")
     print(f"   block_mult: {dict(bm)}")
@@ -318,13 +387,18 @@ def main():
         boss_str = (m["hp"] * m["base"] / 625 - 9.85) / 0.4824
         print(f"   season with max HP {hp:.0f}: my base {m['base']:.0f}  reduction {m['red']:.0f}"
               f"  -> K ≈ {k_const:,.0f}, boss break-even STR ≈ {boss_str:,.0f}")
-    scored = [(score(f, my_by_season[f["my_hp"]]), f) for f in fights]
+    # Each fight is scored with the medians of the fights before it, as the
+    # advisor saw them; a season's first fight has none and is left out.
+    scored = [(score(f, f["my"]), f) for f in fights if f["my"]]
+    print(f"   scored {len(scored)}/{len(fights)} (the rest are a season's first fight, with no earlier numbers)")
     ok = sum((s >= 1) == f["won"] for s, f in scored)
-    q_ok = sum((f["wp"] >= 50) == f["won"] for f in fights if f["wp"] is not None)
-    print(f"   rule correct {ok}/{len(scored)}   vs quoted>=50 correct {q_ok}/{sum(f['wp'] is not None for f in fights)}")
-    r_ok = sum((s >= 1) == f["won"] for s, f in scored if not f["boss"])
-    rq_ok = sum((f["wp"] >= 50) == f["won"] for f in reg if f["wp"] is not None)
-    print(f"   regular only: rule correct {r_ok}/{len(reg)}   vs quoted>=50 correct {rq_ok}/{sum(f['wp'] is not None for f in reg)}")
+    q_n = sum(f["wp"] is not None for _, f in scored)
+    q_ok = sum((f["wp"] >= 50) == f["won"] for _, f in scored if f["wp"] is not None)
+    print(f"   rule correct {ok}/{len(scored)}   vs quoted>=50 correct {q_ok}/{q_n}")
+    sreg = [(s, f) for s, f in scored if not f["boss"]]
+    r_ok = sum((s >= 1) == f["won"] for s, f in sreg)
+    rq_ok = sum((f["wp"] >= 50) == f["won"] for _, f in sreg if f["wp"] is not None)
+    print(f"   regular only: rule correct {r_ok}/{len(sreg)}   vs quoted>=50 correct {rq_ok}/{sum(f['wp'] is not None for _, f in sreg)}")
     for lo, hi in ((0, 0.8), (0.8, 1.0), (1.0, 1.2), (1.2, 1e9)):
         g = [f for s, f in scored if lo <= s < hi]
         if g:
@@ -382,6 +456,7 @@ def main():
             print(f"   bounty {bnt:4}: won {rate(g)}")
 
     report_ceilings(hits)
+    report_card_hp(scored)
 
 
 def report_ceilings(hits):
@@ -393,6 +468,16 @@ def report_ceilings(hits):
     print(f"   min_dmg: largest the uncapped top step would give {max(top * h['base_dmg'] for h in floor_hits):.0f}")
     print(f"   floor hits whose top step passes the cap: {len(over)}/{len(floor_hits)}; "
           f"of those logged above the cap: {sum(h['min_dmg'] > MIN_DAMAGE_CAP for h in over)}")
+    # A fixed cap and a rolled ceiling share the same maximum; only the mean
+    # tells them apart, and only once base damage gets the top steps past 45.
+    for side in ("attacker", "defender"):
+        for lo, hi in ((0, 500), (500, 700), (700, 10 ** 6)):
+            g = [h for h in floor_hits if h["side"] == side and lo <= h["base_dmg"] < hi]
+            if g:
+                mean = lambda fn: statistics.mean(fn(h["base_dmg"]) for h in g)
+                print(f"   {side:8} base {lo}-{'' if hi > 10 ** 5 else hi}: n={len(g):5} logged min_dmg mean {statistics.mean(h['min_dmg'] for h in g):5.1f}"
+                      f"  rolled ceiling {mean(min_damage):5.1f}  fixed cap {mean(lambda b: min_damage(b, fixed_cap)):5.1f}"
+                      f"  no cap {mean(lambda b: min_damage(b, lambda x: x)):5.1f}")
     for side in ("attacker", "defender"):
         g = [h for h in floor_hits if h["side"] == side]
         if g:
@@ -407,6 +492,25 @@ def report_ceilings(hits):
         if v:
             top_vals = collections.Counter(x for x in v if x >= max(v) - 0.5)
             print(f"   {key}: {min(v)}-{max(v)}  (hits at the top: {sum(top_vals.values())})")
+
+
+def report_card_hp(scored):
+    """Combat Power minus the four stats is (nearly) the opponent's max HP.
+    Not used by the advisor yet: putting exact HP into the score as it stands
+    rates at least one lost fight Beatable, so this tracks it until a
+    re-calibrated score is proven on fights it was not fitted to."""
+    print("\n== 11. Card HP: Combat Power - (STR + DEF + AGI + DEX) ==")
+    g = [(s, f) for s, f in scored if not f["boss"] and f["cp"]]
+    if not g:
+        return
+    err = [f["op_hp"] - (f["cp"] - sum(f["stats"])) for _, f in g]
+    lvl = [f["op_hp"] - (7.19 * f["lvl"] - 49) for _, f in g]
+    print(f"   regular: exact {sum(e == 0 for e in err)}/{len(g)}; mean abs error {statistics.mean(abs(e) for e in err):.1f} HP"
+          f" vs {statistics.mean(abs(e) for e in lvl):.1f} for the level formula")
+    print(f"   actual HP above card HP (card underestimates): {sum(e > 0 for e in err)}")
+    for hp in sorted({f["my_hp"] for _, f in g}):
+        e = [x for x, (_, f) in zip(err, g) if f["my_hp"] == hp]
+        print(f"   your max HP {hp:.0f}: exact {sum(x == 0 for x in e)}/{len(e)}, mean abs error {statistics.mean(abs(x) for x in e):.1f}")
 
 
 if __name__ == "__main__":

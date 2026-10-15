@@ -53,6 +53,19 @@ up as soon as the data reaches it. Run that day: 684 fights; 820 of 15,340
 minimum-damage hits had a top step above 75 and none logged more; regular
 score ≥ 1.2 won 320/320 (uncapped 321/324), boss ≥ 1.3 won 58/60.
 
+Corrected later that day, after
+[an independent investigation](../../docs/arena-combat-investigation-2026-10-15.md):
+the cap is a ceiling rolled from 45 to 75 on each hit (same maximum, lower
+mean); each fight is now scored with only the fights before it, as the
+advisor sees them; HTML-escaped boss names no longer drop fights; the dice
+check uses the real order (dodge, block, crit; roll ≤ chance); and section 11
+tracks card HP (Combat Power minus the four stats), which the advisor doesn't
+use yet. Run: 691 fights, 685 scored; regular ≥ 1.2 won 315/315, boss ≥ 1.3
+won 59/60.
+
+`investigate_combat.py` and `investigate_mechanics.py` are that
+investigation's own scripts; see its report for how to run them.
+
 ```
 python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 ```

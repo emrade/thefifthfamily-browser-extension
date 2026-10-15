@@ -39,7 +39,7 @@ const MODAL_ID = 'ff-arv-modal';
 
 const VERDICT_ROWS = [
   { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+ (boss ${SCORE_BOSS_BEATABLE}+)` },
-  { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE}` },
+  { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE} (boss –${SCORE_BOSS_BEATABLE})` },
   { kind: 'avoid', label: 'Avoid', range: `under ${SCORE_AVOID}` },
 ] as const;
 
@@ -151,14 +151,14 @@ function notes(d: FightDetail): string[] {
   if (v.theyBreakThrough) out.push(`<b>Their hits get past your armour</b> (~${fmt(d.profile.reduction)}), so they deal real damage, not just the minimum.`);
   if (card.isBoss) {
     if (card.family === 'iron_river') out.push('<b>Iron River boss:</b> built on STR, the stat that decides fights. Most Iron River bosses have beaten you.');
-    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight, but bosses grow with your level: every boss scoring 1.3+ has been won, while 1.1–1.3 has lost about 1 in 7.`);
+    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight, but bosses grow with your level: bosses scoring 1.3+ have been won 59 times in 60, while 1.1–1.3 has lost about 1 in 9.`);
     out.push('<b>A boss loss forfeits your unbanked pot.</b> Skipping means banking first. The plan above says how big a pot is still worth risking.');
   }
   if (v.kind === 'coinflip') {
     out.push(
       v.leansWin
-        ? 'Leans win: ' + (card.isBoss ? 'bosses scoring 1.0+ have mostly been won.' : card.quotedPct !== null ? 'a quoted 50%+ in this band has won about 3 in 4.' : 'Passive opponents in this band have won most of the time.')
-        : 'Leans loss: ' + (card.isBoss ? 'bosses this close have beaten you.' : 'a quoted under 50% in this band has won only about 1 in 3.'),
+        ? 'Leans win: ' + (card.isBoss ? 'bosses scoring 1.0+ have mostly been won.' : card.quotedPct !== null ? `a quoted 50%+ at this score has won about ${Math.round(d.winChance * 100)}%.` : 'Passive opponents in this band have won most of the time.')
+        : 'Leans loss: ' + (card.isBoss ? 'bosses this close have beaten you.' : `a quoted under 50% at this score has won about ${Math.round(d.winChance * 100)}%.`),
     );
   }
   return out;

@@ -387,8 +387,9 @@ function paint(): void {
       const v = verdictFor(c.card, profile!);
       return { item: { c, v }, p: winChance(c.card, v), bounty: c.bounty ?? 0 };
     });
-  // Riskiest first.
-  const ordered = [...scored].sort((a, b) => a.item.v.score - b.item.v.score);
+  // Riskiest first: lowest win chance, then lowest score. Not score alone:
+  // a 0.95 quoted 50%+ (~73%) is safer than a 1.05 quoted under 50% (~55%).
+  const ordered = [...scored].sort((a, b) => a.p - b.p || a.item.v.score - b.item.v.score);
   const live = ordered.map((f) => f.item);
 
   for (const c of cards.filter((x) => !x.live)) c.el.querySelector(`.${BADGE_CLASS}`)?.remove();

@@ -8,9 +8,9 @@ import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './type
  * against every real fight in the archives by
  * verification/arena/verify_combat_rule.py (2026-10-05, 387 fights: regular
  * score ≥ 1.2 won 176/176, < 0.8 won 3/57; boss ≥ 1.3 won 24/24; re-run
- * 2026-10-15 with the minimum-damage cap, 684 fights: regular ≥ 1.2 won
- * 320/320, boss ≥ 1.3 won 58/60). Update the coefficients here and there
- * together.
+ * 2026-10-15 with the random minimum-damage ceiling, 685 fights each scored
+ * with only the fights before it: regular ≥ 1.2 won 315/315, boss ≥ 1.3 won
+ * 59/60). Update the coefficients here and there together.
  */
 
 /** Mean of the five "minimum damage" steps, as a fraction of the attacker's
@@ -20,14 +20,23 @@ import type { ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './type
  *  results best (only the ratio between the two sides matters). */
 export const FLOOR_FRACTION = 0.088;
 
-/** No minimum-damage hit has ever logged more than this (2026-09-09 →
- *  10-15, every hit in the archives). It only bites once base damage passes
- *  ~600 (the top step reaching 75), which almost nobody's did until the
- *  player's 850-HP loadout (base ~807, 2026-10-13): there about 2 in 5 of
- *  their minimum-damage hits would otherwise go over it. Uncapped, that
- *  season rated three regular losses Beatable (Elizium, Sovereign, Bars,
- *  1.27–1.31); capped they score 1.18–1.20. */
+/** Each minimum-damage hit is its step or a ceiling rolled between these
+ *  two (whole numbers, inclusive), whichever is lower. Every logged
+ *  `min_dmg` fits (15,435 hits, 2026-09-09 → 10-15); none is over 75. At the
+ *  player's 850-HP loadout (steps 42/56/70/84/98) the logged values cover
+ *  every number from 45 to 75 and average ~55, where a fixed cap at 75 would
+ *  give only 42/56/70/75 and average ~64. It only bites once base damage
+ *  passes ~370 (the top step reaching 45). */
+export const MIN_DAMAGE_CEILING_LOW = 45;
 export const MIN_DAMAGE_CAP = 75;
+
+/** Expected value of min(x, ceiling) over the rolled ceiling. */
+function underCeiling(x: number): number {
+  if (x <= MIN_DAMAGE_CEILING_LOW) return x;
+  let sum = 0;
+  for (let c = MIN_DAMAGE_CEILING_LOW; c <= MIN_DAMAGE_CAP; c++) sum += Math.min(x, c);
+  return sum / (MIN_DAMAGE_CAP - MIN_DAMAGE_CEILING_LOW + 1);
+}
 
 /** The five minimum-damage steps are 3:4:5:6:7 of a common unit (the
  *  player's were 21/28/35/42/49 at base ~431, then 24/33/41/49/58 at ~480),
@@ -35,15 +44,14 @@ export const MIN_DAMAGE_CAP = 75;
 const MIN_DAMAGE_STEPS = [3, 4, 5, 6, 7].map((n) => (FLOOR_FRACTION * n) / 5);
 
 /** Expected minimum-damage hit for a mean base damage: the five steps'
- *  mean, each capped at `MIN_DAMAGE_CAP`. */
+ *  mean, each under the rolled ceiling. Tops out at 60 (the ceiling's mean). */
 export function minDamage(base: number): number {
-  return MIN_DAMAGE_STEPS.reduce((sum, step) => sum + Math.min(MIN_DAMAGE_CAP, step * base), 0) / MIN_DAMAGE_STEPS.length;
+  return MIN_DAMAGE_STEPS.reduce((sum, step) => sum + underCeiling(step * base), 0) / MIN_DAMAGE_STEPS.length;
 }
 
 /** Lowest base damage whose expected minimum-damage hit reaches `hit`;
- *  Infinity when the cap puts it out of reach. */
+ *  Infinity when the ceiling puts it out of reach. */
 function baseForMinDamage(hit: number): number {
-  if (hit > MIN_DAMAGE_CAP) return Infinity;
   let lo = 0;
   let hi = MIN_DAMAGE_CAP / MIN_DAMAGE_STEPS[0];
   if (minDamage(hi) < hit) return Infinity;
@@ -55,33 +63,37 @@ function baseForMinDamage(hit: number): number {
   return hi;
 }
 
-/** Score bands. ≥ BEATABLE has won every time so far; < AVOID almost never. */
+/** Score bands. ≥ BEATABLE has won every time so far; < AVOID almost never.
+ *  Re-checked 2026-10-15 with the random ceiling: regular ≥ 1.2 won 315/315,
+ *  and the 850-HP loadout's three regular losses score 1.11–1.13. */
 export const SCORE_BEATABLE = 1.2;
 export const SCORE_AVOID = 0.8;
 /** Bosses need a higher score to be safe. Re-checked 2026-10-05 on 57 boss
  *  fights: every boss scoring 1.3+ was won (24/24), but 1.1–1.3 went 23/27 —
  *  all four non–Iron River boss losses (Kito-gumi STR 821/871, Volkskaya
- *  857/885) scored 1.13–1.22, as boss HP grew with level (645 at level 110). */
+ *  857/885) scored 1.13–1.22, as boss HP grew with level (645 at level 110).
+ *  2026-10-15, 103 bosses: 1.3+ won 59/60 (the loss: Rachel Kim, 1.33,
+ *  10-10); Priya Nair's 10-15 loss now scores 1.28, a coin-flip. */
 export const SCORE_BOSS_BEATABLE = 1.3;
 
 /**
- * Real win rate per verdict band, from all 388 archived Arena V2 fights
- * (2026-09-09 → 10-04; verification/arena/verify_combat_rule.py, section 8,
- * which scores with the same season medians the advisor uses).
- * Used to turn verdicts into an expected pot, not shown as a precise %.
+ * Real win rate per verdict band, from 685 archived Arena V2 fights
+ * (2026-09-09 → 10-15; verification/arena/verify_combat_rule.py, section 8,
+ * which scores each fight with only the fights before it, as the advisor
+ * does). Used to turn verdicts into an expected pot, not shown as a precise %.
  */
 const WIN_CHANCE = {
   regular: {
-    beatable: 0.99, // 176/176
-    avoid: 0.05, // 3/57
+    beatable: 0.99, // 315/315
+    avoid: 0.04, // 3/76
     // Lean = quoted ≥ 50% (see COINFLIP_LEAN_QUOTED_PCT).
-    coinflipLow: { leanWin: 0.71, leanLoss: 0.21 }, // score 0.8–1.0: 12/17, 7/33
-    coinflipHigh: { leanWin: 0.76, leanLoss: 0.47 }, // score 1.0–1.2: 25/33, 7/15
+    coinflipLow: { leanWin: 0.73, leanLoss: 0.24 }, // score 0.8–1.0: 19/26, 15/63
+    coinflipHigh: { leanWin: 0.71, leanLoss: 0.55 }, // score 1.0–1.2: 48/68, 16/29
   },
   boss: {
-    beatable: 0.98, // score ≥ 1.3: 24/24
-    coinflip: 0.85, // score 1.1–1.3: 23/27 (no boss has scored 0.8–1.1 yet)
-    avoid: 0.4, // score < 0.8, all Iron River: 2/5
+    beatable: 0.98, // score ≥ 1.3: 59/60
+    coinflip: 0.87, // score 0.8–1.3: 39/45
+    avoid: 0.4, // score < 0.8: 1/3 (2/5 before the ceiling fix); too few to refit
   },
 } as const;
 
@@ -133,10 +145,10 @@ export interface ArenaVerdict {
   /** Highest STR at this card's level/DEF that still scores 1.0. */
   maxStrength: number;
   opponentHp: number;
-  /** True when the player's base damage gets past this card's DEF, i.e.
-   *  real damage instead of the minimum-damage floor. */
+  /** True when the player's base damage gets far enough past this card's
+   *  DEF to beat the minimum-damage floor, i.e. `myHit` is real damage. */
   breaksThrough: boolean;
-  /** True when their base damage gets past the player's armour. */
+  /** The same for their hits against the player's armour. */
   theyBreakThrough: boolean;
   /** Expected damage per landed hit, each way. */
   myHit: number;
@@ -200,8 +212,8 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
     leansWin,
     maxStrength: Math.max(0, Math.round(strengthForBase(breakEvenBase, card.isBoss))),
     opponentHp: Math.round(hp),
-    breaksThrough: me.baseDamage > card.defence,
-    theyBreakThrough: base > me.reduction,
+    breaksThrough: me.baseDamage - card.defence > minDamage(me.baseDamage),
+    theyBreakThrough: base - me.reduction > minDamage(base),
     myHit: mine,
     theirHit,
     hitsToKillThem: hp / mine,
