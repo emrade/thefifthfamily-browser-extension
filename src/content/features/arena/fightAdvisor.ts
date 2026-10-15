@@ -9,6 +9,8 @@ import {
   expectedPot,
   foldFight,
   leanText,
+  LIKELY_AT,
+  verdictWord,
   lineupBenchmark,
   recordLineup,
   rerollOutlook,
@@ -291,14 +293,12 @@ function readLockedMaxHp(): number | null {
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
-function verdictWord(v: ArenaVerdict): string {
-  return v.kind === 'beatable' ? 'Beatable' : v.kind === 'avoid' ? 'Avoid' : 'Coin-flip';
-}
-
 /** Short right-hand detail on a card's strip. */
 function verdictDetail(v: ArenaVerdict, p: number): string {
   const score = v.score > 3 ? 'score 3+' : `score ${v.score.toFixed(2)}`;
-  return v.kind === 'coinflip' ? `${leanText(p)} · ${score}` : score;
+  if (v.edgeRisk) return `may hit through · ${score}`;
+  // "Likely" already says which way it leans.
+  return v.kind === 'coinflip' && p < LIKELY_AT ? `${leanText(p)} · ${score}` : score;
 }
 
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
@@ -307,7 +307,7 @@ function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void 
   const p = winChance(c.card, v);
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
-    `<span class="ff-arv-verdict">${verdictWord(v)}</span>` +
+    `<span class="ff-arv-verdict">${verdictWord(v, p)}</span>` +
     `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v, p)}</span>`;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
   shownVerdicts.set(c.card.name, v);
@@ -457,8 +457,8 @@ function paint(): void {
   let bossIsSkip = false;
   if (boss && bossVerdict) {
     const fam = boss.familyLabel ? `${escapeHtml(boss.familyLabel)}, ` : '';
-    const word = `<span class="ff-arv-word ff-arv-${bossVerdict.kind}">${verdictWord(bossVerdict)}</span>`;
     const p = winChance(boss.card, bossVerdict);
+    const word = `<span class="ff-arv-word ff-arv-${bossVerdict.kind}">${verdictWord(bossVerdict, p)}</span>`;
     const bounty = boss.bounty ?? FALLBACK_BOSS_BOUNTY;
     const limit = bossPotLimit(p, bounty);
     // The biggest pot this page could reach before the boss.
@@ -511,7 +511,7 @@ function paint(): void {
       text = `Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${fmt(bench.points)}, ${signed} (${benchNote}).${chase}${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.`;
     } else {
       const why = bigKeeper
-        ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v)}, and `
+        ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v, bigKeeper.p)}, and `
         : '';
       text = `Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).${chase}`;
     }

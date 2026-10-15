@@ -25,6 +25,9 @@ Reports, in order:
      damage, crit and block multipliers, dodge / crit / block chances), next
      to what the formula alone would give. A cap or limit shows up here as
      soon as the data reaches it, rather than after it starts costing fights.
+ 12. The damage-estimate edge: fights where the opponent's hits would get
+     past the player's armour at BOSS_DAMAGE_MARGIN more damage than their
+     STR implies, and how far strong bosses' real damage strays from it.
 
 Run: python3 verification/arena/verify_combat_rule.py [--archive PATH ...]
 
@@ -457,6 +460,35 @@ def main():
 
     report_ceilings(hits)
     report_card_hp(scored)
+    report_damage_edge(fights)
+
+
+BOSS_DAMAGE_MARGIN = 0.15  # src/shared/arenaCombat.ts
+
+
+def report_damage_edge(fights):
+    """Fights where the opponent's hits would clear the player's armour at
+    BOSS_DAMAGE_MARGIN more damage than the STR line estimates (the advisor
+    scores such bosses as if they do), and how far real damage strays from
+    that line for strong bosses."""
+    print(f"\n== 12. Damage-estimate edge (+{BOSS_DAMAGE_MARGIN:.0%}) ==")
+    for boss in (True, False):
+        flagged = []
+        for f in fights:
+            if f["boss"] != boss or not f["my"]:
+                continue
+            STR = f["stats"][0]
+            ob = 0.4824 * STR + 9.85 if boss else 0.5546 * STR - 6.77
+            nom = max(min_damage(ob), ob - f["my"]["red"])
+            pes = max(min_damage(ob), ob * (1 + BOSS_DAMAGE_MARGIN) - f["my"]["red"])
+            if pes > nom * 1.05:
+                flagged.append(f)
+        print(f"   {'boss' if boss else 'regular'}: flagged {len(flagged)}, won {sum(f['won'] for f in flagged)}"
+              + ("  families: " + ", ".join(sorted({str(f['family']) for f in flagged})) if boss and flagged else ""))
+    strong = sorted((f for f in fights if f["boss"] and f["op_base"] and f["stats"][0] >= 1000), key=lambda f: f["stats"][0])
+    if strong:
+        errs = [f["op_base"] / (0.4824 * f["stats"][0] + 9.85) - 1 for f in strong]
+        print(f"   bosses STR 1000+: n={len(strong)}, real damage vs line {min(errs):+.1%} .. {max(errs):+.1%}, top STR {strong[-1]['stats'][0]:.0f}")
 
 
 def report_ceilings(hits):

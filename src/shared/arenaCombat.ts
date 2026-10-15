@@ -76,6 +76,16 @@ export const SCORE_AVOID = 0.8;
  *  10-10); Priya Nair's 10-15 loss now scores 1.28, a coin-flip. */
 export const SCORE_BOSS_BEATABLE = 1.3;
 
+/** A boss's damage comes from a STR line fitted on bosses up to ~1,600 STR,
+ *  and real ones land up to ~12% off it (2026-10-16). When the player's
+ *  armour is all that keeps a boss on minimum damage, that error decides
+ *  the fight: Ethan Walsh (STR 2,853, ~1,386 vs armour ~1,379) scored 1.11
+ *  as estimated, 0.46 at +10%. So a boss whose hits would get through at
+ *  this much more damage is scored as if they do. Over every archived fight
+ *  (verify_combat_rule.py section 12) it flags two bosses, both Iron River
+ *  and already Avoid (1 won), and 33 regular opponents, all lost. */
+export const BOSS_DAMAGE_MARGIN = 0.15;
+
 /**
  * Real win rate per verdict band, from 685 archived Arena V2 fights
  * (2026-09-09 → 10-15; verification/arena/verify_combat_rule.py, section 8,
@@ -217,12 +227,24 @@ export interface ArenaVerdict {
   /** Hits each side needs to finish the other (the "kill race"). */
   hitsToKillThem: number;
   hitsToKillMe: number;
+  /** Boss only: their hits clear the player's armour if their damage is
+   *  `BOSS_DAMAGE_MARGIN` above the estimate, so `score`, `kind`,
+   *  `theirHit` and `hitsToKillMe` assume it is. */
+  edgeRisk: boolean;
+  /** The score if the damage estimate is exact (equals `score` unless
+   *  `edgeRisk`). */
+  nominalScore: number;
 }
 
 /** Card STR → mean base damage per hit (misses excluded). Regular:
  *  r 0.99; boss: r 0.997. */
 function opponentBase(card: ArenaOpponentCard): number {
   return card.isBoss ? 0.4824 * card.strength + 9.85 : 0.5546 * card.strength - 6.77;
+}
+
+/** Estimated mean damage per hit from the card, for display. */
+export function opponentBaseDamage(card: ArenaOpponentCard): number {
+  return opponentBase(card);
 }
 
 function strengthForBase(base: number, isBoss: boolean): number {
@@ -248,11 +270,16 @@ export function killRaceScore(card: ArenaOpponentCard, me: ArenaMyProfile): numb
 }
 
 export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVerdict {
-  const score = killRaceScore(card, me);
+  const nominalScore = killRaceScore(card, me);
   const hp = opponentHp(card);
   const mine = myHitOn(card, me);
   const base = opponentBase(card);
-  const theirHit = Math.max(minDamage(base), base - me.reduction);
+  const nominalHit = Math.max(minDamage(base), base - me.reduction);
+  // Only the armour breakthrough is in doubt; their minimum damage is capped.
+  const pessimisticHit = Math.max(minDamage(base), base * (1 + BOSS_DAMAGE_MARGIN) - me.reduction);
+  const edgeRisk = card.isBoss && pessimisticHit > nominalHit * 1.05;
+  const theirHit = edgeRisk ? pessimisticHit : nominalHit;
+  const score = edgeRisk ? me.maxHp / theirHit / (hp / mine) : nominalScore;
   // Score = 1 when their hit = myHp·mine / theirHp: the lower of the base
   // whose minimum damage gets there and the base that gets there by beating
   // the player's reduction.
@@ -271,7 +298,17 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
     kind,
     score,
     leansWin,
-    maxStrength: Math.max(0, Math.round(strengthForBase(breakEvenBase, card.isBoss))),
+    // A boss is also scored as hitting through once its damage plus the
+    // margin clears the player's armour, so its limit stops there too.
+    maxStrength: Math.max(
+      0,
+      Math.round(
+        Math.min(
+          strengthForBase(breakEvenBase, card.isBoss),
+          card.isBoss ? strengthForBase(me.reduction / (1 + BOSS_DAMAGE_MARGIN), true) : Infinity,
+        ),
+      ),
+    ),
     opponentHp: Math.round(hp),
     breaksThrough: me.baseDamage - card.defence > minDamage(me.baseDamage),
     theyBreakThrough: base - me.reduction > minDamage(base),
@@ -279,6 +316,8 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
     theirHit,
     hitsToKillThem: hp / mine,
     hitsToKillMe: me.maxHp / theirHit,
+    edgeRisk,
+    nominalScore,
   };
 }
 
@@ -295,6 +334,17 @@ export type ArenaLean = 'win' | 'even' | 'loss';
 
 export function leanFor(winChance: number): ArenaLean {
   return winChance >= LEAN_WIN_AT ? 'win' : winChance <= LEAN_LOSS_AT ? 'loss' : 'even';
+}
+
+/** At or above this win chance a coin-flip is worded "Likely": bosses
+ *  scoring 0.8–1.3 win ~87%, which "Coin-flip" undersells (regular
+ *  coin-flips top out at 73%, so they never reach it). */
+export const LIKELY_AT = 0.8;
+
+export function verdictWord(v: ArenaVerdict, winChance: number): string {
+  if (v.kind === 'beatable') return 'Beatable';
+  if (v.kind === 'avoid') return 'Avoid';
+  return winChance >= LIKELY_AT ? 'Likely' : 'Coin-flip';
 }
 
 /** The lean as the badge words it. */

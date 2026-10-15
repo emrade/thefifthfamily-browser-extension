@@ -9,6 +9,10 @@ import {
   emptyTally,
   leanFor,
   leanText,
+  LIKELY_AT,
+  BOSS_DAMAGE_MARGIN,
+  opponentBaseDamage,
+  verdictWord,
   type ArenaOpponentCard,
   type ArenaVerdict,
 } from '@/shared/arenaCombat';
@@ -41,7 +45,7 @@ const MODAL_ID = 'ff-arv-modal';
 
 const VERDICT_ROWS = [
   { kind: 'beatable', label: 'Beatable', range: `${SCORE_BEATABLE}+ (boss ${SCORE_BOSS_BEATABLE}+)` },
-  { kind: 'coinflip', label: 'Coin-flip', range: `${SCORE_AVOID}–${SCORE_BEATABLE} (boss –${SCORE_BOSS_BEATABLE})` },
+  { kind: 'coinflip', label: 'Coin-flip / Likely', range: `${SCORE_AVOID}–${SCORE_BEATABLE} (boss –${SCORE_BOSS_BEATABLE})` },
   { kind: 'avoid', label: 'Avoid', range: `under ${SCORE_AVOID}` },
 ] as const;
 
@@ -124,9 +128,6 @@ function esc(s: string): string {
   return s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 }
 
-function word(v: ArenaVerdict): string {
-  return v.kind === 'beatable' ? 'Beatable' : v.kind === 'avoid' ? 'Avoid' : 'Coin-flip';
-}
 
 function accentFor(v: ArenaVerdict): string {
   return v.kind === 'beatable' ? '#4ade80' : v.kind === 'avoid' ? '#f87171' : '#fbbf24';
@@ -134,12 +135,14 @@ function accentFor(v: ArenaVerdict): string {
 
 function scoreText(v: ArenaVerdict, winChance: number): string {
   const score = v.score > 3 ? 'score 3+' : `score ${v.score.toFixed(2)}`;
-  return v.kind === 'coinflip' ? `${leanText(winChance)} · ${score}` : score;
+  if (v.edgeRisk) return `may hit through · ${score}`;
+  return v.kind === 'coinflip' && winChance < LIKELY_AT ? `${leanText(winChance)} · ${score}` : score;
 }
 
 /** The one reason that matters most, for the hover card. */
 function keyReason(d: FightDetail): string {
   const { card, verdict: v } = d;
+  if (v.edgeRisk) return `Their damage is so close to your armour that a slightly higher real value lets every hit through.`;
   if (v.theyBreakThrough) return `Their STR ${fmt(card.strength)} gets past your armour, so they hit hard.`;
   if (v.breaksThrough) return `Your hits get past their DEF ${fmt(card.defence)}, so they go down fast.`;
   return `STR ${fmt(card.strength)} against your limit of ~${fmt(v.maxStrength)} at level ${card.level}.`;
@@ -150,6 +153,10 @@ function notes(d: FightDetail): string[] {
   const out: string[] = [];
   if (card.passive) out.push('<b>Passive:</b> they haven’t fought this season, so they fight on an older snapshot, weaker than the card shows.');
   if (v.breaksThrough) out.push(`<b>Your hits get past their DEF ${fmt(card.defence)}</b>, so you deal real damage, not just the minimum.`);
+  if (v.edgeRisk)
+    out.push(
+      `<b>Uncertain, scored on the safe side:</b> their damage, estimated from STR ${fmt(card.strength)}, is ~${fmt(opponentBaseDamage(card))} against your armour of ~${fmt(d.profile.reduction)}. Real bosses land up to ~12% off that estimate, and ${Math.round(BOSS_DAMAGE_MARGIN * 100)}% more would put every hit through, so it's scored as if it does: ${v.score.toFixed(2)} instead of ${v.nominalScore.toFixed(2)}.`,
+    );
   if (v.theyBreakThrough) out.push(`<b>Their hits get past your armour</b> (~${fmt(d.profile.reduction)}), so they deal real damage, not just the minimum.`);
   if (card.isBoss) {
     if (card.family === 'iron_river') out.push('<b>Iron River boss:</b> built on STR, the stat that decides fights. Most Iron River bosses have beaten you.');
@@ -190,7 +197,7 @@ function hoverEl(): HTMLElement {
 export function showHover(anchor: HTMLElement, d: FightDetail): void {
   const el = hoverEl();
   el.innerHTML =
-    `<div class="ff-arv-h-verdict"><span style="color:${accentFor(d.verdict)}">${word(d.verdict)}</span>` +
+    `<div class="ff-arv-h-verdict"><span style="color:${accentFor(d.verdict)}">${verdictWord(d.verdict, d.winChance)}</span>` +
     ` <span class="ff-arv-h-score">· ${scoreText(d.verdict, d.winChance)}</span></div>` +
     `<div class="ff-arv-h-reason">${keyReason(d)}</div>` +
     `<div class="ff-arv-h-reason">Won ~${Math.round(d.winChance * 100)}% of the time${d.bounty !== null ? ` · +${d.bounty} to the pot` : ''}.</div>` +
@@ -283,7 +290,7 @@ export function openModal(d: FightDetail): void {
       </div>
 
       <div class="ff-arv-m-verdict" style="color:${accent};border-color:${accent}55;border-left-color:${accent};background:${accent}14">
-        <span class="ff-arv-m-verdict-word">${word(v)}</span>
+        <span class="ff-arv-m-verdict-word">${verdictWord(v, d.winChance)}</span>
         <span class="ff-arv-m-verdict-detail">${scoreText(v, d.winChance)}</span>
       </div>
 
