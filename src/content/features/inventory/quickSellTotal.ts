@@ -5,14 +5,30 @@ import { storage } from '@/shared/storage';
 import type { InventoryPriceResult, QuickSellPriceBook } from '@/shared/types';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
-import { isQuickSellable, activeInventoryBatch, beginInventoryBatch, endInventoryBatch } from './shared';
+import {
+  CARD_SELECTOR,
+  WATCHED_ATTRIBUTES,
+  activeInventoryBatch,
+  beginInventoryBatch,
+  cardInvId,
+  cardKey,
+  cardQuality,
+  cardTagHost,
+  endInventoryBatch,
+  findCard,
+  inventoryRoot,
+  inventoryToolbar,
+  isCrimeCard,
+  isLockedCard,
+  isQuickSellable,
+} from './shared';
 
 /**
  * Inventory quick-sell total: what every item currently on screen would
  * quick-sell for, following whatever tab, filter chip, rarity and search the
  * player has picked, plus a price tag on each card.
  *
- * The inventory page carries no prices at all. A card's $ button opens the
+ * The inventory page carries no prices at all. Selling one item opens the
  * Item Market's sell sheet (`IMV2.sellSheet`, since 2026-10-11), which reads
  * `GET /actions/item_market_v2.php?view=sell&inv_id=N` (shop price in
  * `item.base`) and then quotes it (`POST /actions/shops_v2.php
@@ -29,29 +45,24 @@ import { isQuickSellable, activeInventoryBatch, beginInventoryBatch, endInventor
  * - **Real quotes.** Every `dispose_quote` the game sends is kept and wins
  *   over the estimate, for that item and for every other copy of it (same
  *   name; upgrade level doesn't change the price).
- * - **Fetch prices.** A button on the bar that taps $ for the player on
- *   every item still without an exact quote: one copy per name, best rarity
+ * - **Fetch prices.** A button on the bar that opens the sell sheet for the
+ *   player on every item still without an exact quote: one copy per name, best rarity
  *   first, in runs of 10 at about one item a second with a few seconds'
  *   break between runs, so it reads like someone clicking through their
  *   inventory by hand. Manual start only, stoppable, and it picks up where
  *   it left off (anything already quoted is skipped).
  *
- * Crime Req items (`data-crime="1"`) get their quote cut when they're tied
+ * Crime Req items (`data-cr="1"`) get their quote cut when they're tied
  * to a crime the player needs (`capstone_warning` in the quote): 2% of shop
  * price for Brass Knuckles and Gold Rope Chain, 10% for The Iron Curtain.
  * No rule for which applies was found, so they're totalled on their own
  * line as a 2–10% range.
  *
- * Only equipment is counted (`isQuickSellable`): locked cards have no $
- * button, and consumables, which have one since the 2026-10-11 rebuild, are
- * left out on purpose. Equipped gear isn't an `.inv-card` at all.
+ * Only unlocked equipment is counted (`isQuickSellable`); consumables are
+ * left out on purpose. Equipped gear isn't a tile at all. How tiles are read
+ * from the page (rebuilt 2026-10-15) is in ./shared.
  */
 
-const SEARCH_INPUT_ID = 'invSearch';
-// Every card, not just `[data-inv]` ones: consumable cards carried no id
-// before 2026-10-11, but still count as "shown" for the bar's empty-state
-// wording.
-const CARD_SELECTOR = '.inv-card';
 const BAR_ID = 'ff-qs-bar';
 const TAG_CLASS = 'ff-qs-tag';
 const STYLE_ID = 'ff-qs-style';
@@ -183,16 +194,16 @@ export type CardPrice =
 /** What `card` should quick-sell for, from `b` (this module's own copy of
  *  the price book unless another feature passes its own). */
 export function priceFor(card: Element, b: QuickSellPriceBook = book): CardPrice {
-  const inv = card.getAttribute('data-inv') ?? '';
+  const inv = String(cardInvId(card));
   const quote = b.quotes[inv];
   if (quote) return { kind: 'quote', cash: quote.cash };
-  const name = card.getAttribute('data-name') ?? '';
+  const name = cardKey(card);
   const sharedQuote = b.quotesByName[name];
   if (sharedQuote) return { kind: 'shared-quote', cash: sharedQuote.cash };
 
   const shop = b.shopByInv[inv] ?? b.shopByName[name];
   if (!shop) return { kind: 'unknown' };
-  if (card.getAttribute('data-crime') === '1') {
+  if (isCrimeCard(card)) {
     return { kind: 'crime-range', low: Math.round(shop.price * CRIME_SHARE_LOW), high: Math.round(shop.price * CRIME_SHARE_HIGH) };
   }
   return { kind: 'estimate', cash: Math.round(shop.price * QUICKSELL_SHARE) };
@@ -226,15 +237,15 @@ function tagFor(price: CardPrice): { text: string; title: string; kind: string }
         kind: 'exact',
       };
     case 'estimate':
-      return { text: `Quick sell ≈ ${compactMoney(price.cash)}`, title: `About ${money(price.cash)}: 20% of this item's shop price. Tap $ for the exact amount.`, kind: 'estimate' };
+      return { text: `Quick sell ≈ ${compactMoney(price.cash)}`, title: `About ${money(price.cash)}: 20% of this item's shop price. Open its sell sheet for the exact amount.`, kind: 'estimate' };
     case 'crime-range':
       return {
         text: `Quick sell ≈ ${compactMoney(price.low)}–${compactMoney(price.high)}`,
-        title: 'Crime Req item: the game cuts its quick-sell price to 2–10% of shop price. Tap $ for the exact amount.',
+        title: 'Crime Req item: the game cuts its quick-sell price to 2–10% of shop price. Open its sell sheet for the exact amount.',
         kind: 'crime',
       };
     case 'unknown':
-      return { text: 'Quick sell: no price yet', title: 'Tap $ on it once, or use Fetch prices above, to fill in this price.', kind: 'unknown' };
+      return { text: 'Quick sell: no price yet', title: 'Open its sell sheet once, or use Fetch prices above, to fill in this price.', kind: 'unknown' };
   }
 }
 
@@ -248,7 +259,7 @@ function paintTag(card: Element, price: CardPrice): void {
   if (!tag) {
     tag = document.createElement('div');
     tag.className = TAG_CLASS;
-    (card.querySelector('.inv-info') ?? card).appendChild(tag);
+    cardTagHost(card).appendChild(tag);
   }
   if (tag.textContent !== text) tag.textContent = text;
   if (tag.title !== title) tag.title = title;
@@ -269,9 +280,8 @@ interface Totals {
 }
 
 function recompute(): void {
-  const input = document.getElementById(SEARCH_INPUT_ID);
+  const root = inventoryRoot();
   const bar = document.getElementById(BAR_ID);
-  const root = input?.parentElement;
   if (!root || !bar) return;
 
   const t: Totals = { count: 0, total: 0, exactCount: 0, unknownCount: 0, crimeCount: 0, crimeLow: 0, crimeHigh: 0, crimeUnknown: 0, lockedCount: 0, shownCount: 0 };
@@ -286,10 +296,10 @@ function recompute(): void {
 
     t.shownCount++;
     if (!price) {
-      if (card.getAttribute('data-locked') === '1') t.lockedCount++;
+      if (isLockedCard(card)) t.lockedCount++;
       continue;
     }
-    if (card.getAttribute('data-crime') === '1') {
+    if (isCrimeCard(card)) {
       t.crimeCount++;
       if (price.kind === 'quote' || price.kind === 'shared-quote') {
         t.crimeLow += price.cash;
@@ -343,7 +353,7 @@ function renderBar(t: Totals): string {
     }
     if (t.unknownCount > 0 || t.crimeUnknown > 0) {
       const n = t.unknownCount + t.crimeUnknown;
-      lines.push(`<div class="ff-qs-warn">${plural(n, 'item')} with no price yet, not in the total. Use Fetch prices below, or tap $ on ${n === 1 ? 'it' : 'them'}.</div>`);
+      lines.push(`<div class="ff-qs-warn">${plural(n, 'item')} with no price yet, not in the total. Use Fetch prices below, or open the sell sheet on ${n === 1 ? 'it' : 'each'}.</div>`);
     }
     if (t.crimeCount > 0) {
       const range = t.crimeLow === t.crimeHigh ? money(t.crimeLow) : `${money(t.crimeLow)}–${money(t.crimeHigh)}`;
@@ -395,20 +405,20 @@ function rarityRank(quality: string): number {
   return i === -1 ? RARITY_ORDER.length : i;
 }
 
-/** One copy per item name (a quote prices every copy), only items with a $
- *  button and no exact quote yet, best rarity first. Filters and search
+/** One copy per item name (a quote prices every copy), only unlocked
+ *  equipment with no exact quote yet, best rarity first. Filters and search
  *  don't matter: the hidden cards are still in the page. */
 function fetchTargets(root: Element): FetchTarget[] {
   const seen = new Set<string>();
   const out: FetchTarget[] = [];
-  for (const card of root.querySelectorAll('.inv-card[data-inv]')) {
-    if (card.getAttribute('data-locked') === '1' || !isQuickSellable(card)) continue;
-    const name = card.getAttribute('data-name') ?? '';
+  for (const card of root.querySelectorAll(CARD_SELECTOR)) {
+    if (!isQuickSellable(card)) continue;
+    const name = cardKey(card);
     if (!name || seen.has(name)) continue;
     const kind = priceFor(card).kind;
     if (kind === 'quote' || kind === 'shared-quote') continue;
     seen.add(name);
-    out.push({ invId: Number(card.getAttribute('data-inv')), name, quality: card.getAttribute('data-quality') ?? '' });
+    out.push({ invId: cardInvId(card), name, quality: cardQuality(card) });
   }
   return out.sort((a, b) => rarityRank(a.quality) - rarityRank(b.quality));
 }
@@ -437,7 +447,7 @@ function estimateMinutes(count: number): number {
 
 async function runFetch(): Promise<void> {
   if (fetchState.running) return;
-  const root = document.getElementById(SEARCH_INPUT_ID)?.parentElement;
+  const root = inventoryRoot();
   if (!root) return;
   if (!beginInventoryBatch('price')) {
     fetchState = { ...fetchState, result: 'Auto-Sell is running a batch. Let it finish, then try again.' };
@@ -470,15 +480,15 @@ async function runFetch(): Promise<void> {
       }
       prevQuality = target.quality;
 
-      const liveRoot = document.getElementById(SEARCH_INPUT_ID)?.parentElement;
+      const liveRoot = inventoryRoot();
       if (!liveRoot) {
         stopped = 'you left the inventory page. Press Fetch prices again to carry on.';
         break;
       }
-      const card = liveRoot.querySelector(`.inv-card[data-inv="${target.invId}"]`);
+      const card = findCard(liveRoot, target.invId);
       const kind = card ? priceFor(card).kind : null;
       // Gone, locked or quoted (by the player's own tap) since the list was made.
-      if (!card || card.getAttribute('data-locked') === '1' || kind === 'quote' || kind === 'shared-quote') {
+      if (!card || isLockedCard(card) || kind === 'quote' || kind === 'shared-quote') {
         fetchState.done++;
         continue;
       }
@@ -537,7 +547,7 @@ function renderFetch(pending: number): string {
   return `${result}<div class="ff-qs-fetch"><button type="button" class="ff-qs-btn" data-qs-action="fetch" ${otherBatch ? 'disabled' : ''}>Fetch prices (${plural(
     pending,
     'item',
-  )})</button><span class="ff-qs-note">Taps $ on each one for you, best rarity first, ${FETCH_RUN_SIZE} at a time with breaks. About ${estimateMinutes(pending)} min; stay on this page.</span></div>`;
+  )})</button><span class="ff-qs-note">Opens the sell sheet on each one for you, best rarity first, ${FETCH_RUN_SIZE} at a time with breaks. About ${estimateMinutes(pending)} min; stay on this page.</span></div>`;
 }
 
 function onBarClick(event: Event): void {
@@ -562,23 +572,23 @@ function scheduleRecompute(): void {
   });
 }
 
-// The inventory's own filters hide cards with inline `display` changes rather
-// than reloading the panel, so the grid is watched for attribute changes too,
-// not just added/removed cards.
+// The inventory's own tabs, chips, rarity and search hide tiles in place
+// rather than reloading the panel, so the page is watched for attribute
+// changes too, not just added/removed tiles.
 let rootObserver: MutationObserver | null = null;
 let observedRoot: Element | null = null;
 
 function ensureBar(): void {
-  const input = document.getElementById(SEARCH_INPUT_ID);
-  const root = input?.parentElement;
-  if (!input || !root) return;
+  const root = inventoryRoot();
+  const toolbar = root && inventoryToolbar(root);
+  if (!root || !toolbar) return;
 
   let changed = false;
-  if (input.nextElementSibling?.id !== BAR_ID) {
+  if (toolbar.nextElementSibling?.id !== BAR_ID) {
     document.getElementById(BAR_ID)?.remove();
     const bar = document.createElement('div');
     bar.id = BAR_ID;
-    input.insertAdjacentElement('afterend', bar);
+    toolbar.insertAdjacentElement('afterend', bar);
     changed = true;
   }
 
@@ -586,7 +596,7 @@ function ensureBar(): void {
     rootObserver?.disconnect();
     observedRoot = root;
     rootObserver = new MutationObserver(scheduleRecompute);
-    rootObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    rootObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: WATCHED_ATTRIBUTES });
     changed = true;
   }
   if (changed) scheduleRecompute();
@@ -594,24 +604,24 @@ function ensureBar(): void {
 
 const STYLE = `
 #${BAR_ID} {
-  margin: 0 0 10px; padding: 10px 12px;
+  margin: 0 0 10px; padding: 10px 12px; box-sizing: border-box;
   background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.22); border-radius: 10px;
   font-family: 'Inter', system-ui, sans-serif; display: flex; flex-direction: column; gap: 5px;
 }
-.ff-qs-main { font-size: 0.8rem; color: #d1d5db; margin-top: 3px; }
-.ff-qs-count { font-weight: 800; color: #f3f4f6; }
-.ff-qs-total { font-family: 'SF Mono', 'Roboto Mono', ui-monospace, Menlo, monospace; font-weight: 800; color: #4ade80; }
-.ff-qs-note, .ff-qs-empty { font-size: 0.65rem; color: #9ca3af; line-height: 1.5; }
-.ff-qs-warn { font-size: 0.65rem; color: #fbbf24; line-height: 1.5; }
-.ff-qs-crime { font-size: 0.65rem; color: #f59e0b; line-height: 1.5; }
-.ff-qs-fetch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
-.ff-qs-fetch-status { font-size: 0.7rem; color: #d1d5db; }
-.ff-qs-btn {
+#${BAR_ID} .ff-qs-main { font-size: 0.8rem; color: #d1d5db; margin-top: 3px; }
+#${BAR_ID} .ff-qs-count { font-weight: 800; color: #f3f4f6; }
+#${BAR_ID} .ff-qs-total { font-family: 'SF Mono', 'Roboto Mono', ui-monospace, Menlo, monospace; font-weight: 800; color: #4ade80; }
+#${BAR_ID} .ff-qs-note, .ff-qs-empty { font-size: 0.65rem; color: #9ca3af; line-height: 1.5; }
+#${BAR_ID} .ff-qs-warn { font-size: 0.65rem; color: #fbbf24; line-height: 1.5; }
+#${BAR_ID} .ff-qs-crime { font-size: 0.65rem; color: #f59e0b; line-height: 1.5; }
+#${BAR_ID} .ff-qs-fetch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 3px; }
+#${BAR_ID} .ff-qs-fetch-status { font-size: 0.7rem; color: #d1d5db; }
+#${BAR_ID} .ff-qs-btn {
   padding: 5px 12px; background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.4);
   border-radius: 7px; color: #86efac; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.03em;
   text-transform: uppercase; cursor: pointer;
 }
-.ff-qs-btn:disabled { opacity: 0.5; cursor: default; }
+#${BAR_ID} .ff-qs-btn:disabled { opacity: 0.5; cursor: default; }
 .${TAG_CLASS} { font-size: 0.55rem; font-weight: 800; margin-top: 3px; letter-spacing: 0.02em; color: #4ade80; }
 .${TAG_CLASS}[data-kind="estimate"] { color: #86efac; }
 .${TAG_CLASS}[data-kind="crime"] { color: #f59e0b; }
@@ -635,7 +645,7 @@ export function initInventoryQuickSell(): void {
   document.addEventListener('click', onBarClick, true);
 
   const observer = new MutationObserver(() => {
-    if (document.getElementById(SEARCH_INPUT_ID)) ensureBar();
+    if (inventoryRoot()) ensureBar();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 }
