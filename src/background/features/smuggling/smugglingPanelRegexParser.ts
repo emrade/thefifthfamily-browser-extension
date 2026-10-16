@@ -1,5 +1,6 @@
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
 import { fleetPetName } from '@/shared/smugglingFleet';
+import { baseMinutesFrom, pickRoute, type RouteButton } from '@/shared/smugglingRoutes';
 import type {
   AssignedCourier,
   BlackMarketItem,
@@ -338,7 +339,11 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
 
   const idx = containerMatch.index!;
   const isOff = containerMatch[1] !== undefined;
-  const window = html.slice(idx, idx + 2000);
+  // Up to the "Send" button, which comes after the item, route and pet
+  // rows: 2000 characters reached the first route but could cut off the
+  // second one.
+  const goIdx = html.indexOf('sv2-lo-go', idx);
+  const window = html.slice(idx, goIdx !== -1 && goIdx - idx < 20000 ? goIdx : idx + 6000);
 
   if (isOff) {
     // CONFIRMED BUG, fixed here: the real markup is `<div class="sv2-lo-why">
@@ -363,27 +368,31 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
     return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
   }
 
-  // Matches the whole opening tag and requires both class tokens present
-  // anywhere in its `class="..."` value, order-independent — a plain
-  // `indexOf('sv2-lo-dest on')` (an earlier version of this) only matched
-  // that exact literal order and would silently miss the button (falling
-  // through to `reasonKind: 'unknown'`, blocking dispatch) if the game ever
-  // rendered the classes the other way around or with another class
-  // interleaved, e.g. `class="on sv2-lo-dest"`. Mirrors how
-  // `smugglingPanelAdapter.ts`'s DOM twin already matches this
-  // order-independently via `.sv2-lo-dest.on`, a plain class selector.
-  const destTagMatch = window.match(/<[a-z][^>]*\bclass="(?=[^"]*\bsv2-lo-dest\b)(?=[^"]*\bon\b)[^"]*"[^>]*>/i);
-  if (!destTagMatch) {
+  // Every route button that isn't locked (`off`/`disabled`), with its
+  // "N min base" time; the fastest is sent to (see shared/smugglingRoutes.ts),
+  // not just the game's pre-selected `on` one. Class tokens are matched
+  // order-independently, as `smugglingPanelAdapter.ts`'s DOM twin does with
+  // its class selectors.
+  const open: RouteButton[] = [];
+  for (const m of window.matchAll(/<button\b([^>]*\bclass="(?=[^"]*\bsv2-lo-dest\b)([^"]*)"[^>]*)>([\s\S]*?)<\/button>/gi)) {
+    const [, attrs, classes, inner] = m;
+    if (/\boff\b/.test(classes) || /\bdisabled\b/.test(attrs.replace(/class="[^"]*"/, ''))) continue;
+    const cityMatch = attrs.match(/data-city="(\d+)"/);
+    const nameMatch = attrs.match(/data-name="([^"]+)"/);
+    if (!cityMatch || !nameMatch) continue;
+    open.push({
+      cityId: Number(cityMatch[1]),
+      name: nameMatch[1],
+      preselected: /\bon\b/.test(classes),
+      baseMinutes: baseMinutesFrom(inner.replace(/<[^>]+>/g, ' ')),
+    });
+  }
+  const route = pickRoute(open);
+  if (!route) {
     return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
   }
-  const destTag = destTagMatch[0];
-  const cityMatch = destTag.match(/data-city="(\d+)"/);
-  const nameMatch = destTag.match(/data-name="([^"]+)"/);
-  if (!cityMatch || !nameMatch) {
-    return { available: false, reasonKind: 'unknown', reasonText: 'the open destination button is missing its data-city/data-name attributes' };
-  }
 
-  return { available: true, destination: { cityId: Number(cityMatch[1]), name: nameMatch[1] } };
+  return { available: true, destination: { cityId: route.cityId, name: route.name } };
 }
 
 /** The `Game.smugV2OffloadAll(N)` argument, when that button exists — see

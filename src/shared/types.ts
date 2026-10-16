@@ -338,9 +338,11 @@ export interface DestinationOption {
 export type LaunchAvailability =
   | {
       available: true;
-      /** The one destination the bulk picker offers open this hour — read
-       *  off the `sv2-lo-dest on` button's own `data-city`/`data-name`
-       *  attributes (confirmed real: `data-city="1" data-name="Downtown"`).
+      /** Where the couriers go: the fastest of the bulk picker's open
+       *  routes this hour (`sv2-lo-dest` buttons that aren't `off`), not
+       *  just the game's pre-selected `on` one (see shared/smugglingRoutes.ts)
+       *  — read off the button's own `data-city`/`data-name` attributes
+       *  (confirmed real: `data-city="1" data-name="Downtown"`).
        *  Not the same source as `DestinationOption` (that only exists once a
        *  shipment draft is open) — this comes straight off the bulk block. */
       destination: { cityId: number; name: string };

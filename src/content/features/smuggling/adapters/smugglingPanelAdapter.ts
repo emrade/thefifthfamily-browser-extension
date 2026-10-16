@@ -1,5 +1,6 @@
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
 import { fleetPetName } from '@/shared/smugglingFleet';
+import { baseMinutesFrom, pickRoute, type RouteButton } from '@/shared/smugglingRoutes';
 import type {
   AssignedCourier,
   BlackMarketItem,
@@ -315,14 +316,22 @@ function parseLaunchAvailability(doc: Document): LaunchAvailability {
     return { available: false, reasonKind: classifyLaunchUnavailableReason(reasonText), reasonText };
   }
 
-  const destBtn = block.querySelector('.sv2-lo-dest.on');
-  const cityId = destBtn?.getAttribute('data-city');
-  const name = destBtn?.getAttribute('data-name');
-  if (!cityId || !name) {
+  // Every route that isn't locked; the fastest is sent to (see
+  // shared/smugglingRoutes.ts), not just the game's pre-selected `on` one.
+  const open: RouteButton[] = [];
+  for (const btn of block.querySelectorAll('.sv2-lo-dest')) {
+    if (btn.classList.contains('off') || btn.hasAttribute('disabled')) continue;
+    const cityId = btn.getAttribute('data-city');
+    const name = btn.getAttribute('data-name');
+    if (!cityId || !name) continue;
+    open.push({ cityId: Number(cityId), name, preselected: btn.classList.contains('on'), baseMinutes: baseMinutesFrom(textOf(btn)) });
+  }
+  const route = pickRoute(open);
+  if (!route) {
     return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
   }
 
-  return { available: true, destination: { cityId: Number(cityId), name } };
+  return { available: true, destination: { cityId: route.cityId, name: route.name } };
 }
 
 /** DOM twin of smugglingPanelRegexParser.ts's `parseOffloadAllCount`. */
