@@ -9,6 +9,17 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.45.2] - 2026-10-16
+
+### Fixed
+- Inventory: the Quick-Sell bar and Auto-Sell & Crime Locks panel are back.
+  The game rebuilt its Inventory page on 2026-10-15 and neither had shown
+  since. Both now sit under the new toolbar (search, sort, rarity), read the
+  new item tiles, and take each item's upgrade level from the tile now that
+  the game no longer puts "+5" in the name, so the "Highest upgrade" filter
+  and Crime Locks' best-copy pick work as before. Nothing about what's sent
+  to the game changed.
+
 ## [0.45.1] - 2026-10-16
 
 ### Fixed
