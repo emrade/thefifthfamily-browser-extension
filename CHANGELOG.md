@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.45.3] - 2026-10-16
+
+### Fixed
+- Pet Courier: when two routes are open in the same hour, couriers now go
+  to the faster one instead of whichever the game pre-selects. A courier
+  pays the same per unit at every destination and is free again as soon as
+  it lands, so a shorter trip is simply more deliveries. Since the move to
+  Diamond District the game had been pre-selecting the slower route in most
+  two-route hours, e.g. The Strip (21 min) over The Underground (8 min). If
+  a route's trip time can't be read, the game's own choice is used as
+  before.
+
 ## [0.45.2] - 2026-10-16
 
 ### Fixed
