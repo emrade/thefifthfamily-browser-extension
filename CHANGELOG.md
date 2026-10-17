@@ -9,6 +9,43 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.46.0] - 2026-10-17
+
+### Added
+- Pet Courier: the in-page panel and the popup now show a run while it's in
+  progress: when it started, what it's doing ("collecting Red-Tailed Hawk's
+  cargo", "sending 12 couriers to Industrial District") and how long it has
+  been waiting on the game. Before, a run gave no sign of itself until it
+  finished. A Run or Offload All tap made while another run is going now
+  says so, instead of seeming to do nothing.
+- Pet Courier: when auto-watch pauses itself, the reason now shows in the
+  in-page panel and the popup until Background watch is turned back on, not
+  only in a desktop notification.
+
+### Fixed
+- Pet Courier: a lost reply from the game no longer freezes the couriers.
+  On 2026-10-17 a cargo collect went through in the game but its reply never
+  arrived, and every run after it (including Run, Offload All and toggling
+  the watch) was skipped for 16 minutes. Background game requests now give
+  up after 30 seconds, for every feature. A courier run that times out ends,
+  and the next check carries on from what the game shows; after 3 timeouts
+  in a row, auto-watch pauses with a message saying it's likely a connection
+  problem. If a timed-out request was a collect, the cash on hand is banked,
+  since the game may have paid out.
+- Pet Courier: all idle pets go out in one send, as the game's own Send
+  button does. The game used to keep only the first 10 pets of a send; a
+  12-pet send now goes through in full. If the game ever sends fewer than
+  asked, the run stops and says so.
+- Pet Courier: nothing is sent in the last 15 seconds of an hour, when the
+  open route is about to change. A send that crossed into the next hour was
+  refused ("That destination is not open this hour") and paused auto-watch;
+  that refusal just after the hour now simply waits for the new hour's check.
+- Inventory: Auto-Sell works on Legendary items again. The game now attaches
+  a "high rarity" warning to Legendary items in its bulk-sell quote (alone,
+  or joined with a Crime Req warning), and Auto-Sell stopped on it as an
+  unknown warning. It now accepts that warning on the item just picked; any
+  other unknown warning still stops the batch.
+
 ## [0.45.3] - 2026-10-16
 
 ### Fixed
