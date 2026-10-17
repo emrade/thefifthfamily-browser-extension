@@ -57,8 +57,11 @@ import {
  *
  * Any rejection or unrecognized response ends the batch on the spot rather
  * than moving on to the next item; so does leaving the inventory page, and
- * so does a Crime Req warning (`flagged`) for anything other than a spare
- * crime copy the plan chose to sell: the game warns but still sells.
+ * so does a warning (`flagged`) the plan didn't expect: the game warns but
+ * still sells. Expected are a Crime Req warning ("needed for <crime>") on a
+ * spare crime copy the plan chose to sell, and "high rarity" on an item of a
+ * rarity the player picked (every Legendary got it from 2026-10-17, alone or
+ * as "high rarity, needed for <crime>"; nothing below Legendary did).
  * Nothing here runs in the background: no alarm, no trigger other than the
  * two Confirm buttons, and only one batch at a time (`beginInventoryBatch`,
  * shared with the Quick-Sell bar's price fetch, plus
@@ -545,6 +548,18 @@ function sameName(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** Whether a warning the game added when `item` was picked is one the plan
+ *  expected: it names `item`, and its note is "high rarity" (any item here
+ *  is of a rarity the player picked), a Crime Req note on a crime item, or
+ *  both joined ("high rarity, needed for …"). */
+function expectedFlag(key: string, item: InvItem): boolean {
+  const [name, note] = key.split('\u0000');
+  if (!sameName(name, item.baseName)) return false;
+  const crimeNote = note.replace(/^high rarity(, |$)/, '');
+  if (crimeNote === '') return note !== '';
+  return item.crime && crimeNote.startsWith('needed for ');
+}
+
 function flagKeys(flagged: { name: string; note: string }[]): string[] {
   return flagged.map((f) => `${f.name}\u0000${f.note}`).sort();
 }
@@ -609,9 +624,9 @@ function sellBatch(sales: PlannedSale[], maxPrice: number | null): Promise<void>
         const nextFlags = flagKeys(quote.flagged);
         const added = nextFlags.filter((k) => !flags.includes(k));
         const lost = flags.filter((k) => !nextFlags.includes(k));
-        if (lost.length || added.some((k) => !item.crime || !sameName(k.split('\u0000')[0], item.baseName))) {
+        if (lost.length || added.some((k) => !expectedFlag(k, item))) {
           const names = quote.flagged.map((f) => `${f.name} (${f.note})`).join(', ');
-          s.stopped = `${item.label}: the game's Crime Req warnings changed in a way that doesn't fit this item (${names || 'none'}), so nothing in this round was sold.`;
+          s.stopped = `${item.label}: the game's warnings changed in a way that doesn't fit this item (${names || 'none'}), so nothing in this round was sold.`;
           return;
         }
         if (price < 0) {
