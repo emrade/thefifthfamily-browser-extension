@@ -1,6 +1,6 @@
 import { GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { loggedFetch } from '@/shared/requestLog/loggedFetch';
+import { isRequestTimeout, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { getCsrfToken } from './csrfToken';
 
 /**
@@ -170,7 +170,10 @@ export async function postAction(path: string, params: Record<string, string | n
     let json: any;
     try {
       json = await res.json();
-    } catch {
+    } catch (err) {
+      // The time limit can run out while the reply is still arriving: that's
+      // a lost reply, not a bad session.
+      if (isRequestTimeout(err)) throw err;
       // A request the game actually processed always comes back as clean JSON,
       // `{ok:true|false, ...}` — this is the CSRF token being rejected (or the
       // session having expired) far more often than it's anything specific to this
@@ -293,7 +296,8 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
   let json: any;
   try {
     json = await res.json();
-  } catch {
+  } catch (err) {
+    if (isRequestTimeout(err)) throw err; // a lost reply, see postAction
     // Confirmed real (2026-08-29): `stats.php` came back as a Cloudflare page
     // (HTML carrying `#cf-browser-status`/`#cf-error-details`/etc, caught by
     // the structural-change detector) instead of JSON — that specific instance

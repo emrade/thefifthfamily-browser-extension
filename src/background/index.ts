@@ -1,5 +1,5 @@
 import { ensureSeedData, handleMessage as handleSmuggling, handleTravelAlarm } from './features/smuggling';
-import { runCourierBatch, runOffloadBatch } from './features/smuggling/petCourier';
+import { getActiveCourierRun, runCourierBatch, runOffloadBatch } from './features/smuggling/petCourier';
 import {
   getWatchSummary as getCourierWatchSummary,
   handleCourierReturnAlarm,
@@ -180,7 +180,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // the game's own origin.
   if (msg.type === 'courier-status-requested') {
     return Promise.all([getRoster(), storage.getLastCourierRun(), getCourierWatchSummary()]).then(
-      ([roster, lastRun, watch]): CourierStatus => ({ roster, lastRun, watch }),
+      ([roster, lastRun, watch]): CourierStatus => ({ roster, lastRun, watch, activeRun: getActiveCourierRun() }),
     );
   }
 

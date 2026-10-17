@@ -1,4 +1,4 @@
-import type { CourierProgressEvent, CourierRunSummary, PetRosterEntry } from './types';
+import type { CourierActiveRun, CourierProgressEvent, CourierRunSummary, PetRosterEntry } from './types';
 
 /**
  * Display logic for the courier UI — the in-page floating panel
@@ -55,6 +55,7 @@ export const STOP_REASON_LABEL: Record<NonNullable<CourierRunSummary['stoppedRea
   'shape-changed': "Stopped early — a response didn't look like what this feature expects. The game may have changed something; check the errors below before running again.",
   'status-blocked': 'Stopped early — jailed, hospitalized, or travelling right now. Try again once that clears.',
   'repeated-rejection': 'Stopped — the game kept rejecting the same request the same way. Check the errors below before running again.',
+  'timed-out': "Stopped early — the game didn't reply in time, likely a connection problem. The next check picks up from whatever the game shows.",
 };
 
 /** The "N pets known: ..." line both surfaces show above the Run button. */
@@ -88,4 +89,14 @@ export function describeProgressEvent(event: CourierProgressEvent): string | nul
     case 'error':
       return event.message;
   }
+}
+
+/** "Collecting since 8:00:33 PM: collecting Red-Tailed Hawk's cargo, waiting
+ *  14s for the game…" — the run in progress, shown on both surfaces so a run
+ *  that's slow or stuck waiting on the game is visible, not silent. */
+export function describeActiveRun(run: CourierActiveRun, now: number): string {
+  const label = run.kind === 'dispatch' ? 'Run' : 'Offload';
+  const waited = Math.max(0, Math.round((now - run.stepStartedAt) / 1000));
+  const step = run.step.charAt(0).toUpperCase() + run.step.slice(1);
+  return `${label} in progress since ${new Date(run.startedAt).toLocaleTimeString()}. ${step}${waited >= 3 ? `, waiting ${waited}s for the game…` : '…'}`;
 }

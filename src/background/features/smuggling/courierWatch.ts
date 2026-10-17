@@ -4,6 +4,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, fetchLiveStatus, statusReleaseAt } from '../../gameAction';
+import { REQUEST_TIMEOUT_MS, isRequestTimeout } from '@/shared/requestLog/loggedFetch';
 import { cancelShipment, fetchPanel, isDailyCapReached, runCourierBatch, runOffloadBatch } from './petCourier';
 import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
 
@@ -148,7 +149,8 @@ function watchConfigChanges(): void {
     if (next?.watchEnabled && !prev?.watchEnabled) {
       void (async () => {
         const watchState = await storage.getCourierWatchState();
-        await storage.setCourierWatchState({ ...watchState, lastCheckedAt: 0, lastProbeResult: null });
+        await storage.setCourierWatchState({ ...watchState, lastCheckedAt: 0, lastProbeResult: null, pausedMessage: null, pausedAt: null });
+        consecutiveTimeouts = 0;
         chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: Date.now() + COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
         const pendingReturns = await storage.getPendingCourierReturns();
         if (pendingReturns.length > 0) {
@@ -244,6 +246,8 @@ export async function getWatchSummary(): Promise<CourierWatchSummary> {
     nextDestCheckAt: destAlarm?.scheduledTime ?? null,
     pendingReturns: [...pendingReturns].sort((a, b) => a.arrivesAt - b.arrivesAt).map((p) => ({ petName: p.petName, arrivesAt: p.arrivesAt })),
     openRoute: watchState.openRoute,
+    pausedMessage: watchState.pausedMessage ?? null,
+    pausedAt: watchState.pausedAt ?? null,
   };
 }
 
@@ -284,6 +288,33 @@ async function findGameTabId(): Promise<number | undefined> {
   return tabs[0]?.id;
 }
 
+/** Requests in a row, across cycles, that the game didn't answer within
+ *  `REQUEST_TIMEOUT_MS`. One is a blip on a bad connection: every cycle
+ *  re-reads the page first, so the next one sees whatever the game actually
+ *  did and carries on from there (no double collect or double send). This
+ *  many in a row means the connection is down for longer, and auto-watch
+ *  pauses instead of retrying indefinitely. Kept in memory: a restart of the
+ *  extension starts the count over. */
+const MAX_CONSECUTIVE_TIMEOUTS = 3;
+const TIMEOUT_RETRY_MS = 60_000;
+let consecutiveTimeouts = 0;
+
+/** Counts a timed-out cycle, and either retries in a minute or pauses.
+ *  Returns `true` (the caller stops this cycle) either way. */
+async function noteTimeout(alarmName: string): Promise<boolean> {
+  consecutiveTimeouts++;
+  if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+    consecutiveTimeouts = 0;
+    await disableAutoWatch(
+      `The game didn't reply ${MAX_CONSECUTIVE_TIMEOUTS} times in a row (${REQUEST_TIMEOUT_MS / 1000}s each), so pet couriers paused. This is usually a connection problem. Check that the game loads, then turn Background watch back on.`,
+    );
+    return true;
+  }
+  console.error(LOG_PREFIX, `courier watch: no reply from the game (${consecutiveTimeouts} in a row), retrying in ${TIMEOUT_RETRY_MS / 1000}s`);
+  chrome.alarms.create(alarmName, { when: Date.now() + TIMEOUT_RETRY_MS });
+  return true;
+}
+
 /** Disables watch, auto-offload, and auto-dispatch, clears both alarms, and
  *  tells the player — reserved for a genuine `'shape'` error (an
  *  unrecognized response format), never for `'status-blocked'` (see the
@@ -293,6 +324,9 @@ async function findGameTabId(): Promise<number | undefined> {
  *  misrepresent that as still-active. Mirrors `careerAuto/runner.ts`'s and
  *  `streetIntel/actionRunner.ts`'s `pause()`. */
 async function disableAutoWatch(message: string): Promise<void> {
+  // Saved first, so the panels already have the reason when the config
+  // change below makes them re-render as paused.
+  await storage.setCourierWatchState({ ...(await storage.getCourierWatchState()), pausedMessage: message, pausedAt: Date.now() });
   await storage.setCourierAutoConfig({ watchEnabled: false, autoDispatchEnabled: false, autoOffloadEnabled: false });
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_DEST_POLL);
   chrome.alarms.clear(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
@@ -319,6 +353,10 @@ async function disableAutoWatch(message: string): Promise<void> {
  * with the summary.
  */
 async function handleBatchStop(summary: CourierRunSummary, alarmName: string): Promise<boolean> {
+  if (summary.stoppedReason === 'timed-out') return noteTimeout(alarmName);
+  // A run that got its answers back, even a refusal, ends a timeout streak.
+  // A skipped run (another one in progress) asked the game nothing.
+  if (!summary.notRun) consecutiveTimeouts = 0;
   if (summary.stoppedReason === 'status-blocked') {
     const freshStatus = await fetchLiveStatus();
     chrome.alarms.create(alarmName, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
@@ -546,7 +584,16 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
   // per-call `fetchLiveStatus()` gate exists for elsewhere in this file.
   if (!(await storage.getCourierAutoConfig()).watchEnabled) return;
 
-  const status = await fetchLiveStatus();
+  let status: Awaited<ReturnType<typeof fetchLiveStatus>>;
+  try {
+    status = await fetchLiveStatus();
+  } catch (err) {
+    if (isRequestTimeout(err)) {
+      await noteTimeout(ALARM_NAMES.SMUGGLING_DEST_POLL);
+      return;
+    }
+    throw err;
+  }
   if (!status) {
     // A transient fetch failure, not "nothing to do this hour" — waiting out
     // `scheduleHourlyDestCheck()`'s up-to-an-hour gap here would compound
@@ -590,6 +637,10 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
       await disableAutoWatch(err.message);
       return;
     }
+    if (isRequestTimeout(err)) {
+      await noteTimeout(ALARM_NAMES.SMUGGLING_DEST_POLL);
+      return;
+    }
     console.error(LOG_PREFIX, 'courier watch dest-poll cycle failed', err);
     scheduleHourlyDestCheck();
   }
@@ -601,7 +652,16 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
   // See the matching guard in `handleDestPollAlarm` above.
   if (!(await storage.getCourierAutoConfig()).watchEnabled) return;
 
-  const status = await fetchLiveStatus();
+  let status: Awaited<ReturnType<typeof fetchLiveStatus>>;
+  try {
+    status = await fetchLiveStatus();
+  } catch (err) {
+    if (isRequestTimeout(err)) {
+      await noteTimeout(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
+      return;
+    }
+    throw err;
+  }
   if (!status) {
     chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: Date.now() + 60_000 });
     return;
@@ -636,6 +696,10 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     }
     if (err instanceof SystemicActionError) {
       await disableAutoWatch(err.message);
+      return;
+    }
+    if (isRequestTimeout(err)) {
+      await noteTimeout(ALARM_NAMES.SMUGGLING_COURIER_RETURN);
       return;
     }
     console.error(LOG_PREFIX, 'courier watch return cycle failed', err);

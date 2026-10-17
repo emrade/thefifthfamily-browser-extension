@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { STOP_REASON_LABEL, describeItems, describeLaunched, describeOffloadedBatch, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeActiveRun, describeItems, describeLaunched, describeOffloadedBatch, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import type { CourierAutoConfig, CourierStatus } from '@/shared/types';
 
 /** Answers the same "even when it is active i have no idea what it is doing"
@@ -44,7 +44,11 @@ export function PetCouriersHome() {
     // `chrome.storage.onChanged` pattern Career Auto's own popup page uses.
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'local') return;
-      if (STORAGE_KEYS.COURIER_AUTO_CONFIG in changes) setConfig(changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue ?? null);
+      if (STORAGE_KEYS.COURIER_AUTO_CONFIG in changes) {
+        setConfig(changes[STORAGE_KEYS.COURIER_AUTO_CONFIG].newValue ?? null);
+        // A pause written by background comes with its reason.
+        void refreshStatus();
+      }
     };
     chrome.storage.onChanged.addListener(onChanged);
 
@@ -125,6 +129,12 @@ export function PetCouriersHome() {
       {/* Hidden entirely rather than shown stale — with watch off, neither
           alarm is armed to keep any of this current, so displaying it would
           read as "still checking" when nothing is. */}
+      {!config.watchEnabled && watch.pausedMessage && (
+        <div class="ff-health-alert">
+          <strong>Pet couriers paused{watch.pausedAt ? ` at ${new Date(watch.pausedAt).toLocaleTimeString()}` : ''}</strong>
+          <span class="ff-health-alert__hint">{watch.pausedMessage}</span>
+        </div>
+      )}
       {!config.watchEnabled && <div class="ff-empty">Background watch is off — no automatic checking or dispatching is happening.</div>}
 
       {config.watchEnabled && (
@@ -182,6 +192,13 @@ export function PetCouriersHome() {
                 {p.petName} — {p.arrivesAt <= now ? 'landed, offload pending' : `back in ${formatRelativeTime(p.arrivesAt, now)}`}
               </div>
             ))}
+        </>
+      )}
+
+      {status.activeRun && (
+        <>
+          <div class="ff-section-label">In Progress</div>
+          <div class="ff-auto-row">{describeActiveRun(status.activeRun, now)}</div>
         </>
       )}
 

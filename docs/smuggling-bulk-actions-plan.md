@@ -55,6 +55,11 @@ pet. One item, one destination, one cash cap, applied to every pet in
 
 ### CONFIRMED post-ship: `v2_launch` caps at 10 couriers per call, regardless of cash
 
+> **Lifted by 2026-10-17.** The player's own send at 19:18 UTC went out with
+> 12 pet ids in one call and came back `sent:12` (166 units). Every idle pet
+> now goes in one call; a `sent` short of the ids submitted stops the run
+> (`petCourier.ts`). The section below is kept as the history.
+
 Found after this feature shipped, once the account had more than 10 pets
 idle at once for the first time — nothing in the scoping above caught this
 because every archive sample available at design time topped out at 9 pets

@@ -2,7 +2,7 @@ import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS } from '@/shared/constants';
-import { STOP_REASON_LABEL, describeItems, describeLaunched, describeOffloadedBatch, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
+import { STOP_REASON_LABEL, describeActiveRun, describeItems, describeLaunched, describeOffloadedBatch, describeProgressEvent, describeRoster, formatCourierMoney, formatRelativeTime } from '@/shared/courierDisplay';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
 import type { CourierAutoConfig, CourierRunSummary, CourierStatus, CourierWatchSummary } from '@/shared/types';
@@ -124,6 +124,8 @@ const PANEL_CSS = `
 }
 
 .ff-cp-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.ff-cp-active { font-size: 9.5px; line-height: 1.5; color: #f5c46b; border: 1px solid rgba(245, 196, 107, 0.35); border-radius: 8px; padding: 6px 8px; margin-bottom: 10px; }
+.ff-cp-active[hidden] { display: none; }
 
 .ff-cp-run, .ff-cp-offload {
   display: block; flex: 1; padding: 10px;
@@ -176,6 +178,9 @@ let liveLines: string[] = [];
 
 function renderSummary(run: CourierRunSummary | null): string {
   if (!run) return '<div class="ff-cp-row">No runs yet.</div>';
+  // A click refused because another run is still going: that's the whole
+  // story, the run in progress is shown above.
+  if (run.notRun) return `<div class="ff-cp-alert">${escapeHtml(run.errors[0] ?? 'Another courier run is in progress, so this one was skipped.')}</div>`;
 
   const parts: string[] = [`<div class="ff-cp-summary-time">${new Date(run.timestamp).toLocaleString()}</div>`];
 
@@ -236,6 +241,10 @@ function renderSummary(run: CourierRunSummary | null): string {
  *  off — neither alarm is armed to keep it current at that point, so showing
  *  it would read as "still checking" when nothing is (same reasoning as the
  *  popup's `PetCouriersHome`). */
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function renderWatchStatus(watch: CourierWatchSummary): string {
   const now = Date.now();
   const parts: string[] = [
@@ -243,6 +252,10 @@ function renderWatchStatus(watch: CourierWatchSummary): string {
   ];
 
   if (!watch.watchEnabled) {
+    if (watch.pausedMessage) {
+      const at = watch.pausedAt ? ` at ${new Date(watch.pausedAt).toLocaleTimeString()}` : '';
+      parts.push(`<div class="ff-cp-watch-row ff-cp-row--error"><b>Paused${at}.</b> ${escapeHtml(watch.pausedMessage)}</div>`);
+    }
     parts.push('<div class="ff-cp-watch-row">Background watch is off — no automatic checking or dispatching is happening.</div>');
     return parts.join('');
   }
@@ -308,6 +321,27 @@ function renderLive(): string {
   return liveLines.map((line) => `<div class="ff-cp-row">${line}</div>`).join('');
 }
 
+// While a run is in progress the panel re-asks every couple of seconds, so
+// the step and its wait stay current; otherwise the 30s refresh is enough.
+let activeRunTimer: ReturnType<typeof setTimeout> | null = null;
+
+function renderActiveRun(status: CourierStatus): void {
+  const activeEl = panelEl?.querySelector<HTMLElement>('.ff-cp-active');
+  if (!activeEl) return;
+  if (status.activeRun) {
+    activeEl.textContent = describeActiveRun(status.activeRun, Date.now());
+    activeEl.hidden = false;
+    if (activeRunTimer === null && expanded) {
+      activeRunTimer = setTimeout(() => {
+        activeRunTimer = null;
+        void refresh();
+      }, 2_000);
+    }
+  } else {
+    activeEl.hidden = true;
+  }
+}
+
 async function refresh() {
   if (!panelEl) return;
   const rosterEl = panelEl.querySelector('.ff-cp-roster');
@@ -318,6 +352,7 @@ async function refresh() {
     if (rosterEl) rosterEl.textContent = describeRoster(status.roster);
     if (summaryEl) summaryEl.innerHTML = renderSummary(status.lastRun);
     if (watchEl) watchEl.innerHTML = renderWatchStatus(status.watch);
+    renderActiveRun(status);
   } catch (err) {
     console.error(LOG_PREFIX, 'courier panel status refresh failed', err);
   }
@@ -460,6 +495,7 @@ function buildPanel(): HTMLDivElement {
         <input class="ff-cp-autooffload-toggle ff-cp-toggle" type="checkbox">
       </label>
       <div class="ff-cp-watch"><div class="ff-cp-watch-row">Loading…</div></div>
+      <div class="ff-cp-active" hidden></div>
       <div class="ff-cp-actions">
         <button class="ff-cp-run" type="button">Run</button>
         <button class="ff-cp-offload" type="button">Offload All</button>
@@ -525,6 +561,8 @@ function buildPanel(): HTMLDivElement {
       offloadToggle.checked = next.autoOffloadEnabled;
       dispatchToggle.checked = next.autoDispatchEnabled;
       applyWatchGate(next.watchEnabled);
+      // A pause written by background comes with its reason.
+      void refresh();
     });
 
     watchToggle.addEventListener('change', () => {

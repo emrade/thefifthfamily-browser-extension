@@ -442,6 +442,13 @@ export interface SmugglingV2Snapshot {
  *  kept as "last run" even after the panel closes and reopens. */
 export interface CourierRunSummary {
   timestamp: number;
+  /** Set when this call didn't run at all because another run was already
+   *  in progress (the one-at-a-time guard); nothing was asked of the game. */
+  notRun?: true;
+  /** A collect (`v2_offload`/`v2_offload_all`) got no reply in time. The
+   *  game may still have paid out, so the run banks whatever cash is on hand
+   *  (see `runLeftCashOnHand`). */
+  collectTimedOut?: true;
   offloaded: { petName: string; profit: number }[];
   // `items` rather than a single item/qty — a shipment can (and often does, once
   // pre-existing stash gets drained into it) carry a mix, not just what was
@@ -467,7 +474,7 @@ export interface CourierRunSummary {
    *  cargo, or withdrew to fund cargo — see petCourier.ts's `runLeftCashOnHand`.
    *  A failed or empty run leaves the player's own cash alone. */
   cashDeposited: number;
-  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | 'status-blocked' | 'repeated-rejection' | null;
+  stoppedReason: 'daily-cap-reached' | 'insufficient-funds' | 'no-idle-pets' | 'no-destination-available' | 'session-error' | 'shape-changed' | 'status-blocked' | 'repeated-rejection' | 'timed-out' | null;
   errors: string[];
 }
 
@@ -529,6 +536,10 @@ export interface CourierWatchSummary {
    *  `lastProbeResult`/idle-pet count, since the ribbon reveals this
    *  independently of whether anything is idle to send. */
   openRoute: OpenRoute | null;
+  /** Why auto-watch last paused itself, shown until the player turns
+   *  Background watch back on (which clears it). */
+  pausedMessage: string | null;
+  pausedAt: number | null;
 }
 
 /** Read-only snapshot for the in-page floating panel to render without
@@ -539,6 +550,18 @@ export interface CourierStatus {
   roster: PetRosterEntry[];
   lastRun: CourierRunSummary | null;
   watch: CourierWatchSummary;
+  /** The run in progress right now, if any. */
+  activeRun: CourierActiveRun | null;
+}
+
+/** A courier run that's still going: since when, and what it's waiting on
+ *  right now. Kept in background memory only (see `petCourier.ts`). */
+export interface CourierActiveRun {
+  kind: 'dispatch' | 'offload';
+  startedAt: number;
+  /** What it's doing, e.g. "collecting Red-Tailed Hawk's cargo". */
+  step: string;
+  stepStartedAt: number;
 }
 
 /** User toggles for the courier auto-watch background feature (see
@@ -588,6 +611,9 @@ export interface CourierWatchState {
   lastProbeResult: 'open' | 'locked' | 'no-idle-pets' | null;
   /** See `CourierWatchSummary.openRoute` — same field, persisted. */
   openRoute: OpenRoute | null;
+  /** See `CourierWatchSummary.pausedMessage` — same field, persisted. */
+  pausedMessage?: string | null;
+  pausedAt?: number | null;
 }
 
 /** One in-flight shipment's computed return time, persisted so the dynamic

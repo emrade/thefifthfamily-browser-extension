@@ -1,12 +1,13 @@
 import { db } from '@/shared/db';
 import { GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { loggedFetch } from '@/shared/requestLog/loggedFetch';
+import { REQUEST_TIMEOUT_MS, isRequestTimeout, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import { getRoster, upsertRoster } from '@/shared/petRoster';
 import { SystemicActionError, depositCashOnHand, postAction } from '../../gameAction';
 import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
-import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierActiveRun, CourierProgressEvent, CourierRunSummary, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
+import { formatCourierMoney } from '@/shared/courierDisplay';
 
 /**
  * Set for the duration of one run, to the tab that asked for it — see
@@ -18,6 +19,20 @@ import type { BlackMarketItem, CourierProgressEvent, CourierRunSummary, FleetEnt
  * which is why progress broadcast that way silently never arrived at the panel.
  */
 let progressTabId: number | undefined;
+
+/** The run in progress, for the panels: a run used to give no sign of itself
+ *  until it finished, so one stuck waiting on the game (2026-10-17, 16 min)
+ *  looked exactly like nothing happening. */
+let activeRunInfo: CourierActiveRun | null = null;
+
+export function getActiveCourierRun(): CourierActiveRun | null {
+  return activeRunInfo;
+}
+
+/** Notes what the run in progress is doing now; a no-op outside a run. */
+function setStep(step: string): void {
+  if (activeRunInfo) activeRunInfo = { ...activeRunInfo, step, stepStartedAt: Date.now() };
+}
 
 /**
  * Broadcasts one step of the run as it happens, so the in-page floating panel
@@ -56,18 +71,36 @@ function isDailyCapRejection(error: unknown): boolean {
 }
 
 /**
- * `v2_launch` silently caps at 10 pet ids per call — confirmed post-ship,
- * not something either archive available while building this feature ever
- * happened to exercise (every sample topped out at 9 pets). See
- * docs/smuggling-bulk-actions-plan.md's "CONFIRMED post-ship" section: four
- * real calls, two sessions, every 11-pet attempt lost the 11th (last in the
- * submitted list) with no error — `ok:true`, `sent:10`, nothing to detect
- * except `sent` not matching `user_pet_ids.length`. 10 has succeeded fully
- * every time it's been tried; 11 never has, regardless of cash. Above this
- * many idle pets, `executeCourierBatch` issues multiple `v2_launch` calls in
- * the same run instead of one.
+ * Every idle pet goes in one `v2_launch`, the way the game's own Send button
+ * sends them. Until mid-October the server kept only the first 10 ids of a
+ * call (11-pet calls came back `ok:true`, `sent:10`; see
+ * docs/smuggling-bulk-actions-plan.md), so pets went out in calls of 10. The
+ * player's own send on 2026-10-17 19:18 UTC went out with 12 pets in one call
+ * and came back `sent:12`. If the server ever keeps fewer than it was sent
+ * again, `sent` comes back short, and the run stops with that as its reason
+ * rather than quietly leaving pets home.
+ *
+ * Nor is anything sent in the last `HOUR_END_MARGIN_MS` of an hour: the open
+ * route rotates on the hour, and a send read in one hour can land in the
+ * next. On 2026-10-17 a panel read at 15:59:59.8 led to a `v2_launch` at
+ * 16:00:00.8, refused with "That destination is not open this hour." (same
+ * on 10-05 00:00:00.6). The pets wait for the next hour's check instead,
+ * which courierWatch fires just after the hour. A refusal with that message
+ * in the first `HOUR_START_GRACE_MS` of an hour is the same race (the game's
+ * clock and this machine's can differ by a little), so it ends the run
+ * without pausing auto-watch.
  */
-const LAUNCH_BATCH_SIZE = 10;
+const HOUR_END_MARGIN_MS = 15_000;
+const HOUR_START_GRACE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+function tooCloseToHourEnd(): boolean {
+  return HOUR_MS - (Date.now() % HOUR_MS) < HOUR_END_MARGIN_MS;
+}
+
+function isHourTurnRefusal(error: unknown): boolean {
+  return typeof error === 'string' && /not open this hour/i.test(error) && Date.now() % HOUR_MS < HOUR_START_GRACE_MS;
+}
 
 /**
  * Deliberately matches the *live client's* actual URL, not a hardcoded guess —
@@ -79,6 +112,7 @@ const LAUNCH_BATCH_SIZE = 10;
  * matching the client exactly removes that as a variable.
  */
 export async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
+  setStep('reading the smuggling page');
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, {
     credentials: 'include',
   });
@@ -90,6 +124,7 @@ export async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
  *  availability isn't a constraint the way it is here, but this needs neither DOM
  *  nor any of its other two dozen fields). */
 async function fetchCashAndDistrict(): Promise<{ cash: number; bank: number; districtName: string | null } | null> {
+  setStep('checking cash and bank');
   const res = await loggedFetch(`${GAME_ORIGIN}/api/stats.php`, { credentials: 'include' });
   let json: any;
   try {
@@ -123,6 +158,7 @@ async function fetchCashAndDistrict(): Promise<{ cash: number; bank: number; dis
  * reuse this without constructing a throwaway summary just to satisfy it.
  */
 export async function cancelShipment(shipmentId: number, petName: string, pushError: (message: string) => void): Promise<void> {
+  setStep(`clearing ${petName}'s stuck shipment`);
   const resp = await postAction('/actions/smuggling.php', { action: 'v2_cancel', shipment_id: shipmentId });
   if (!resp?.ok) pushError(`could not cancel ${petName}'s stuck shipment — it may still be blocking new drafts`);
 }
@@ -166,6 +202,7 @@ function unrecognizedFleetNames(fleet: FleetEntry[], roster: PetRosterEntry[]): 
  * commas correctly, matching the real request byte-for-byte.
  */
 async function runLaunch(pets: PetRosterEntry[], item: BlackMarketItem, destination: { cityId: number; name: string }, maxSpend: number): Promise<any> {
+  setStep(`sending ${pets.length} courier${pets.length === 1 ? '' : 's'} to ${destination.name}`);
   return postAction('/actions/smuggling.php', {
     action: 'v2_launch',
     user_pet_ids: pets.map((p) => p.userPetId).join(','),
@@ -186,6 +223,7 @@ async function runLaunch(pets: PetRosterEntry[], item: BlackMarketItem, destinat
  * the call site rather than implicit.
  */
 async function runOffloadAll(count: number): Promise<any> {
+  setStep(`collecting ${count} landed deliveries`);
   return postAction('/actions/smuggling.php', { action: 'v2_offload_all' });
 }
 
@@ -196,6 +234,13 @@ async function runOffloadAll(count: number): Promise<any> {
  *  block is recoverable and expected, not a sign the game's response format
  *  changed, so a caller (courierWatch's auto-dispatch) must not treat the two
  *  the same way. */
+/** The run's error line when the game didn't answer in time (see
+ *  `REQUEST_TIMEOUT_MS`). The run ends there; courierWatch carries on from a
+ *  fresh read of the page and pauses only after several in a row. */
+function timeoutMessage(what: string): string {
+  return `${what}: no reply from the game within ${REQUEST_TIMEOUT_MS / 1000}s (connection problem?). The game may still have done it; the next check re-reads the page.`;
+}
+
 function classifyStop(err: SystemicActionError): CourierRunSummary['stoppedReason'] {
   if (err.kind === 'auth') return 'session-error';
   if (err.kind === 'status-blocked') return 'status-blocked';
@@ -219,6 +264,7 @@ async function offloadReady(
 ): Promise<CourierRunSummary['stoppedReason']> {
   for (const entry of fleet.filter((f) => f.status === 'ready-to-offload')) {
     try {
+      setStep(`collecting ${entry.petName}'s cargo`);
       const resp = await postAction('/actions/smuggling.php', { action: 'v2_offload', shipment_id: entry.shipmentId, qty: '' });
       if (resp?.ok) {
         pushOffloaded({ petName: entry.petName, profit: Number(resp.net_profit) || 0 });
@@ -233,6 +279,10 @@ async function offloadReady(
       if (err instanceof SystemicActionError) {
         pushError(err.message);
         return classifyStop(err);
+      }
+      if (isRequestTimeout(err)) {
+        pushError(timeoutMessage(`collecting ${entry.petName}'s cargo`));
+        return 'timed-out';
       }
       pushError(`offload failed for ${entry.petName}: ${String(err)}`);
     }
@@ -265,7 +315,9 @@ async function offloadWhatIsReady(
   if (isDailyCapReached(snapshot)) return 'daily-cap-reached';
 
   if (snapshot.offloadAllCount === null) {
-    return offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    const stop = await offloadReady(snapshot.fleet, pushOffloaded, pushError);
+    if (stop === 'timed-out') summary.collectTimedOut = true;
+    return stop;
   }
 
   try {
@@ -286,6 +338,11 @@ async function offloadWhatIsReady(
     if (err instanceof SystemicActionError) {
       pushError(err.message);
       return classifyStop(err);
+    }
+    if (isRequestTimeout(err)) {
+      pushError(timeoutMessage('collecting all cargo'));
+      summary.collectTimedOut = true;
+      return 'timed-out';
     }
     pushError(`offload-all failed: ${String(err)}`);
     return null;
@@ -310,6 +367,7 @@ async function depositLeftoverCash(summary: CourierRunSummary): Promise<void> {
   if (!funds || funds.cash <= 0) return;
 
   try {
+    setStep('banking the leftover cash');
     const resp = await depositCashOnHand('pet-courier');
     if (resp?.ok) {
       summary.cashDeposited = funds.cash;
@@ -355,6 +413,7 @@ let activeRun: Promise<CourierRunSummary> | null = null;
 function skippedRunSummary(reason: string): CourierRunSummary {
   return {
     timestamp: Date.now(),
+    notRun: true,
     offloaded: [],
     sent: [],
     skipped: [],
@@ -374,9 +433,15 @@ function skippedRunSummary(reason: string): CourierRunSummary {
  *  brought in nothing, so any cash on hand is the player's own and stays put.
  *  Confirmed real (2026-09-22): the old "deposit after every batch" rule swept
  *  the player's own manual withdrawals back into the bank after each of 2,897
- *  failed offloads. */
+ *  failed offloads.
+ *
+ *  The exception is a collect that got no reply in time: the game may have paid
+ *  out anyway (2026-10-17: the Hawk's cargo was sold, the reply never came),
+ *  and nothing later would bank that cash, so everything on hand is banked,
+ *  the player's own included. Chosen by the player: a timed-out collect is
+ *  rare, and sale proceeds lost to a mugging are worse. */
 function runLeftCashOnHand(summary: CourierRunSummary): boolean {
-  return summary.offloaded.length > 0 || summary.offloadedBatch !== null || summary.cashWithdrawn > 0;
+  return summary.offloaded.length > 0 || summary.offloadedBatch !== null || summary.cashWithdrawn > 0 || summary.collectTimedOut === true;
 }
 
 /** Shared by `runCourierBatch`/`runOffloadBatch` — same bookend/deposit/persist
@@ -386,11 +451,16 @@ function runLeftCashOnHand(summary: CourierRunSummary): boolean {
  *  will simply be re-evaluated on its own next natural cycle (the next
  *  alarm, or the next manual click), so there's nothing lost by not queuing
  *  it — only avoided by not running it concurrently. */
-async function runExclusive(execute: () => Promise<CourierRunSummary>, tabId: number | undefined): Promise<CourierRunSummary> {
+async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promise<CourierRunSummary>, tabId: number | undefined): Promise<CourierRunSummary> {
   if (activeRun) {
-    return skippedRunSummary('another courier run was already in progress — skipped this cycle');
+    const info = activeRunInfo;
+    const detail = info ? ` (started ${new Date(info.startedAt).toLocaleTimeString()}, now ${info.step})` : '';
+    return skippedRunSummary(`A courier run is already in progress${detail}, so this one was skipped.`);
   }
 
+  // Set before the run starts: its first step is noted synchronously.
+  const startedAt = Date.now();
+  activeRunInfo = { kind, startedAt, step: 'starting', stepStartedAt: startedAt };
   const run = (async () => {
     progressTabId = tabId;
     emitProgress({ kind: 'started' });
@@ -408,6 +478,7 @@ async function runExclusive(execute: () => Promise<CourierRunSummary>, tabId: nu
     return await run;
   } finally {
     activeRun = null;
+    activeRunInfo = null;
   }
 }
 
@@ -417,7 +488,7 @@ async function runExclusive(execute: () => Promise<CourierRunSummary>, tabId: nu
  *  in `progressTabId` for the duration so `emitProgress` knows where to send
  *  live updates — see its comment. */
 export async function runCourierBatch(tabId?: number): Promise<CourierRunSummary> {
-  return runExclusive(executeCourierBatch, tabId);
+  return runExclusive('dispatch', executeCourierBatch, tabId);
 }
 
 /** The lighter counterpart to `runCourierBatch` — just collects whatever's
@@ -425,7 +496,7 @@ export async function runCourierBatch(tabId?: number): Promise<CourierRunSummary
  *  Shares `executeCourierBatch`'s summary shape (mostly empty here) so both
  *  surfaces can render either kind of run through the same display code. */
 export async function runOffloadBatch(tabId?: number): Promise<CourierRunSummary> {
-  return runExclusive(executeOffloadBatch, tabId);
+  return runExclusive('offload', executeOffloadBatch, tabId);
 }
 
 async function executeOffloadBatch(): Promise<CourierRunSummary> {
@@ -465,6 +536,11 @@ async function executeOffloadBatch(): Promise<CourierRunSummary> {
     if (err instanceof SystemicActionError) {
       pushError(err.message);
       summary.stoppedReason = classifyStop(err);
+      return summary;
+    }
+    if (isRequestTimeout(err)) {
+      pushError(timeoutMessage('reading the smuggling page'));
+      summary.stoppedReason = 'timed-out';
       return summary;
     }
     console.error(LOG_PREFIX, 'offload batch failed', err);
@@ -659,12 +735,18 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       return summary;
     }
 
+    if (tooCloseToHourEnd()) {
+      summary.stoppedReason = 'no-destination-available';
+      return summary;
+    }
+
     if (runningCost > funds.cash) {
       const shortfall = runningCost - funds.cash;
       try {
         // Comma-formatted, matching the exact request shape confirmed in the
         // archive (`amount=1,000,000`) — not confirmed that a plain digit string
         // is also accepted, so this doesn't guess.
+        setStep(`withdrawing ${formatCourierMoney(shortfall)} for cargo`);
         const resp = await postAction('/actions/bank.php', { action: 'withdraw', amount: shortfall.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
         if (!resp?.ok) {
           pushError(`withdrawal failed: ${resp?.error ?? 'unknown error'}`);
@@ -678,20 +760,19 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           summary.stoppedReason = classifyStop(err);
           return summary;
         }
+        if (isRequestTimeout(err)) {
+          pushError(timeoutMessage('withdrawing cash for cargo'));
+          summary.stoppedReason = 'timed-out';
+          return summary;
+        }
         pushError(`withdrawal failed: ${String(err)}`);
         summary.stoppedReason = 'insufficient-funds';
         return summary;
       }
     }
 
-    // `v2_launch` caps at 10 pet ids per call — see `LAUNCH_BATCH_SIZE`'s own
-    // doc and docs/smuggling-bulk-actions-plan.md's "CONFIRMED post-ship"
-    // section. `included` can be any size, so it's split here into chunks
-    // of at most that many, each sent as its own `v2_launch` call.
-    const chunks: (typeof included)[] = [];
-    for (let i = 0; i < included.length; i += LAUNCH_BATCH_SIZE) {
-      chunks.push(included.slice(i, i + LAUNCH_BATCH_SIZE));
-    }
+    // One call for every pet (see `HOUR_END_MARGIN_MS`'s doc above).
+    const chunks: (typeof included)[] = [included];
 
     for (const chunk of chunks) {
       const chunkCost = chunk.reduce((sum, pet) => sum + pet.capacity * item.price, 0);
@@ -735,6 +816,11 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           break;
         }
 
+        if (tooCloseToHourEnd()) {
+          summary.stoppedReason = 'no-destination-available';
+          break;
+        }
+
         let launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);
 
         // Confirmed real (2026-08-29, the old per-pet buy loop's own incident):
@@ -751,6 +837,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           const fundsNow = await fetchCashAndDistrict();
           if (fundsNow && fundsNow.cash < chunkCost && fundsNow.bank > 0) {
             const topUp = Math.min(fundsNow.bank, chunkCost - fundsNow.cash);
+            setStep(`withdrawing ${formatCourierMoney(topUp)} more for cargo`);
             const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
             if (withdraw?.ok) {
               summary.cashWithdrawn += topUp;
@@ -772,6 +859,15 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
             item: item.name,
             destination: typeof launch.destination === 'string' ? launch.destination : liveAvailability.destination.name,
           };
+          const sent = Number(launch.sent);
+          if (Number.isFinite(sent) && sent < chunk.length) {
+            pushError(`the game sent ${sent} of the ${chunk.length} couriers in one request — it may limit how many go at once again`);
+            summary.stoppedReason = 'shape-changed';
+            break;
+          }
+        } else if (isHourTurnRefusal(launch?.error)) {
+          summary.stoppedReason = 'no-destination-available';
+          break;
         } else {
           // Not the cash case — `chunkCost` (this call's own `max_spend`) is
           // sized from the same affordability check above, so the confirmed
@@ -789,6 +885,11 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           summary.stoppedReason = classifyStop(err);
           return summary;
         }
+        if (isRequestTimeout(err)) {
+          pushError(timeoutMessage(`sending ${chunk.length} courier${chunk.length === 1 ? '' : 's'}`));
+          summary.stoppedReason = 'timed-out';
+          break;
+        }
         pushError(`launch failed for a batch of ${chunk.length}: ${String(err)}`);
         summary.stoppedReason = 'shape-changed';
         break;
@@ -804,6 +905,11 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     if (err instanceof SystemicActionError) {
       pushError(err.message);
       summary.stoppedReason = classifyStop(err);
+      return summary;
+    }
+    if (isRequestTimeout(err)) {
+      pushError(timeoutMessage('reading the game'));
+      summary.stoppedReason = 'timed-out';
       return summary;
     }
     console.error(LOG_PREFIX, 'courier batch failed', err);
