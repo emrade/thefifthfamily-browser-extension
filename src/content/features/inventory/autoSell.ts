@@ -30,6 +30,7 @@ import {
   isCrimeCard,
   isLockedCard,
   isQuickSellable,
+  isVariableCard,
   markCardLocked,
 } from './shared';
 
@@ -336,6 +337,7 @@ function renderForm(items: InvItem[]): string {
     return m;
   };
   const byRarity = countBy((i) => i.quality);
+  const variableCount = items.filter((i) => !i.locked && isVariableCard(i.card)).length;
   const byType = countBy((i) => i.type);
 
   const rarityChips = rarityOptions()
@@ -349,7 +351,7 @@ function renderForm(items: InvItem[]): string {
     .join('');
 
   return `
-    <div class="ff-as-field"><div class="ff-as-label">Rarity <span class="ff-as-req">required</span></div><div class="ff-as-chips">${rarityChips || '<span class="ff-as-note">No sellable items.</span>'}</div></div>
+    <div class="ff-as-field"><div class="ff-as-label">Rarity <span class="ff-as-req">required</span></div><div class="ff-as-chips">${rarityChips || '<span class="ff-as-note">No sellable items.</span>'}</div>${variableCount > 0 ? `<div class="ff-as-note">${plural(variableCount, 'variable item')} left out (the game doesn't let these be sold).</div>` : ''}</div>
     <div class="ff-as-field"><div class="ff-as-label">Slot <span class="ff-as-hint">none picked = every slot</span></div><div class="ff-as-chips">${slotChips}</div></div>
     <div class="ff-as-row">
       <label class="ff-as-field"><span class="ff-as-label">Highest upgrade</span><input type="number" min="0" step="1" data-input="maxUpgrade" placeholder="any" value="${criteria.maxUpgrade ?? ''}"></label>

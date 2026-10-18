@@ -21,6 +21,7 @@ import {
   isCrimeCard,
   isLockedCard,
   isQuickSellable,
+  isVariableCard,
 } from './shared';
 
 /**
@@ -59,7 +60,7 @@ import {
  * line as a 2–10% range.
  *
  * Only unlocked equipment is counted (`isQuickSellable`); consumables are
- * left out on purpose. Equipped gear isn't a tile at all. How tiles are read
+ * left out on purpose, and so are variable items, which the game won't sell. Equipped gear isn't a tile at all. How tiles are read
  * from the page (rebuilt 2026-10-15) is in ./shared.
  */
 
@@ -276,6 +277,7 @@ interface Totals {
   crimeHigh: number;
   crimeUnknown: number;
   lockedCount: number;
+  variableCount: number;
   shownCount: number;
 }
 
@@ -284,7 +286,7 @@ function recompute(): void {
   const bar = document.getElementById(BAR_ID);
   if (!root || !bar) return;
 
-  const t: Totals = { count: 0, total: 0, exactCount: 0, unknownCount: 0, crimeCount: 0, crimeLow: 0, crimeHigh: 0, crimeUnknown: 0, lockedCount: 0, shownCount: 0 };
+  const t: Totals = { count: 0, total: 0, exactCount: 0, unknownCount: 0, crimeCount: 0, crimeLow: 0, crimeHigh: 0, crimeUnknown: 0, lockedCount: 0, variableCount: 0, shownCount: 0 };
 
   for (const card of root.querySelectorAll(CARD_SELECTOR)) {
     const sellable = isQuickSellable(card);
@@ -297,6 +299,7 @@ function recompute(): void {
     t.shownCount++;
     if (!price) {
       if (isLockedCard(card)) t.lockedCount++;
+      else if (isVariableCard(card)) t.variableCount++;
       continue;
     }
     if (isCrimeCard(card)) {
@@ -363,6 +366,7 @@ function renderBar(t: Totals): string {
     }
   }
   if (t.lockedCount > 0) lines.push(`<div class="ff-qs-note">${plural(t.lockedCount, 'locked item')} not counted (locked items can't be quick sold).</div>`);
+  if (t.variableCount > 0) lines.push(`<div class="ff-qs-note">${plural(t.variableCount, 'variable item')} not counted (the game doesn't let these be sold).</div>`);
 
   return `${brandBadgeHtml('Quick Sell')}${lines.join('')}`;
 }

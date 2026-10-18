@@ -25,6 +25,7 @@
  *
  * Only unlocked equipment counts as quick-sellable, by the player's choice:
  * consumables carry a sell option too, but these features are for gear.
+ * Variable items are left out too, as the game won't sell them.
  * The server side didn't change with the rebuild: the page's own bulk sell
  * still sends `quicksell_bulk_quote` / `quicksell_bulk`.
  */
@@ -101,9 +102,22 @@ export function findCard(root: Element, invId: number): Element | null {
   return root.querySelector(`${CARD_SELECTOR}[data-id="${invId}"]`);
 }
 
-/** Unlocked equipment. */
+/**
+ * A variable item: gear with a "VR" tag (`.iv2-tvr`), `vr: 1` in the page's
+ * item data, with a ladder of ten versions from Common to Fifth Family
+ * Mythic. The game won't sell these: every sell sheet opened on one says
+ * `tradeable:false`, and `quicksell:false` since at least 2026-10-15
+ * (Reaper's Finger 10-15, Devil Costume 10-18; Opal Pin still quick-sold on
+ * 10-11). No other item has ever come back untradeable. The tile carries no
+ * attribute for it, only the tag.
+ */
+export function isVariableCard(card: Element): boolean {
+  return card.querySelector('.iv2-tvr') !== null;
+}
+
+/** Unlocked equipment, not variable. */
 export function isQuickSellable(card: Element): boolean {
-  return card.getAttribute('data-k') === 'gear' && EQUIPMENT_TYPES.has(cardType(card)) && !isLockedCard(card);
+  return card.getAttribute('data-k') === 'gear' && EQUIPMENT_TYPES.has(cardType(card)) && !isLockedCard(card) && !isVariableCard(card);
 }
 
 export type InventoryBatchKind = 'sell' | 'lock' | 'price';
