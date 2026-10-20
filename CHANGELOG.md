@@ -9,6 +9,24 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.47.0] - 2026-10-20
+
+### Added
+- Popup: a "Reload game tabs" row reloads every open game tab, one at a time
+  half a second apart, so several tabs can be refreshed in one tap.
+- Popup: after an update, a banner lists the game tabs still running the
+  previous version, with a button to reload just those. Tabs are never
+  reloaded on their own, so an update can't cut off something in progress.
+
+### Changed
+- Arena fight advisor: each verdict band's win chance now follows your own
+  results instead of a fixed table. It starts from the band's archive record
+  (re-measured 2026-10-20 on 818 fights, counted as at most 20 fights) and
+  every fight judged live moves it. Likely bosses now start at ~90% (was a
+  fixed 87%), and the weaker regular coin-flip that leans win at ~64% (was
+  73%). The fight breakdown shows the archive record behind each % and how
+  many of your own fights have moved it.
+
 ## [0.46.1] - 2026-10-20
 
 ### Fixed
