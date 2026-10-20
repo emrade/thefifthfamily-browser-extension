@@ -7,6 +7,7 @@ import type {
   DestinationOption,
   FleetEntry,
   LaunchAvailability,
+  LaunchPet,
   OpenRoute,
   PetRosterEntry,
   SmugglingV2Snapshot,
@@ -392,7 +393,22 @@ function parseLaunchAvailability(html: string): LaunchAvailability {
     return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
   }
 
-  return { available: true, destination: { cityId: route.cityId, name: route.name } };
+  return { available: true, destination: { cityId: route.cityId, name: route.name }, pets: parseLaunchPets(window) };
+}
+
+/** The bulk block's courier buttons. One missing any of id, name or carry is
+ *  left out, which can only make the run send fewer pets, never a wrong one. */
+function parseLaunchPets(window: string): LaunchPet[] {
+  const pets: LaunchPet[] = [];
+  for (const m of window.matchAll(/<button\b([^>]*\bclass="(?=[^"]*\bsv2-lo-pet\b)[^"]*"[^>]*)>([\s\S]*?)<\/button>/gi)) {
+    const [, attrs, inner] = m;
+    const id = Number(attrs.match(/data-pet="(\d+)"/)?.[1]);
+    const carry = Number(attrs.match(/data-carry="(\d+)"/)?.[1]);
+    const name = inner.match(/sv2-lo-bt">([^<]+)</)?.[1]?.trim() ?? '';
+    if (!(id > 0) || !(carry > 0) || !name) continue;
+    pets.push({ userPetId: id, name, carry });
+  }
+  return pets;
 }
 
 /** The `Game.smugV2OffloadAll(N)` argument, when that button exists — see

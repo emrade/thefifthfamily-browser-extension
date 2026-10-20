@@ -352,6 +352,28 @@ export function statusReleaseAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospit
   return Date.now() + (seconds + 2) * 1000;
 }
 
+let cashHold: Promise<void> | null = null;
+
+/**
+ * Keeps every `depositCashOnHand` waiting until `work` settles, for a run
+ * that puts cash on hand to spend it (Pet Courier: collect, withdraw for
+ * cargo, launch). On 2026-10-19 23:43 UTC Street Racing's post-race deposit
+ * landed 70 ms before a courier launch and banked $4.35M of the $8.6M just
+ * withdrawn for cargo, so only 5 of 13 couriers went. Only one hold at a
+ * time: Pet Courier's runs are already one at a time.
+ */
+export async function holdCashOnHand<T>(work: () => Promise<T>): Promise<T> {
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => (release = resolve));
+  cashHold = hold;
+  try {
+    return await work();
+  } finally {
+    if (cashHold === hold) cashHold = null;
+    release();
+  }
+}
+
 /**
  * Sweeps whatever cash is currently on hand into the bank — the mechanical
  * request only, extracted from petCourier.ts's `depositLeftoverCash` once a
@@ -369,7 +391,10 @@ export function statusReleaseAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospit
  * $X","cash":0,"bank":N}`). No amount to look up beforehand, and no race
  * between "how much cash did we see" and "how much is actually there by the
  * time this fires."
+ *
+ * Waits while a cash hold is on (see `holdCashOnHand`).
  */
 export async function depositCashOnHand(feature: string): Promise<any> {
+  while (cashHold) await cashHold;
   return postAction('/actions/bank.php', { action: 'deposit', amount: 'ALL' }, { rejectionScope: feature });
 }

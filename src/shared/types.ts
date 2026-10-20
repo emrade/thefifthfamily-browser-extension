@@ -335,6 +335,23 @@ export interface DestinationOption {
  * account-safety rule the whole doc is built around ("never construct
  * `v2_launch` in a state the real UI wouldn't offer the button for").
  */
+/**
+ * One courier in the "Send Every Courier" block: `data-pet`, the name, and
+ * `data-carry`. The game lists exactly the couriers it will send: 2,602 of
+ * the 2,610 successful launches 2026-10-01 → 10-20 sent only pets it listed
+ * (the 8 others are the 2026-10-09 fleet-parse incident and three runs
+ * racing a manual send on 10-17), and `data-carry` matched the units each
+ * launch carried on all 2,599 that could be checked. It is live: the saved
+ * roster only refreshes when the crew cards show, so it missed both the
+ * capacity gains from the player's Menagerie upgrades (2026-10-19) and
+ * newly unlocked pets.
+ */
+export interface LaunchPet {
+  userPetId: number;
+  name: string;
+  carry: number;
+}
+
 export type LaunchAvailability =
   | {
       available: true;
@@ -346,6 +363,10 @@ export type LaunchAvailability =
        *  Not the same source as `DestinationOption` (that only exists once a
        *  shipment draft is open) — this comes straight off the bulk block. */
       destination: { cityId: number; name: string };
+      /** The block's own courier picks (`sv2-lo-pet`): every idle courier
+       *  the game will send, with what it carries now (`data-carry`). See
+       *  `LaunchPet`. */
+      pets: LaunchPet[];
     }
   | {
       available: false;

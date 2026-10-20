@@ -3,10 +3,10 @@ import { GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { REQUEST_TIMEOUT_MS, isRequestTimeout, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
-import { getRoster, upsertRoster } from '@/shared/petRoster';
-import { SystemicActionError, depositCashOnHand, postAction } from '../../gameAction';
+import { getRoster, learnLaunchPets, upsertRoster } from '@/shared/petRoster';
+import { SystemicActionError, depositCashOnHand, holdCashOnHand, postAction } from '../../gameAction';
 import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
-import type { BlackMarketItem, CourierActiveRun, CourierProgressEvent, CourierRunSummary, FleetEntry, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
+import type { BlackMarketItem, CourierActiveRun, CourierProgressEvent, CourierRunSummary, FleetEntry, LaunchPet, SmugglingV2Snapshot } from '@/shared/types';
 import { formatCourierMoney } from '@/shared/courierDisplay';
 
 /**
@@ -116,7 +116,11 @@ export async function fetchPanel(): Promise<SmugglingV2Snapshot | null> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=smuggling&_t=${Date.now()}`, {
     credentials: 'include',
   });
-  return parseSmugglingV2PanelRegex(await res.text());
+  const snapshot = parseSmugglingV2PanelRegex(await res.text());
+  if (snapshot?.launchAvailability.available) {
+    await learnLaunchPets(snapshot.launchAvailability.pets).catch((err) => console.error(LOG_PREFIX, 'learnLaunchPets failed', err));
+  }
+  return snapshot;
 }
 
 /** Minimal stand-alone parse of `stats.php` for the two numbers this needs — not
@@ -170,25 +174,6 @@ function pickItem(blackMarket: BlackMarketItem[]): BlackMarketItem | null {
 }
 
 /**
- * Fleet entries whose pet name isn't in the persisted roster. Idle pets are
- * worked out as "roster minus fleet names", so a name the roster doesn't know
- * means that subtraction is wrong — and the error is always in the
- * dangerous direction, a busy pet counted as idle. Confirmed real
- * (2026-10-09): the fleet tiles moved the pet name off the bold line, the
- * parser read cargo labels ("Black-Market Steroids &times;36") as names, and
- * every automated `v2_launch` from then on included every pet, busy or not.
- * Checked before every launch so the next markup change pauses the feature
- * instead of quietly sending requests the real client never could. Skipped
- * while the roster is empty (fresh install), since nothing can be launched
- * from an empty roster anyway.
- */
-function unrecognizedFleetNames(fleet: FleetEntry[], roster: PetRosterEntry[]): string[] {
-  if (roster.length === 0) return [];
-  const known = new Set(roster.map((p) => p.name));
-  return fleet.filter((f) => !known.has(f.petName)).map((f) => f.petName || '(blank)');
-}
-
-/**
  * POSTs `v2_launch` — sends every included idle pet in one call, with the
  * server buying the cargo inline (`buy=1`). Replaces what used to be a
  * draft→buy→load→depart sequence repeated once per pet — see
@@ -201,7 +186,7 @@ function unrecognizedFleetNames(fleet: FleetEntry[], roster: PetRosterEntry[]): 
  * from the real capture that `postAction`'s plain string params URL-encode
  * commas correctly, matching the real request byte-for-byte.
  */
-async function runLaunch(pets: PetRosterEntry[], item: BlackMarketItem, destination: { cityId: number; name: string }, maxSpend: number): Promise<any> {
+async function runLaunch(pets: LaunchPet[], item: BlackMarketItem, destination: { cityId: number; name: string }, maxSpend: number): Promise<any> {
   setStep(`sending ${pets.length} courier${pets.length === 1 ? '' : 's'} to ${destination.name}`);
   return postAction('/actions/smuggling.php', {
     action: 'v2_launch',
@@ -464,7 +449,9 @@ async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promi
   const run = (async () => {
     progressTabId = tabId;
     emitProgress({ kind: 'started' });
-    const summary = await execute();
+    // Other features' deposits wait until the cash this run puts on hand
+    // (collected cargo, a withdrawal for cargo) has been spent.
+    const summary = await holdCashOnHand(execute);
     // Skipped when the session/CSRF itself is already known broken — the deposit
     // call would just fail the exact same way and add a redundant error line.
     if (summary.stoppedReason !== 'session-error' && runLeftCashOnHand(summary)) await depositLeftoverCash(summary);
@@ -635,40 +622,21 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       return summary;
     }
 
+    // Pets the game won't send (e.g. one deployed as the Fight Club combat
+    // pet: "Pigeon is deployed as your combat pet. Unequip it first."), noted
+    // as skipped. The game already leaves them out of the block below.
     const roster = await getRoster();
-    const unrecognized = unrecognizedFleetNames(snapshot.fleet, roster);
-    if (unrecognized.length > 0) {
-      pushError(`active deliveries list couriers not in your pet roster (${unrecognized.join(', ')}) — the fleet markup may have changed shape`);
-      summary.stoppedReason = 'shape-changed';
-      return summary;
-    }
     const activeNames = new Set(snapshot.fleet.map((f) => f.petName));
-    // Not in the active fleet isn't the same as actually draftable — a pet
-    // can be sitting out idle on the smuggling side while still rejected by
-    // `v2_draft` for an unrelated reason (confirmed: equipping a pet as your
-    // Fight Club combat pet blocks it here too — "Pigeon is deployed as your
-    // combat pet. Unequip it first."). Checked here, before ever attempting a
-    // draft, rather than discovered per-pet as a wasted failed request the
-    // way it was the first time this happened — see `PetRosterEntry.draftBlockedReason`.
     for (const pet of roster) {
       if (!activeNames.has(pet.name) && pet.draftBlockedReason) {
         pushSkipped({ petName: pet.name, reason: pet.draftBlockedReason });
       }
     }
-    const idlePets = roster.filter((p) => !activeNames.has(p.name) && !p.draftBlockedReason);
 
     // Never construct `v2_launch` in a state the real UI wouldn't offer the
     // button for — see docs/smuggling-bulk-actions-plan.md's design
     // requirement. `launchAvailability` is read live off this same fetch
-    // (re-fetched above if the offload step or the stuck-draft cleanup ran),
-    // and checked *before* `idlePets.length` below — the class check on the
-    // panel is the authoritative signal for whether the button exists at
-    // all, and the locally-cached roster diff (`idlePets`, from `getRoster()`)
-    // can lag it: the roster only gets a fresh write when a fetch happens to
-    // show the full crew (zero active shipments), so it can still read empty
-    // for a beat after a pet actually becomes draftable server-side. Checking
-    // `availability` first means a real "no idle pets" verdict always comes
-    // from the server's own signal, never from a stale local cache.
+    // (re-fetched above if the offload step or the stuck-draft cleanup ran).
     const availability = snapshot.launchAvailability;
     if (!availability.available) {
       switch (availability.reasonKind) {
@@ -691,13 +659,15 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
       return summary;
     }
 
+    // Who goes and what each carries, straight from the block (see
+    // `LaunchPet`), not from the saved roster: that missed the capacity gains
+    // from Menagerie upgrades (2026-10-20 10:09 UTC: max_spend sized for 172
+    // units on 13 couriers that carry 183, so 2 stayed home) and newly
+    // unlocked pets. It used to be "roster minus the active fleet's names",
+    // which also had to stop on any fleet name it didn't know.
+    const idlePets = availability.pets;
     if (idlePets.length === 0) {
-      // The server just confirmed a courier is available, but the local
-      // roster cache disagrees — a desync worth surfacing on its own rather
-      // than quietly filed under the routine "no idle pets" case above
-      // (which this contradicts, since `availability.available` already
-      // ruled that out from the server's own point of view).
-      pushError('the panel reports an idle courier available, but the local pet roster shows none — the roster cache may be stale');
+      pushError('the "Send Every Courier" block is on but lists no couriers — the panel markup may have changed shape');
       summary.stoppedReason = 'shape-changed';
       return summary;
     }
@@ -716,12 +686,12 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
 
     // Keep the highest-capacity pets first when funds fall short — they carry the
     // most profit per trip, so they're the last thing worth cutting.
-    const ordered = [...idlePets].sort((a, b) => b.capacity - a.capacity);
+    const ordered = [...idlePets].sort((a, b) => b.carry - a.carry);
     const totalAvailable = funds.cash + funds.bank;
     const included: typeof ordered = [];
     let runningCost = 0;
     for (const pet of ordered) {
-      const cost = pet.capacity * item.price;
+      const cost = pet.carry * item.price;
       if (runningCost + cost > totalAvailable) {
         pushSkipped({ petName: pet.name, reason: 'insufficient funds' });
         continue;
@@ -774,9 +744,93 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
     // One call for every pet (see `HOUR_END_MARGIN_MS`'s doc above).
     const chunks: (typeof included)[] = [included];
 
-    for (const chunk of chunks) {
-      const chunkCost = chunk.reduce((sum, pet) => sum + pet.capacity * item.price, 0);
+    // Accumulated across calls rather than overwritten, so the summary
+    // reflects the whole run even when it took more than one `v2_launch`.
+    const recordLaunch = (launch: any, petCount: number, destinationName: string) => {
+      const soFar = summary.launched;
+      summary.launched = {
+        petCount: (soFar?.petCount ?? 0) + (Number(launch.sent) || petCount),
+        unitsSent: (soFar?.unitsSent ?? 0) + (Number(launch.units_sent) || 0),
+        unitsBought: (soFar?.unitsBought ?? 0) + (Number(launch.units_bought) || 0),
+        cashSpent: (soFar?.cashSpent ?? 0) + (Number(launch.cash_spent) || 0),
+        item: item.name,
+        destination: typeof launch.destination === 'string' ? launch.destination : destinationName,
+      };
+    };
 
+    /**
+     * The game took `sent` of `pets` and said "Ran out of cash for more
+     * cargo": it fills couriers until the money runs out and sends only
+     * those. Seen twice: 2026-10-19 23:43 UTC (5 of 13, Street Racing's
+     * deposit banked the cargo cash 70 ms before the launch, which
+     * `holdCashOnHand` now prevents) and 10-20 10:09 (11 of 13, carry read
+     * from the stale roster). Understood, so instead of stopping it does what
+     * the player did by hand: withdraws what the couriers left behind need
+     * and sends them, once. Anything off about that (a different number left
+     * idle, a second short send) still stops the run. Returns whether it
+     * worked; on false, `summary.stoppedReason` says why.
+     */
+    const sendLeftBehind = async (pets: LaunchPet[], sent: number): Promise<boolean> => {
+      const after = await fetchPanel();
+      if (!after) {
+        pushError('could not re-read the smuggling panel after a partial send');
+        summary.stoppedReason = 'shape-changed';
+        return false;
+      }
+      const avail = after.launchAvailability;
+      const left = avail.available ? avail.pets.filter((p) => pets.some((q) => q.userPetId === p.userPetId)) : [];
+      if (!avail.available || left.length !== pets.length - sent) {
+        pushError(`the game sent ${sent} of ${pets.length} couriers for lack of cash, but ${left.length} of them show as idle now`);
+        summary.stoppedReason = 'shape-changed';
+        return false;
+      }
+      if (tooCloseToHourEnd()) {
+        summary.stoppedReason = 'no-destination-available';
+        return false;
+      }
+      const cost = left.reduce((sum, p) => sum + p.carry * item.price, 0);
+      const fundsNow = await fetchCashAndDistrict();
+      if (!fundsNow) {
+        pushError('could not read cash/bank balance');
+        summary.stoppedReason = 'insufficient-funds';
+        return false;
+      }
+      const topUp = Math.max(0, cost - fundsNow.cash);
+      if (topUp > fundsNow.bank) {
+        for (const p of left) pushSkipped({ petName: p.name, reason: 'insufficient funds' });
+        summary.stoppedReason = 'insufficient-funds';
+        return false;
+      }
+      if (topUp > 0) {
+        setStep(`withdrawing ${formatCourierMoney(topUp)} for the ${left.length} left behind`);
+        const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
+        if (!withdraw?.ok) {
+          pushError(`withdrawal failed: ${withdraw?.error ?? 'unknown error'}`);
+          summary.stoppedReason = 'insufficient-funds';
+          return false;
+        }
+        summary.cashWithdrawn += topUp;
+      }
+      const retry = await runLaunch(left, item, avail.destination, cost);
+      if (retry?.ok && Number(retry.sent) === left.length) {
+        recordLaunch(retry, left.length, avail.destination.name);
+        return true;
+      }
+      if (retry?.ok) recordLaunch(retry, left.length, avail.destination.name);
+      if (!retry?.ok && isHourTurnRefusal(retry?.error)) {
+        summary.stoppedReason = 'no-destination-available';
+        return false;
+      }
+      pushError(
+        retry?.ok
+          ? `sending the ${left.length} couriers left behind, the game sent only ${retry.sent}: ${retry.message ?? ''}`
+          : `sending the ${left.length} couriers left behind failed: ${retry?.error ?? 'unknown error'}`,
+      );
+      summary.stoppedReason = 'shape-changed';
+      return false;
+    };
+
+    for (const chunk of chunks) {
       try {
         // Re-read live state immediately before *every* chunk, not just the
         // first — sending an earlier chunk changes which pets are still
@@ -789,12 +843,6 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
         const recheck = await fetchPanel();
         if (!recheck) {
           pushError('could not re-read the smuggling panel immediately before launch');
-          summary.stoppedReason = 'shape-changed';
-          break;
-        }
-        const liveUnrecognized = unrecognizedFleetNames(recheck.fleet, roster);
-        if (liveUnrecognized.length > 0) {
-          pushError(`active deliveries list couriers not in your pet roster (${liveUnrecognized.join(', ')}) — the fleet markup may have changed shape`);
           summary.stoppedReason = 'shape-changed';
           break;
         }
@@ -821,7 +869,16 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           break;
         }
 
-        let launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);
+        // Only the chunk's pets still in the block (one sent by hand since the
+        // first read drops out), with what the block says they carry now.
+        const pets = liveAvailability.pets.filter((p) => chunk.some((c) => c.userPetId === p.userPetId));
+        if (pets.length === 0) {
+          summary.stoppedReason = 'no-idle-pets';
+          break;
+        }
+        const chunkCost = pets.reduce((sum, pet) => sum + pet.carry * item.price, 0);
+
+        let launch = await runLaunch(pets, item, liveAvailability.destination, chunkCost);
 
         // Confirmed real (2026-08-29, the old per-pet buy loop's own incident):
         // a second, independent browser session logged into the same account
@@ -841,29 +898,22 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
             const withdraw = await postAction('/actions/bank.php', { action: 'withdraw', amount: topUp.toLocaleString('en-US') }, { rejectionScope: 'pet-courier' });
             if (withdraw?.ok) {
               summary.cashWithdrawn += topUp;
-              launch = await runLaunch(chunk, item, liveAvailability.destination, chunkCost);
+              launch = await runLaunch(pets, item, liveAvailability.destination, chunkCost);
             }
           }
         }
 
         if (launch?.ok) {
-          // Accumulated across chunks rather than overwritten, so the
-          // summary reflects the whole run even when it took more than one
-          // `v2_launch` call to dispatch everyone.
-          const soFar = summary.launched;
-          summary.launched = {
-            petCount: (soFar?.petCount ?? 0) + (Number(launch.sent) || chunk.length),
-            unitsSent: (soFar?.unitsSent ?? 0) + (Number(launch.units_sent) || 0),
-            unitsBought: (soFar?.unitsBought ?? 0) + (Number(launch.units_bought) || 0),
-            cashSpent: (soFar?.cashSpent ?? 0) + (Number(launch.cash_spent) || 0),
-            item: item.name,
-            destination: typeof launch.destination === 'string' ? launch.destination : liveAvailability.destination.name,
-          };
+          recordLaunch(launch, pets.length, liveAvailability.destination.name);
           const sent = Number(launch.sent);
-          if (Number.isFinite(sent) && sent < chunk.length) {
-            pushError(`the game sent ${sent} of the ${chunk.length} couriers in one request — it may limit how many go at once again`);
-            summary.stoppedReason = 'shape-changed';
-            break;
+          if (Number.isFinite(sent) && sent < pets.length) {
+            if (typeof launch.message === 'string' && /ran out of cash for more cargo/i.test(launch.message)) {
+              if (!(await sendLeftBehind(pets, sent))) break;
+            } else {
+              pushError(`the game sent ${sent} of the ${pets.length} couriers in one request — it may limit how many go at once again`);
+              summary.stoppedReason = 'shape-changed';
+              break;
+            }
           }
         } else if (isHourTurnRefusal(launch?.error)) {
           summary.stoppedReason = 'no-destination-available';
@@ -875,7 +925,7 @@ async function executeCourierBatch(): Promise<CourierRunSummary> {
           // here. Whatever chunks already succeeded stay recorded in
           // `summary.launched`; this just stops the remaining chunks rather
           // than retrying blindly against an unrecognized rejection.
-          pushError(`launch failed for a batch of ${chunk.length}: ${launch?.error ?? 'unknown error'}`);
+          pushError(`launch failed for a batch of ${pets.length}: ${launch?.error ?? 'unknown error'}`);
           summary.stoppedReason = 'shape-changed';
           break;
         }

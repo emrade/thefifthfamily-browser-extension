@@ -7,6 +7,7 @@ import type {
   DestinationOption,
   FleetEntry,
   LaunchAvailability,
+  LaunchPet,
   OpenRoute,
   PetRosterEntry,
   SmugglingV2Snapshot,
@@ -331,7 +332,15 @@ function parseLaunchAvailability(doc: Document): LaunchAvailability {
     return { available: false, reasonKind: 'unknown', reasonText: 'the bulk-send block is on, but no open destination button was found' };
   }
 
-  return { available: true, destination: { cityId: route.cityId, name: route.name } };
+  const pets: LaunchPet[] = [];
+  for (const btn of block.querySelectorAll('.sv2-lo-pet')) {
+    const userPetId = Number(btn.getAttribute('data-pet'));
+    const carry = Number(btn.getAttribute('data-carry'));
+    const name = textOf(btn.querySelector('.sv2-lo-bt'));
+    if (userPetId > 0 && carry > 0 && name) pets.push({ userPetId, name, carry });
+  }
+
+  return { available: true, destination: { cityId: route.cityId, name: route.name }, pets };
 }
 
 /** DOM twin of smugglingPanelRegexParser.ts's `parseOffloadAllCount`. */
