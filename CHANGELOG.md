@@ -9,6 +9,27 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.46.1] - 2026-10-20
+
+### Fixed
+- Pet Courier: couriers and what each one carries are now read live from the
+  game's own "Send Every Courier" block on every run. The saved roster only
+  refreshed when no deliveries were out, so it missed capacity gains from
+  Menagerie upgrades (2 of 13 couriers stayed home on 2026-10-20) and didn't
+  see newly unlocked pets until much later. A pet it hadn't met yet showing
+  up among the active deliveries no longer stops the run either.
+- Pet Courier: when the game sends only some of the couriers because the cash
+  ran out ("Ran out of cash for more cargo"), the run now withdraws what the
+  rest need and sends them, instead of pausing auto-watch.
+- Pet Courier: other features' "bank the cash on hand" step (Street Racing,
+  Street Intel, Real Estate Auto-Collect) now waits while a courier run is
+  spending the cash it collected or withdrew. On 2026-10-19 a Street Racing
+  deposit banked the cargo money 70 ms before a send, so only 5 of 13
+  couriers went and auto-watch paused.
+- Inventory: variable items (the "VR" tag) are left out of Quick Sell and
+  Auto-Sell, since the game won't sell them. Fetch prices no longer stops on
+  one, and each panel notes how many were left out.
+
 ## [0.46.0] - 2026-10-17
 
 ### Added
