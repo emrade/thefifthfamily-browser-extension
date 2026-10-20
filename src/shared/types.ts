@@ -1617,6 +1617,20 @@ export interface ArenaVerdictTally {
   avoid: ArenaVerdictCount;
 }
 
+/** A verdict band with its own win chance (see shared/arenaCombat.ts
+ *  `ARENA_BAND_PRIOR`). Regular coin-flips split by score (below / above
+ *  1.0) and lean. */
+export type ArenaBand =
+  | 'regularBeatable'
+  | 'regularAvoid'
+  | 'regularLowLeanWin'
+  | 'regularLowLeanLoss'
+  | 'regularHighLeanWin'
+  | 'regularHighLeanLoss'
+  | 'bossBeatable'
+  | 'bossCoinflip'
+  | 'bossAvoid';
+
 /** How the fight advisor's verdicts have actually turned out, recorded live
  *  from each captured `attack` response against the verdict that was on the
  *  card before the fight (see fightAdvisor.ts). Added to the archive baseline
@@ -1631,6 +1645,10 @@ export interface ArenaTrackRecord {
    *  Avoid win. */
   surprise: { name: string; kind: 'beatable' | 'avoid'; won: boolean; score: number; at: number } | null;
   startedAt: number;
+  /** Every fight judged live since 2026-10-20, by the band its win chance came
+   *  from; what moves each band off its archive record. Missing on records
+   *  saved before then. */
+  bands?: Partial<Record<ArenaBand, ArenaVerdictCount>>;
 }
 
 /** One owned property's vault as last seen (Properties panel) or as a

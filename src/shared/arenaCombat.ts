@@ -1,4 +1,4 @@
-import type { ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord, ArenaVerdictTally } from './types';
+import type { ArenaBand, ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord, ArenaVerdictCount, ArenaVerdictTally } from './types';
 
 /**
  * The Arena V2 kill-race model from docs/arena-combat-mechanics.md, as pure
@@ -87,25 +87,42 @@ export const SCORE_BOSS_BEATABLE = 1.3;
 export const BOSS_DAMAGE_MARGIN = 0.15;
 
 /**
- * Real win rate per verdict band, from 685 archived Arena V2 fights
- * (2026-09-09 → 10-15; verification/arena/verify_combat_rule.py, section 8,
- * which scores each fight with only the fights before it, as the advisor
- * does). Used to turn verdicts into an expected pot, not shown as a precise %.
+ * Each fight's win chance comes from its verdict band. A band starts from its
+ * archive record (`ARENA_BAND_PRIOR`), counted as at most
+ * `ARENA_BAND_PRIOR_WEIGHT` fights, and every fight judged live since
+ * (`ArenaTrackRecord.bands`) pulls it toward the player's own results, so the
+ * figure follows the current loadout instead of going stale.
+ *
+ * Replayed on the 105 fights after the 10-15 table was set (10-16 → 10-20):
+ * the fixed table scored Brier 0.0751, this blend 0.0746 at weight 20 (0.0750
+ * at 10, 0.0747 at 40), with the same 94/105 calls. Not a big win, but never
+ * worse. The 10-15 investigation saw rolling band rates lose to the fixed
+ * table; that table had been fitted on the fights it was tested on.
  */
-const WIN_CHANCE = {
-  regular: {
-    beatable: 0.99, // 315/315
-    avoid: 0.04, // 3/76
-    // Lean = quoted ≥ 50% (see COINFLIP_LEAN_QUOTED_PCT).
-    coinflipLow: { leanWin: 0.73, leanLoss: 0.24 }, // score 0.8–1.0: 19/26, 15/63
-    coinflipHigh: { leanWin: 0.71, leanLoss: 0.55 }, // score 1.0–1.2: 48/68, 16/29
-  },
-  boss: {
-    beatable: 0.98, // score ≥ 1.3: 59/60
-    coinflip: 0.87, // score 0.8–1.3: 39/45
-    avoid: 0.4, // score < 0.8: 1/3 (2/5 before the ceiling fix); too few to refit
-  },
-} as const;
+export const ARENA_BAND_PRIOR_WEIGHT = 20;
+
+/** Archive record per band, re-derived 2026-10-20 over every archived Arena
+ *  V2 fight (818 scored, 2026-09-09 → 10-20; verification/arena/
+ *  verify_combat_rule.py, section 8, which scores each fight with only the
+ *  fights before it, as the advisor does). Regular coin-flips are split by
+ *  score and lean (quoted ≥ 50%, see `COINFLIP_LEAN_QUOTED_PCT`). */
+export const ARENA_BAND_PRIOR: Record<ArenaBand, ArenaVerdictCount> = {
+  regularBeatable: { fights: 378, won: 378 },
+  regularAvoid: { fights: 76, won: 3 },
+  regularLowLeanWin: { fights: 44, won: 28 }, // score 0.8–1.0
+  regularLowLeanLoss: { fights: 72, won: 15 },
+  regularHighLeanWin: { fights: 87, won: 63 }, // score 1.0–1.2
+  regularHighLeanLoss: { fights: 32, won: 18 },
+  bossBeatable: { fights: 68, won: 67 }, // score ≥ 1.3
+  bossCoinflip: { fights: 58, won: 52 }, // score 0.8–1.3
+  bossAvoid: { fights: 3, won: 1 }, // score < 0.8; too few to say much
+};
+export const ARENA_BAND_PRIOR_DATE = '20 Oct';
+
+/** Win chances are kept off 0 and 1: no band is certain, and a 100% boss
+ *  would make `bossPotLimit` risk any pot. */
+const MIN_WIN_CHANCE = 0.01;
+const MAX_WIN_CHANCE = 0.99;
 
 /** Expected points a fresh set of four regular opponents banks when played
  *  riskiest first, from 136 real lineups: mean 87 (103 last season, 77 this
@@ -209,8 +226,8 @@ export type ArenaVerdictKind = 'beatable' | 'coinflip' | 'avoid';
 export interface ArenaVerdict {
   kind: ArenaVerdictKind;
   score: number;
-  /** Only meaningful for `coinflip`: which of its two `WIN_CHANCE` cells
-   *  this fight falls in (regular: quoted ≥ 50%). The lean shown to the
+  /** Only meaningful for `coinflip`: which of its two `ARENA_BAND_PRIOR`
+   *  bands this fight falls in (regular: quoted ≥ 50%). The lean shown to the
    *  player comes from the resulting win chance instead (`leanFor`). */
   leansWin: boolean;
   /** Highest STR at this card's level/DEF that still scores 1.0. */
@@ -326,7 +343,8 @@ export function verdictFor(card: ArenaOpponentCard, me: ArenaMyProfile): ArenaVe
  *  2026-10-15 every band's 90% range agreed with these cut-offs: regular
  *  0.8–1.0 quoted 50%+ 73% (19/26), under 50% 24% (15/63), 1.0–1.2 quoted
  *  50%+ 71% (48/68) all lean; 1.0–1.2 quoted under 50% won 16/29 (55%,
- *  range 40–70%) and is even. Follows `WIN_CHANCE` whenever that's refit. */
+ *  range 40–70%) and is even. Applies to the live blended chance
+ *  (`winChance`), so a band's lean moves with it. */
 export const LEAN_WIN_AT = 0.6;
 export const LEAN_LOSS_AT = 0.4;
 
@@ -337,8 +355,8 @@ export function leanFor(winChance: number): ArenaLean {
 }
 
 /** At or above this win chance a coin-flip is worded "Likely": bosses
- *  scoring 0.8–1.3 win ~87%, which "Coin-flip" undersells (regular
- *  coin-flips top out at 73%, so they never reach it). */
+ *  scoring 0.8–1.3 win ~90%, which "Coin-flip" undersells (regular
+ *  coin-flips top out around 72%, so they rarely reach it). */
 export const LIKELY_AT = 0.8;
 
 export function verdictWord(v: ArenaVerdict, winChance: number): string {
@@ -353,14 +371,37 @@ export function leanText(winChance: number): string {
   return lean === 'even' ? 'even' : `leans ${lean}`;
 }
 
-/** The real win rate for this verdict's band — see `WIN_CHANCE`. */
-export function winChance(card: Pick<ArenaOpponentCard, 'isBoss'>, v: ArenaVerdict): number {
-  if (card.isBoss) return WIN_CHANCE.boss[v.kind];
-  const r = WIN_CHANCE.regular;
-  if (v.kind === 'beatable') return r.beatable;
-  if (v.kind === 'avoid') return r.avoid;
-  const band = v.score < 1 ? r.coinflipLow : r.coinflipHigh;
-  return v.leansWin ? band.leanWin : band.leanLoss;
+/** The band a verdict's win chance comes from. */
+export function bandFor(card: Pick<ArenaOpponentCard, 'isBoss'>, v: ArenaVerdict): ArenaBand {
+  if (card.isBoss) return v.kind === 'beatable' ? 'bossBeatable' : v.kind === 'avoid' ? 'bossAvoid' : 'bossCoinflip';
+  if (v.kind === 'beatable') return 'regularBeatable';
+  if (v.kind === 'avoid') return 'regularAvoid';
+  return v.score < 1
+    ? v.leansWin ? 'regularLowLeanWin' : 'regularLowLeanLoss'
+    : v.leansWin ? 'regularHighLeanWin' : 'regularHighLeanLoss';
+}
+
+/** What a band's win chance is made of: the archive record (scaled down to
+ *  its prior weight) and the fights judged live since. */
+export function bandRecord(
+  band: ArenaBand,
+  live: ArenaTrackRecord['bands'] | null | undefined,
+): { prior: ArenaVerdictCount; live: ArenaVerdictCount; p: number } {
+  const prior = ARENA_BAND_PRIOR[band];
+  const mine = live?.[band] ?? { fights: 0, won: 0 };
+  const weight = Math.min(ARENA_BAND_PRIOR_WEIGHT, prior.fights);
+  const p = (weight * (prior.won / prior.fights) + mine.won) / (weight + mine.fights);
+  return { prior, live: mine, p: Math.min(MAX_WIN_CHANCE, Math.max(MIN_WIN_CHANCE, p)) };
+}
+
+/** This verdict's band's win chance, archive record blended with the
+ *  player's live results — see `ARENA_BAND_PRIOR_WEIGHT`. */
+export function winChance(
+  card: Pick<ArenaOpponentCard, 'isBoss'>,
+  v: ArenaVerdict,
+  live: ArenaTrackRecord['bands'] | null | undefined,
+): number {
+  return bandRecord(bandFor(card, v), live).p;
 }
 
 export interface PotFight<T> {
@@ -518,7 +559,7 @@ export function addTallies(a: ArenaVerdictTally, b: ArenaVerdictTally): ArenaVer
  *  max HP for that fight; a change means a new season's loadout. */
 export function recordFight(
   prev: ArenaTrackRecord | null,
-  fight: { name: string; verdict: ArenaVerdict; won: boolean; maxHp: number; at: number },
+  fight: { name: string; verdict: ArenaVerdict; band: ArenaBand; won: boolean; maxHp: number; at: number },
 ): ArenaTrackRecord {
   const bump = (t: ArenaVerdictTally): ArenaVerdictTally => ({
     ...t,
@@ -527,8 +568,10 @@ export function recordFight(
   const seasonTally = prev?.season && prev.season.maxHp === fight.maxHp ? prev.season.tally : emptyTally();
   const k = fight.verdict.kind;
   const against = (k === 'beatable' && !fight.won) || (k === 'avoid' && fight.won);
+  const bandPrev = prev?.bands?.[fight.band] ?? { fights: 0, won: 0 };
   return {
     live: bump(prev?.live ?? emptyTally()),
+    bands: { ...prev?.bands, [fight.band]: { fights: bandPrev.fights + 1, won: bandPrev.won + (fight.won ? 1 : 0) } },
     season: { maxHp: fight.maxHp, tally: bump(seasonTally) },
     surprise: against
       ? { name: fight.name, kind: k as 'beatable' | 'avoid', won: fight.won, score: fight.verdict.score, at: fight.at }

@@ -18,12 +18,13 @@ import {
   profileFromPreview,
   sampleFromAttack,
   verdictFor,
+  bandFor,
   winChance,
   type ArenaOpponentCard,
   type ArenaVerdict,
   type PotFight,
 } from '@/shared/arenaCombat';
-import type { ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
+import type { ArenaBand, ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 
 /**
@@ -129,7 +130,7 @@ let lineupRecord: ArenaLineupPoints | null = null;
  *  a fight's result can be scored against what the player saw before
  *  attacking. Never cleared on repaint: the game reloads the page right
  *  after an attack, and the result must still find its verdict. */
-const shownVerdicts = new Map<string, ArenaVerdict>();
+const shownVerdicts = new Map<string, { verdict: ArenaVerdict; band: ArenaBand }>();
 /** The boss's quoted % from the latest `open_next_page` (never rendered by
  *  the game), keyed by name so a stale value never lands on a new boss. */
 let bossQuote: { name: string; pct: number } | null = null;
@@ -154,11 +155,11 @@ async function saveProfile(next: ArenaMyProfile): Promise<void> {
  *  off) aren't counted. */
 async function scoreFight(data: any): Promise<void> {
   const name = typeof data?.defender === 'string' ? data.defender : null;
-  const verdict = name ? shownVerdicts.get(name) : undefined;
-  if (!name || !verdict || typeof data.won !== 'boolean' || typeof data.att_max_hp !== 'number') return;
+  const shown = name ? shownVerdicts.get(name) : undefined;
+  if (!name || !shown || typeof data.won !== 'boolean' || typeof data.att_max_hp !== 'number') return;
   shownVerdicts.delete(name);
   const prev = trackRecord ?? (await storage.getArenaTrackRecord());
-  trackRecord = recordFight(prev, { name, verdict, won: data.won, maxHp: data.att_max_hp, at: Date.now() });
+  trackRecord = recordFight(prev, { name, verdict: shown.verdict, band: shown.band, won: data.won, maxHp: data.att_max_hp, at: Date.now() });
   await storage.setArenaTrackRecord(trackRecord);
 }
 
@@ -304,13 +305,13 @@ function verdictDetail(v: ArenaVerdict, p: number): string {
 function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
   const meta = c.el.querySelector('.ar-opp-meta');
   if (!meta || !profile) return;
-  const p = winChance(c.card, v);
+  const p = winChance(c.card, v, trackRecord?.bands);
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
     `<span class="ff-arv-verdict">${verdictWord(v, p)}</span>` +
     `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v, p)}</span>`;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
-  shownVerdicts.set(c.card.name, v);
+  shownVerdicts.set(c.card.name, { verdict: v, band: bandFor(c.card, v) });
   const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord, winChance: p, bounty: c.bounty };
   const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
   if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) {
@@ -406,7 +407,7 @@ function paint(): void {
     .filter((c) => c.live)
     .map((c): PotFight<{ c: CardOnPage; v: ArenaVerdict }> => {
       const v = verdictFor(c.card, profile!);
-      return { item: { c, v }, p: winChance(c.card, v), bounty: c.bounty ?? 0 };
+      return { item: { c, v }, p: winChance(c.card, v, trackRecord?.bands), bounty: c.bounty ?? 0 };
     });
   // Riskiest first: lowest win chance, then lowest score. Not score alone:
   // a 0.95 quoted 50%+ (~73%) is safer than a 1.05 quoted under 50% (~55%).
@@ -457,7 +458,7 @@ function paint(): void {
   let bossIsSkip = false;
   if (boss && bossVerdict) {
     const fam = boss.familyLabel ? `${escapeHtml(boss.familyLabel)}, ` : '';
-    const p = winChance(boss.card, bossVerdict);
+    const p = winChance(boss.card, bossVerdict, trackRecord?.bands);
     const word = `<span class="ff-arv-word ff-arv-${bossVerdict.kind}">${verdictWord(bossVerdict, p)}</span>`;
     const bounty = boss.bounty ?? FALLBACK_BOSS_BOUNTY;
     const limit = bossPotLimit(p, bounty);

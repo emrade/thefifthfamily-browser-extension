@@ -1,11 +1,14 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import {
+  ARENA_BAND_PRIOR_DATE,
   ARENA_BASELINE_SINCE,
   ARENA_BASELINE_TALLY,
   SCORE_AVOID,
   SCORE_BEATABLE,
   SCORE_BOSS_BEATABLE,
   addTallies,
+  bandFor,
+  bandRecord,
   emptyTally,
   leanFor,
   leanText,
@@ -160,7 +163,7 @@ function notes(d: FightDetail): string[] {
   if (v.theyBreakThrough) out.push(`<b>Their hits get past your armour</b> (~${fmt(d.profile.reduction)}), so they deal real damage, not just the minimum.`);
   if (card.isBoss) {
     if (card.family === 'iron_river') out.push('<b>Iron River boss:</b> built on STR, the stat that decides fights. Most Iron River bosses have beaten you.');
-    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight, but bosses grow with your level: bosses scoring 1.3+ have been won 59 times in 60, while 1.1–1.3 has lost about 1 in 9.`);
+    else if (d.familyLabel) out.push(`<b>${esc(d.familyLabel)} boss:</b> built around a stat that barely matters in a fight, but bosses grow with your level: bosses scoring 1.3+ have been won 67 times in 68, while 1.1–1.3 has lost about 1 in 11.`);
     out.push('<b>A boss loss forfeits your unbanked pot.</b> Skipping means banking first. The plan above says how big a pot is still worth risking.');
   }
   if (v.kind === 'coinflip') {
@@ -178,6 +181,15 @@ function notes(d: FightDetail): string[] {
     );
   }
   return out;
+}
+
+/** Where the win chance comes from: the band's archive record, and how
+ *  far the player's own fights in it have moved it. */
+function chanceSource(d: FightDetail): string {
+  const r = bandRecord(bandFor(d.card, d.verdict), d.record?.bands);
+  const archive = `${fmt(r.prior.won)}/${fmt(r.prior.fights)} in your archive up to ${ARENA_BAND_PRIOR_DATE}`;
+  if (r.live.fights === 0) return `That's the rate for fights like this: ${archive}. Your next ones here will move it.`;
+  return `That's ${archive}, moved by the ${r.live.fights} you've fought here since (won ${r.live.won}).`;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +311,7 @@ export function openModal(d: FightDetail): void {
         <div class="ff-arv-m-sum">Fights like this have been won <b>~${Math.round(d.winChance * 100)}%</b> of the time.${
           d.bounty !== null ? ` A win adds <b>${d.bounty}</b> to the page pot;` : ' A win adds its bounty to the page pot;'
         } a loss wipes everything unbanked.</div>
+        <div class="ff-arv-m-sum">${chanceSource(d)}</div>
       </div>
 
       <div class="ff-arv-m-sec">

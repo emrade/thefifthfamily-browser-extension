@@ -16,7 +16,7 @@ Reports, in order:
      band.
   6. Boss results by family, with STR.
   7. Passive vs active opponents inside the coin-flip band.
-  8. Win rate per verdict band, as `WIN_CHANCE` in src/shared/arenaCombat.ts
+  8. Win rate per verdict band, as `ARENA_BAND_PRIOR` in src/shared/arenaCombat.ts
      uses it (regular coin-flips split by quoted >= 50%; boss bands with the
      1.3 boss "Beatable" line), plus the old vs new coin-flip lean rule.
   9. Bounty economics: bounty = slot base x a multiplier set by
@@ -426,7 +426,7 @@ def main():
     print(f"   in-band quoted >= 50%: n={len(hi_q)} won {sum(f['won'] for f in hi_q)}")
 
     rate = lambda g: f"{sum(f['won'] for f in g)}/{len(g)}" + (f" ({sum(f['won'] for f in g) / len(g):.0%})" if g else "")
-    print("\n== 8. Win rate per verdict band (WIN_CHANCE in src/shared/arenaCombat.ts) ==")
+    print("\n== 8. Win rate per verdict band (ARENA_BAND_PRIOR in src/shared/arenaCombat.ts) ==")
     regs = [(s, f) for s, f in scored if not f["boss"] and f["wp"] is not None]
     print(f"   regular score >= 1.2: {rate([f for s, f in regs if s >= 1.2])}")
     for lo, hi in ((0.8, 1.0), (1.0, 1.2)):

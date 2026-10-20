@@ -194,8 +194,9 @@ the player is expected to outlast them.
 - Coin-flips lean win when the game quotes 50% or more.
 - Dodge, block, crit, AGI, DEX and first strike aren't in the score at all.
 
-**Pot advice:** each verdict band has a win chance (`WIN_CHANCE`, measured
-from the archives). `expectedPot()` and `bossPotLimit()` use those to suggest
+**Pot advice:** each verdict band has a win chance: its archive record
+(`ARENA_BAND_PRIOR`, counted as at most 20 fights) blended with the fights
+judged live in that band since 2026-10-20 (`ArenaTrackRecord.bands`). `expectedPot()` and `bossPotLimit()` use those to suggest
 fight order and when to bank.
 
 ### How well it does (2026-10-15, 684 fights, `verify_combat_rule.py`)
@@ -251,8 +252,11 @@ Leads, not conclusions. Check each against the data.
 8. **Boss families.** Every boss loss before October was Iron River
    (STR-built). The family and tier are in `boss_data` and the attack
    response. Do they deserve their own coefficients?
-9. **`WIN_CHANCE` is stale.** It was calibrated 2026-10-04. The bands have
-   shifted since (see the table above).
+9. **Band win chances.** Since 2026-10-20 they blend the archive record with
+   live results (fixed table before). Replayed on 105 later fights it only
+   just beat the fixed table (Brier 0.0746 vs 0.0751). A curve over score
+   within a band (a 1.29 boss is safer than a 0.85 one) is untried; boss
+   data below 1.1 is thin (5 fights).
 10. **The player profile uses medians** of `base_dmg` and reduction.
     `base_dmg` varies hit to hit. Would the full distribution, or the
     weapon's real damage range, do better?

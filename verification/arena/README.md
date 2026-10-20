@@ -37,7 +37,7 @@ every boss loss was an Iron River (STR-built) boss. This answers the "why"
 left open by the 2026-09-20 findings below.
 
 Extended 2026-10-05 (sections 8–9): win rate per verdict band as the
-advisor's `WIN_CHANCE` uses it, the coin-flip lean (quoted ≥ 50% now
+advisor's `ARENA_BAND_PRIOR` uses it, the coin-flip lean (quoted ≥ 50% now
 decides it), and bounty economics (bounty = slot base × a `threat_ratio`
 multiplier; wins pay exactly the card's bounty). Also fixed: fights after a
 Refresh were silently dropped and bosses were scored with a stale boss's
