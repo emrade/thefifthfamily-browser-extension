@@ -37,6 +37,7 @@ export const STORAGE_KEYS = {
   FURY_CATCHER_STATUS: 'ff_fury_catcher_status',
   REAL_ESTATE_AUTO_CONFIG: 'ff_real_estate_auto_config',
   REAL_ESTATE_AUTO_STATUS: 'ff_real_estate_auto_status',
+  STALE_GAME_TABS: 'ff_stale_game_tabs',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack

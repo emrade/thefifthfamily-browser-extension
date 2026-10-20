@@ -137,3 +137,13 @@ export function BuildingIcon() {
     </svg>
   );
 }
+
+/** Circular arrow — reload. */
+export function ReloadIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+      <polyline points="20 4 20 11 13 11" />
+    </svg>
+  );
+}

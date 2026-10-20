@@ -226,6 +226,10 @@ export type ExtensionMessage =
   // Sent when a sell, lock or price batch finishes or stops, releasing this
   // tab's hold on the inventory batch lease.
   | { type: 'inventory-batch-finished' }
+  // Sent by the popup: reload the game's tabs one at a time, either every
+  // open one or only those still on the previous version after an update.
+  // See background/features/gameTabs.
+  | { type: 'reload-game-tabs'; scope: 'stale' | 'all' }
   // Sent by a page's Achievement chip when opened — same "live fetch+parse
   // only background can do" exception as 'career-catalog-requested'.
   // `category` is the achievement category name verbatim (e.g. "Vehicles &

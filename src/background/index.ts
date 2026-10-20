@@ -60,6 +60,7 @@ import {
   init as initRealEstateAuto,
   runCheckNow as runRealEstateAutoCheckNow,
 } from './features/realEstate/autoCollect';
+import { init as initGameTabs, reloadGameTabs } from './features/gameTabs';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
@@ -115,6 +116,10 @@ initRealEstateVaults();
 // vaults — see features/realEstate/autoCollect.ts.
 initRealEstateAuto();
 
+// Tracks game tabs left on the previous version after an update, for the
+// popup's reload banner — see features/gameTabs.
+initGameTabs();
+
 // Arms the stock market poller's alarm — see features/stockMarket/index.ts.
 // No config gate: unlike the two auto-runners above, this is read-only data
 // collection with no gameplay action to enable/disable.
@@ -143,6 +148,13 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // captured request for something that's just a cache write.
   if (msg.type === 'csrf-observed') {
     setCsrfToken(msg.token).catch((err) => console.error(LOG_PREFIX, 'setCsrfToken failed', err));
+    return false;
+  }
+
+  // Off the ordered queue: reloads are spaced out over seconds, and nothing
+  // here touches state the other handlers share.
+  if (msg.type === 'reload-game-tabs') {
+    reloadGameTabs(msg.scope).catch((err) => console.error(LOG_PREFIX, 'reloadGameTabs failed', err));
     return false;
   }
 

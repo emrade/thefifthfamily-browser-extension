@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { LiveStats } from './LiveStats';
+import { ReloadGameTabsRow, UpdateBanner } from './GameTabs';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
@@ -114,6 +115,8 @@ export function Home(props: HomeProps) {
 
   return (
     <>
+      <UpdateBanner />
+
       <LiveStats />
 
       {broken.length > 0 && (
@@ -207,6 +210,8 @@ export function Home(props: HomeProps) {
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>
+
+      <ReloadGameTabsRow />
 
       <button class="ff-nav-row" onClick={props.onOpenSettings}>
         <div class="ff-nav-row__icon"><SettingsIcon /></div>

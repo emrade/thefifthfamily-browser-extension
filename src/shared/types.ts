@@ -1737,3 +1737,12 @@ export interface ArenaLineupPoints {
    *  `ARENA_LINEUP_MAX_SAMPLES`. */
   lineups: { key: string; points: number; at: number }[];
 }
+
+/** Game tabs opened before an update, still running the previous version's
+ *  content scripts until reloaded (background/features/gameTabs). */
+export interface StaleGameTabs {
+  version: string;
+  previousVersion: string | null;
+  tabIds: number[];
+  reloading: boolean;
+}

@@ -1,4 +1,5 @@
 import type {
+  StaleGameTabs,
   RealEstateVaultState,
   ArenaLineupPoints,
   ArenaMyProfile,
@@ -309,6 +310,10 @@ export const storage = {
 
   getRealEstateAutoStatus: () => get<RealEstateAutoStatus | null>(STORAGE_KEYS.REAL_ESTATE_AUTO_STATUS, null),
   setRealEstateAutoStatus: (v: RealEstateAutoStatus) => set(STORAGE_KEYS.REAL_ESTATE_AUTO_STATUS, v),
+
+  getStaleGameTabs: () => get<StaleGameTabs | null>(STORAGE_KEYS.STALE_GAME_TABS, null),
+  setStaleGameTabs: (v: StaleGameTabs) => set(STORAGE_KEYS.STALE_GAME_TABS, v),
+  clearStaleGameTabs: () => remove(STORAGE_KEYS.STALE_GAME_TABS),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };
