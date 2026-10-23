@@ -93,6 +93,12 @@ const PANEL_CSS = `
   color: #f1ede2; font-size: 11px; line-height: 1.3;
 }
 #${CONTAINER_ID} .ff-cap-select:focus { outline: none; border-color: rgba(201,168,76,0.6); }
+#${CONTAINER_ID} .ff-cap-search {
+  box-sizing: border-box; display: block; width: 100%; height: auto; margin: 0 0 6px; padding: 6px 8px;
+  border-radius: 7px; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18);
+  color: #f1ede2; font-size: 11px; line-height: 1.3;
+}
+#${CONTAINER_ID} .ff-cap-search:focus { outline: none; border-color: rgba(201,168,76,0.6); }
 #${CONTAINER_ID} .ff-cap-select:disabled { opacity: 0.5; }
 #${CONTAINER_ID} .ff-cap-link {
   width: auto; height: auto; margin: 6px 0 0; padding: 0; background: none; border: none;
@@ -135,6 +141,8 @@ let catalog: CareerCatalogEntry[] | null = null;
 let catalogLoading = false;
 let catalogError: string | null = null;
 let nextAlarmAt: number | null = null;
+/** The job search box's text; filters the dropdown by name, like the popup's. */
+let jobQuery = '';
 /** The card whose "Auto-run this job" was tapped and is waiting on Confirm. */
 let pendingPickId: number | null = null;
 let lastBodyHtml = '';
@@ -250,12 +258,16 @@ function jobSelectHtml(): string {
         : `<option value="" selected disabled>${catalogLoading ? 'Loading jobs…' : 'Select a job'}</option>`,
     );
   } else {
+    const query = jobQuery.trim().toLowerCase();
+    const shown = query ? catalog.filter((c) => c.name.toLowerCase().includes(query)) : catalog;
     if (current == null) options.push('<option value="" selected disabled>Select a job</option>');
-    if (current != null && !catalog.some((c) => c.careerId === current)) {
-      options.push(`<option value="${current}" selected>${escapeHtml(config.careerName)} (currently selected)</option>`);
+    // Kept as an option when the search hides it, so the dropdown doesn't
+    // look like a different job is selected.
+    if (current != null && !shown.some((c) => c.careerId === current)) {
+      options.push(`<option value="${current}" selected>${escapeHtml(config.careerName)} — currently selected</option>`);
     }
     const families = new Map<string, CareerCatalogEntry[]>();
-    for (const c of catalog) {
+    for (const c of shown) {
       const group = families.get(c.family);
       if (group) group.push(c);
       else families.set(c.family, [c]);
@@ -270,6 +282,12 @@ function jobSelectHtml(): string {
     }
   }
   return `<select class="ff-cap-select" data-ff-field="job" ${catalogLoading ? 'disabled' : ''}>${options.join('')}</select>`;
+}
+
+function noMatchHtml(): string {
+  const query = jobQuery.trim().toLowerCase();
+  if (!query || !catalog || catalog.some((c) => c.name.toLowerCase().includes(query))) return '';
+  return `<div class="ff-cap-hint">No jobs match "${escapeHtml(jobQuery.trim())}".</div>`;
 }
 
 function bodyHtml(now: number): string {
@@ -297,7 +315,8 @@ function bodyHtml(now: number): string {
   }
 
   parts.push('<div class="ff-cap-label">Job</div>');
-  parts.push(jobSelectHtml());
+  parts.push(`<input class="ff-cap-search" type="text" placeholder="Search jobs…" data-ff-field="search" value="${escapeHtml(jobQuery)}">`);
+  parts.push(`<div class="ff-cap-job">${jobSelectHtml()}${noMatchHtml()}</div>`);
   parts.push(
     `<button class="ff-cap-link" type="button" data-ff-act="refresh" ${catalogLoading ? 'disabled' : ''}>${catalogLoading ? 'Refreshing…' : 'Refresh job list'}</button>`,
   );
@@ -352,8 +371,11 @@ function renderPanel(): void {
   if (!expanded) return;
   const body = panelEl.querySelector('.ff-cap-body');
   if (!body) return;
-  // Don't rebuild a dropdown out from under the player while it's open.
-  if (body.contains(document.activeElement) && document.activeElement instanceof HTMLSelectElement) return;
+  // Don't rebuild a dropdown out from under the player while it's open, or
+  // the search box while they're typing (the dropdown under it is updated on
+  // its own as they type).
+  const active = document.activeElement;
+  if (body.contains(active) && (active instanceof HTMLSelectElement || (active instanceof HTMLInputElement && active.type === 'text'))) return;
   const html = bodyHtml(Date.now());
   if (html === lastBodyHtml) return;
   lastBodyHtml = html;
@@ -419,6 +441,13 @@ function buildPanel(): HTMLDivElement {
   });
   el.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-ff-act="refresh"]')) void loadCatalog();
+  });
+  el.addEventListener('input', (e) => {
+    const target = e.target as HTMLInputElement;
+    if (target.getAttribute('data-ff-field') !== 'search') return;
+    jobQuery = target.value;
+    const job = el.querySelector('.ff-cap-job');
+    if (job) job.innerHTML = jobSelectHtml() + noMatchHtml();
   });
 
   return el;
