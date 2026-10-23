@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.49.0] - 2026-10-23
+
+### Added
+- Career Auto: a Shift mode setting with three choices, each explained in the
+  popup.
+  - **Normal** (the default): normal shifts only. A job's rank goes by how
+    many shifts it has worked, and an Overtime shift still counts as one
+    shift for twice the energy, so normal shifts unlock Rank Rewards twice as
+    fast for the same energy.
+  - **Hybrid**: the previous behavior. Overtime when there's enough energy,
+    otherwise a normal shift. Energy reaches the normal cost long before the
+    Overtime one, so this runs mostly normal shifts.
+  - **Overtime only**: waits for the Overtime energy and never spends it on a
+    normal shift (3× cash and XP for 2× energy). A rank-1 job can't do
+    Overtime, so it runs normal shifts until it reaches rank 2.
+
+### Changed
+- Career Auto now starts in Normal mode, including for existing setups. Pick
+  Hybrid to get the old behavior back.
+
 ## [0.48.0] - 2026-10-23
 
 ### Added
