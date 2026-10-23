@@ -51,6 +51,7 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
   energyCost: 0,
   otEnergyCost: null,
   accuracyWeights: CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
+  shiftMode: 'normal',
 };
 
 const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {

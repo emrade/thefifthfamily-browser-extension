@@ -828,6 +828,17 @@ export interface CareerAutoConfig {
   energyCost: number;
   otEnergyCost: number | null;
   accuracyWeights: CareerAccuracyWeight[];
+  /** 'normal' (default): only ever runs normal shifts. Rank goes by shift
+   *  count and Overtime is still one shift for twice the energy, so normal
+   *  climbs ranks (and unlocks Rank Rewards) twice as fast per energy.
+   *  'hybrid': Overtime whenever the job is rank 2+ and energy covers it,
+   *  otherwise a normal shift — the behavior before this setting existed. In
+   *  practice mostly normal shifts: energy reaches the normal cost long before
+   *  the Overtime one, so Overtime only fires off a stockpile.
+   *  'overtime': waits for the Overtime cost and never spends energy on a
+   *  normal shift once the job is rank 2+ — 3× cash and XP for 2× energy. A
+   *  rank-1 job can't do Overtime yet, so it runs normal shifts until rank 2. */
+  shiftMode: 'normal' | 'hybrid' | 'overtime';
 }
 
 /** What one automated shift actually did — the background-owned counterpart to

@@ -190,8 +190,17 @@ async function runIfEligibleOnce(): Promise<void> {
   // cycles, per a direct archive check of the account's own panel fetches.
   const rankAllowsOvertime = panelHtml !== null && isCareerOvertimeUnlocked(panelHtml, config.careerId);
 
-  const overtime = config.otEnergyCost != null && rankAllowsOvertime && status.energy >= config.otEnergyCost;
-  const canRunNormal = status.energy >= config.energyCost;
+  // 'overtime' mode only falls back to a normal shift on a job that
+  // genuinely can't do Overtime yet (rank 1), which takes a successful panel
+  // read to know — without one, wait rather than guess and spend energy on
+  // the shift the player chose not to run.
+  if (config.shiftMode === 'overtime' && panelHtml === null) {
+    scheduleNextCheck(null);
+    return;
+  }
+  const overtimeWanted = config.shiftMode !== 'normal' && config.otEnergyCost != null && rankAllowsOvertime;
+  const overtime = overtimeWanted && status.energy >= config.otEnergyCost!;
+  const canRunNormal = !(config.shiftMode === 'overtime' && overtimeWanted) && status.energy >= config.energyCost;
   if (!overtime && !canRunNormal) {
     scheduleNextCheck(null); // not enough energy yet — energy regenerates on its own, so just check again later
     return;

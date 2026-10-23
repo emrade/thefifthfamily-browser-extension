@@ -176,6 +176,11 @@ export function CareerAutoHome() {
     }
   }
 
+  function setShiftMode(mode: CareerAutoConfig['shiftMode']) {
+    if (!config) return;
+    saveConfig({ ...config, shiftMode: mode });
+  }
+
   if (!loaded || !config) return null;
 
   return (
@@ -221,8 +226,7 @@ export function CareerAutoHome() {
       <div class="ff-field">
         <div class="ff-field__label">Which career to run</div>
         <div class="ff-field__hint">
-          Only jobs unlocked at your current level are listed. Overtime is used automatically once you have enough
-          energy — that option only exists once a job reaches rank 2.
+          Only jobs unlocked at your current level are listed.
         </div>
         <input
           class="ff-select ff-field__control"
@@ -269,6 +273,26 @@ export function CareerAutoHome() {
       <button class="ff-archive-secondary" disabled={catalogLoading} onClick={loadCatalog}>
         {catalogLoading ? 'Refreshing…' : 'Refresh Job List'}
       </button>
+
+      <div class="ff-field">
+        <div class="ff-field__label">Shift mode</div>
+        <div class="ff-field__hint">
+          {config.shiftMode === 'overtime'
+            ? 'Waits until you have the energy for Overtime (2× energy, 3× cash and XP) and never runs a normal shift instead. Overtime only unlocks at rank 2, so a rank-1 job runs normal shifts until then. Each Overtime counts as one shift toward rank, so it ranks up half as fast per energy.'
+            : config.shiftMode === 'hybrid'
+              ? 'Overtime when you have the energy for it, otherwise a normal shift. Energy reaches the normal cost long before the Overtime one, so this ends up mostly normal shifts, with Overtime only when energy has built up.'
+              : 'Normal shifts only. Rank goes by shift count, so this unlocks Rank Rewards twice as fast per energy as Overtime.'}
+        </div>
+        <select
+          class="ff-select ff-field__control"
+          value={config.shiftMode}
+          onChange={(e) => setShiftMode((e.target as HTMLSelectElement).value as CareerAutoConfig['shiftMode'])}
+        >
+          <option value="normal">Normal shifts (rank up faster, default)</option>
+          <option value="hybrid">Hybrid (Overtime when energy allows, else normal)</option>
+          <option value="overtime">Overtime only (more cash and XP)</option>
+        </select>
+      </div>
 
       <div class="ff-section-label">Status</div>
 
