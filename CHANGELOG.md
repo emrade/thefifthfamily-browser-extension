@@ -9,6 +9,30 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.50.0] - 2026-10-23
+
+### Added
+- Career Auto Panel: a floating panel on the Careers page with everything the
+  popup's Career Auto tab has (Auto-Run switch, job picker, shift mode, next
+  shift and today's shifts and earnings), so it doesn't need the popup open.
+  Each job card also gets an "Auto-run this job" button that asks for
+  confirmation before switching jobs, and marks the job currently selected.
+  Can be turned off under Settings → page features.
+- Career Auto: a line under Next Shift saying why it's waiting: "Job on
+  cooldown until …", "In jail/hospital until …", "Travelling until …", or
+  "Waiting for 27E (have 12E, enough by ~…)".
+
+### Fixed
+- Career Auto: Next Shift no longer sits on "due now" after a manual shift,
+  or while jailed, hospitalized or short on energy. It now counts down to the
+  check that's actually scheduled, and after a manual shift to the end of the
+  job's cooldown.
+
+### Changed
+- Career Auto: a shift turned away because you're jailed or hospitalized now
+  re-checks every 2 minutes instead of waiting for the full release time, so
+  bailing out or a discharge is picked up right away.
+
 ## [0.49.0] - 2026-10-23
 
 ### Added
