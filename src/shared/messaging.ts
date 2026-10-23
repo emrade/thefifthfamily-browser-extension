@@ -121,6 +121,10 @@ export type ExtensionMessage =
   // panel on every call rather than caching it) for the job picker, since this
   // is a rare, user-initiated action where staleness costs more than the fetch.
   | { type: 'career-catalog-requested' }
+  // Sent by the in-page Career Auto panel for its Next Shift tile: the
+  // scheduled alarm time, which a content script can't read itself (same
+  // reason as 'street-intel-next-check-requested'). Returns number | null.
+  | { type: 'career-auto-next-check-requested' }
   // Sent from the popup's Crimes Auto tab's "Check Now" button — same
   // "run for real right now, return the resulting fresh status" exception as
   // 'stock-tracker-poll-requested'. Exists for the gap a purely time-based

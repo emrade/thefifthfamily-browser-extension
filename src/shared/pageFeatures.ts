@@ -39,6 +39,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'A floating panel on the Street Intel page showing the Auto-Attempt toggle, today’s attempts and earnings, and the last result — no popup needed to check.',
   },
   {
+    id: 'careerAutoPanel',
+    label: 'Career Auto Panel',
+    description:
+      'A floating panel on the Careers page with everything the popup’s Career Auto tab has: the Auto-Run toggle, job picker, shift mode, next shift and today’s shifts. Each job card also gets an “Auto-run this job” button (with a confirm step) to pick it right where you see its perks.',
+  },
+  {
     id: 'realEstateAdvisor',
     label: 'Real Estate Advisor',
     description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',

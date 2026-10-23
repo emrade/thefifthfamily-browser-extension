@@ -224,6 +224,10 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return fetchCareerCatalog();
   }
 
+  if (msg.type === 'career-auto-next-check-requested') {
+    return chrome.alarms.get(ALARM_NAMES.CAREER_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
+  }
+
   // Sent by the popup's Crimes Auto "Check Now" button — see that message
   // type's own doc comment in shared/messaging.ts for why a purely
   // time-based schedule needs this escape hatch.
