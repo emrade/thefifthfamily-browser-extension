@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry } from '@/shared/types';
+import type { CareerAutoConfig, CareerAutoStatus, CareerAutoWaiting, CareerCatalogEntry } from '@/shared/types';
 
 const PAUSE_REASON_LABEL: Record<NonNullable<CareerAutoStatus['pausedReason']>, string> = {
   fired: 'Stopped after getting fired from a fumbled shift.',
@@ -19,6 +19,24 @@ function formatNextRun(nextRunAt: number, now: number): string {
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
   return `${clock} · in ${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** The line under Next Shift saying what the runner is waiting on. Countdown
+ *  waits drop out once their time has passed: the next check is moments away
+ *  and will replace them. */
+function waitingText(waiting: CareerAutoWaiting | null | undefined, now: number): string | null {
+  if (!waiting) return null;
+  if (waiting.kind === 'energy') {
+    const by = waiting.readyAt ? `, enough by ~${clockTime(waiting.readyAt)}` : '';
+    return `Waiting for ${waiting.need}E (have ${waiting.have}E${by})`;
+  }
+  if (waiting.until <= now) return null;
+  const label = { cooldown: 'Job on cooldown', jail: 'In jail', hospital: 'In hospital', travel: 'Travelling' }[waiting.kind];
+  return `${label} until ${clockTime(waiting.until)}`;
 }
 
 /** Same local calendar-day key `runner.ts` uses — kept in sync by convention,
@@ -102,10 +120,12 @@ export function CareerAutoHome() {
     return () => clearInterval(id);
   }, [config?.enabled]);
 
-  // The tracked cooldown is authoritative once it exists (it's exactly what the
-  // server said); the raw scheduled alarm is the fallback for before that ever
-  // happens, so there's still something to show on a freshly-enabled job.
-  const nextRunAt = config?.enabled ? (status?.nextEligibleAt ?? nextAlarmAt) : null;
+  // The scheduled alarm is when the runner will actually check next, the same
+  // thing Crime Alley's tile shows. The tracked cooldown only covers the gap
+  // before the alarm is read; preferring it showed "due now" for as long as
+  // jail, low energy or a manual shift kept it in the past.
+  const nextRunAt = config?.enabled ? (nextAlarmAt ?? status?.nextEligibleAt ?? null) : null;
+  const waitingLine = config?.enabled ? waitingText(status?.waiting, now) : null;
 
   // Guarded against the stored date the same way `runner.ts` guards it before
   // incrementing — otherwise this would keep showing yesterday's count all the
@@ -295,6 +315,8 @@ export function CareerAutoHome() {
       </div>
 
       <div class="ff-section-label">Status</div>
+
+      {waitingLine && <div class="ff-auto-row">{waitingLine}</div>}
 
       {!status?.lastShift && !nextRunAt && <div class="ff-empty">No shifts run yet.</div>}
 

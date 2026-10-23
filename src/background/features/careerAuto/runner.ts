@@ -4,9 +4,9 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
+import { SystemicActionError, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
-import type { CareerAccuracyWeight, CareerAutoConfig } from '@/shared/types';
+import type { CareerAccuracyWeight, CareerAutoConfig, CareerAutoWaiting } from '@/shared/types';
 
 const FEATURE_KEY = 'careerAuto';
 
@@ -79,6 +79,42 @@ function localDateKey(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+/** Saves why this check didn't run a shift, for the popup. A live cooldown
+ *  also replaces `nextEligibleAt`, which is otherwise only set by this
+ *  runner's own shifts and goes stale after a manual one. */
+async function recordWaiting(waiting: CareerAutoWaiting | null, nextEligibleAt?: number): Promise<void> {
+  const status = await storage.getCareerAutoStatus();
+  await storage.setCareerAutoStatus({
+    ...(status ?? {
+      lastShift: null,
+      nextEligibleAt: null,
+      pausedReason: null,
+      pausedMessage: null,
+      pausedAt: null,
+      shiftsToday: 0,
+      shiftsTodayDate: localDateKey(),
+      cashToday: 0,
+    }),
+    ...(nextEligibleAt !== undefined ? { nextEligibleAt } : {}),
+    waiting,
+  });
+}
+
+function blockedWaiting(status: LiveStatus): CareerAutoWaiting {
+  if (status.jailed) return { kind: 'jail', until: Date.now() + status.jailSeconds * 1000 };
+  if (status.hospitalized) return { kind: 'hospital', until: Date.now() + status.hospitalSeconds * 1000 };
+  return { kind: 'travel', until: Date.now() + status.travelSeconds * 1000 };
+}
+
+/** When energy should reach `need`, from `stats.php`'s own regen timer — same
+ *  sum as crimesAuto's `nerveReadyAt`. `null` if the timer fields are 0. */
+function energyReadyAt(status: LiveStatus, need: number): number | null {
+  const points = need - status.energy;
+  if (points <= 0) return Date.now();
+  if (status.energyTimerSeconds <= 0 || status.energyRegenSeconds <= 0) return null;
+  return Date.now() + (status.energyTimerSeconds + (points - 1) * status.energyRegenSeconds) * 1000;
+}
+
 async function pause(reason: 'fired' | 'error', message: string): Promise<void> {
   const config = await storage.getCareerAutoConfig();
   await storage.setCareerAutoConfig({ ...config, enabled: false });
@@ -93,6 +129,7 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
     shiftsToday: status?.shiftsToday ?? 0,
     shiftsTodayDate: status?.shiftsTodayDate ?? localDateKey(),
     cashToday: status?.cashToday ?? 0,
+    waiting: null,
   });
 
   chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
@@ -139,7 +176,10 @@ async function runIfEligibleOnce(): Promise<void> {
 
   // Same three gates `marketPoller.isSafeToPoll` uses, for the identical reason
   // — the action is likely to fail or be meaningless in any of these states.
+  // Polled on the fallback interval rather than aligned to the release
+  // time: bailing out or a discharge ends it early.
   if (status.travelling || status.jailed || status.hospitalized) {
+    await recordWaiting(blockedWaiting(status));
     scheduleNextCheck(null);
     return;
   }
@@ -166,7 +206,9 @@ async function runIfEligibleOnce(): Promise<void> {
   }
   const liveCooldownSeconds = panelHtml !== null ? parseCareerCooldownSeconds(panelHtml) : null;
   if (liveCooldownSeconds !== null) {
-    scheduleNextCheck(Date.now() + liveCooldownSeconds * 1000);
+    const until = Date.now() + liveCooldownSeconds * 1000;
+    await recordWaiting({ kind: 'cooldown', until }, until);
+    scheduleNextCheck(until);
     return;
   }
 
@@ -202,7 +244,11 @@ async function runIfEligibleOnce(): Promise<void> {
   const overtime = overtimeWanted && status.energy >= config.otEnergyCost!;
   const canRunNormal = !(config.shiftMode === 'overtime' && overtimeWanted) && status.energy >= config.energyCost;
   if (!overtime && !canRunNormal) {
-    scheduleNextCheck(null); // not enough energy yet — energy regenerates on its own, so just check again later
+    // Not enough energy yet. Polled rather than aligned to `readyAt`, since
+    // a refill can land sooner than regen would.
+    const need = config.shiftMode === 'overtime' && overtimeWanted ? config.otEnergyCost! : config.energyCost;
+    await recordWaiting({ kind: 'energy', need, have: status.energy, readyAt: energyReadyAt(status, need) });
+    scheduleNextCheck(null);
     return;
   }
 
@@ -222,8 +268,10 @@ async function runIfEligibleOnce(): Promise<void> {
       // sign anything is broken, and must not disable the automation the way
       // an unrecognized response shape does. See gameAction.ts's
       // SystemicActionError doc for the confirmed real incident this fixes.
+      // Polled like the pre-flight gate above, not held until release.
       const freshStatus = await fetchLiveStatus();
-      scheduleNextCheck(freshStatus ? statusReleaseAt(freshStatus) : null);
+      if (freshStatus && (freshStatus.travelling || freshStatus.jailed || freshStatus.hospitalized)) await recordWaiting(blockedWaiting(freshStatus));
+      scheduleNextCheck(null);
       return;
     }
     // A repeated rejection is a well-formed response the game kept giving,
@@ -283,6 +331,7 @@ async function runIfEligibleOnce(): Promise<void> {
     shiftsToday,
     shiftsTodayDate: today,
     cashToday,
+    waiting: null,
   });
 
   scheduleNextCheck(nextEligibleAt);

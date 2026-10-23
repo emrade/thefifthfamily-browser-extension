@@ -888,7 +888,19 @@ export interface CareerAutoStatus {
    *  `shiftsToday` — same `shiftsTodayDate` key governs both, so they reset
    *  together at read time rather than needing a second date field. */
   cashToday: number;
+  /** Why the last check didn't run a shift, for the popup's line under Next
+   *  Shift. Cleared by a shift or a pause; optional because statuses saved
+   *  before it existed don't have it. */
+  waiting?: CareerAutoWaiting | null;
 }
+
+/** What a Career Auto check found blocking it. `until`/`readyAt` are the
+ *  game's own countdowns, shown for context only: checks still run on the
+ *  short fallback interval, since bailing out, a hospital discharge or an
+ *  energy refill can end the wait early. */
+export type CareerAutoWaiting =
+  | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
+  | { kind: 'energy'; need: number; have: number; readyAt: number | null };
 
 /** User-configured — read/written directly by the popup, same as
  *  `CareerAutoConfig`. `minSuccessPct` gates which opportunities are worth
