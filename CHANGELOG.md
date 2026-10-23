@@ -9,6 +9,16 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.48.0] - 2026-10-23
+
+### Added
+- Inventory Auto-Sell: after each Bulk Sell round (up to 15 items), the cash
+  on hand is deposited into the bank straight away, the same way Street
+  Racing and Real Estate Auto bank their payouts, so a sale's cash isn't left
+  exposed to muggings. The summary shows how much was banked. If the deposit
+  fails, the sale stands but the batch stops and says the cash is still on
+  hand.
+
 ## [0.47.0] - 2026-10-20
 
 ### Added
