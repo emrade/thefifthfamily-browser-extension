@@ -149,6 +149,7 @@ interface Summary {
   kind: 'sell' | 'lock';
   done: number;
   payout: number;
+  banked: number;
   overPrice: number;
   skipped: number;
   stopped: string | null;
@@ -420,6 +421,7 @@ function renderSummary(): string {
   const parts: string[] = [];
   if (s.kind === 'sell') {
     parts.push(`Sold ${plural(s.done, 'item')} for ${money(s.payout)}.`);
+    if (s.banked) parts.push(`Banked ${money(s.banked)}.`);
     if (s.overPrice) parts.push(`${plural(s.overPrice, 'item')} quoted over your cap and kept.`);
   } else {
     parts.push(`Locked ${plural(s.done, 'item')}.`);
@@ -519,7 +521,7 @@ async function runBatch(kind: 'sell' | 'lock', run: (s: Summary) => Promise<void
   // startable twice, nor alongside the Quick-Sell bar's price fetch.
   if (!beginInventoryBatch(kind)) {
     mode = 'idle';
-    summary = { kind, done: 0, payout: 0, overPrice: 0, skipped: 0, stopped: 'Fetch prices is still running in the Quick Sell bar. Stop it or let it finish, then try again.', cancelled: false };
+    summary = { kind, done: 0, payout: 0, banked: 0, overPrice: 0, skipped: 0, stopped: 'Fetch prices is still running in the Quick Sell bar. Stop it or let it finish, then try again.', cancelled: false };
     scheduleRender();
     return;
   }
@@ -527,7 +529,7 @@ async function runBatch(kind: 'sell' | 'lock', run: (s: Summary) => Promise<void
   runningKind = kind;
   cancelRequested = false;
   summary = null;
-  const s: Summary = { kind, done: 0, payout: 0, overPrice: 0, skipped: 0, stopped: null, cancelled: false };
+  const s: Summary = { kind, done: 0, payout: 0, banked: 0, overPrice: 0, skipped: 0, stopped: null, cancelled: false };
   try {
     await run(s);
   } catch (err) {
@@ -706,6 +708,7 @@ function sellBatch(sales: PlannedSale[], maxPrice: number | null): Promise<void>
       const sold = new Set(result.sold);
       s.done += sold.size;
       s.payout += result.payout;
+      s.banked += result.banked ?? 0;
       progressDone += sold.size;
       // Gone from the server, so the cards shouldn't be offered again by a
       // re-plan before the inventory reloads.

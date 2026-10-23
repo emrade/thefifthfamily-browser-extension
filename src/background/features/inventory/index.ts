@@ -1,7 +1,7 @@
 import { GAME_ORIGIN } from '@/shared/constants';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import type { InventoryBulkQuoteResult, InventoryBulkSellResult, InventoryLockResult, InventoryPriceResult } from '@/shared/types';
-import { postAction } from '../../gameAction';
+import { depositCashOnHand, postAction } from '../../gameAction';
 
 /**
  * Backs the Inventory Auto-Sell panel's two manual, confirm-first batches:
@@ -28,6 +28,8 @@ import { postAction } from '../../gameAction';
  *   `{ok, name, cash, gold, capstone_warning?}`. `capstone_warning` (a crime
  *   name, e.g. "Debt Collection") only ever appears on Crime Req items.
  *   Still what the sell sheet sends (`priceItem`); selling no longer uses it.
+ * - After each `quicksell_bulk`, `POST /actions/bank.php action=deposit&
+ *   amount=ALL` (the shared `depositCashOnHand`) banks the payout.
  * - `POST /actions/inventory.php action=lock&inv_id=N` (≈60 seen) →
  *   `{ok, locked: 1, message: "Item locked."}`. Unlock is its own
  *   `action=unlock`, not a toggle, so sending `lock` twice can't unlock.
@@ -139,10 +141,34 @@ export async function bulkSell(invIds: number[], expect: number, tabId: number |
     } else if (message && paid !== expect) {
       stopAfter = `The game said "${message}", not the quoted $${expect.toLocaleString()}.`;
     }
-    return { status: 'sold', sold, payout: expect, message, stopAfter };
+    const bank = await bankSale();
+    return { status: 'sold', sold, payout: expect, message, banked: bank.banked, stopAfter: stopAfter ?? bank.problem };
   } catch (err) {
     return { status: 'stopped', error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Sweeps the sale's cash into the bank straight away, like Street Racing and
+ *  Real Estate Auto do after a payout: cash on hand is what a mugging takes.
+ *  The sale already happened, so a failed deposit doesn't undo it; it comes
+ *  back as `problem` and ends the batch so the player knows the cash is still
+ *  on hand. "Invalid amount" is the bank's reply with nothing on hand, i.e.
+ *  another feature's deposit got there first. */
+async function bankSale(): Promise<{ banked: number | null; problem?: string }> {
+  let resp: any;
+  try {
+    resp = await depositCashOnHand('inventory-sell');
+  } catch (err) {
+    return { banked: null, problem: `Sold, but the deposit failed (${err instanceof Error ? err.message : String(err)}). The cash is on hand.` };
+  }
+  if (resp?.ok === true) {
+    const m = typeof resp.message === 'string' ? /deposited\s+\$([\d,]+)/i.exec(resp.message) : null;
+    if (!m) return { banked: null, problem: 'Sold, but the deposit came back in a shape this tool doesn’t recognize. Check your bank.' };
+    return { banked: Number(m[1].replace(/,/g, '')) };
+  }
+  const error = errorText(resp, 'no reason given');
+  if (/invalid amount/i.test(error)) return { banked: 0 };
+  return { banked: null, problem: `Sold, but the bank refused the deposit: "${error}". The cash is on hand.` };
 }
 
 export async function lockItem(invId: number, tabId: number | undefined): Promise<InventoryLockResult> {

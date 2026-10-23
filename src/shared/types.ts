@@ -171,7 +171,10 @@ export type InventoryBulkQuoteResult =
  *  back looking wrong (not exactly the ids sent, or a paid amount other than
  *  `expect`): counted as sold, and the batch still ends. */
 export type InventoryBulkSellResult =
-  | { status: 'sold'; sold: number[]; payout: number; message: string; stopAfter?: string }
+  /** `banked`: what the post-sale deposit put in the bank (it sweeps all cash
+   *  on hand, so it can include more than this sale), or `null` when the
+   *  deposit failed (the reason is in `stopAfter`). */
+  | { status: 'sold'; sold: number[]; payout: number; message: string; banked: number | null; stopAfter?: string }
   | { status: 'stopped'; error: string };
 
 export type InventoryLockResult = { status: 'locked' } | { status: 'stopped'; error: string };
