@@ -5,7 +5,7 @@ import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
-import { isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
+import { careerRequiredLevel, isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig, CareerAutoWaiting } from '@/shared/types';
 
 const FEATURE_KEY = 'careerAuto';
@@ -208,6 +208,14 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
     // this codebase treats a single failed fetch as transient, not systemic.
     console.error(LOG_PREFIX, 'career auto-runner cooldown cross-check fetch failed', err);
   }
+  // A level-locked job can't be worked at all: stop rather than send a shift
+  // the game will only reject ("Level too low.").
+  const requiredLevel = panelHtml !== null ? careerRequiredLevel(panelHtml, config.careerId) : null;
+  if (requiredLevel !== null) {
+    await pause('error', `${config.careerName} needs level ${requiredLevel}. Pick a job you've unlocked, then switch Auto-Run back on.`);
+    return;
+  }
+
   const liveCooldownSeconds = panelHtml !== null ? parseCareerCooldownSeconds(panelHtml) : null;
   if (liveCooldownSeconds !== null) {
     const until = Date.now() + liveCooldownSeconds * 1000;

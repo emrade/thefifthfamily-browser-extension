@@ -496,7 +496,11 @@ function buildPanel(): HTMLDivElement {
 function readCard(card: Element): Pick<CareerCatalogEntry, 'careerId' | 'name' | 'energyCost' | 'otEnergyCost'> | null {
   const careerId = Number(card.id.replace('career-card-', ''));
   if (!careerId) return null;
-  if (/Lv \d+ Required/.test(card.querySelector('.cv2-btn-row')?.textContent ?? '')) return null;
+  // Read off the whole card, not `.cv2-btn-row`: the locked button sits
+  // straight on the card with no row around it, so looking only inside the
+  // row put the pick button on locked jobs (2026-10-26: job 22, "Lv 140
+  // Required" at level 129, picked and rejected with "Level too low.").
+  if (/Lv \d+ Required/.test(card.textContent ?? '')) return null;
   const name = card.querySelector('.cv2-card-name')?.textContent?.trim();
   if (!name) return null;
   let energyCost: number | null = null;

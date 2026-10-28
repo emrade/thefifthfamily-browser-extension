@@ -158,6 +158,26 @@ export function parseCareerCooldownSeconds(responseText: string): number | null 
 }
 
 /**
+ * The level a career still needs, from its card's "Lv N Required" lock
+ * button (same copy `parseCareersCatalog` skips locked jobs on), or `null`
+ * when it's unlocked or not on the page. The runner checks this every cycle
+ * so a locked job that got picked anyway never reaches `career.php` (which
+ * answers "Level too low."). Confirmed real 2026-10-26: job 22, level 129.
+ */
+export function careerRequiredLevel(responseText: string, careerId: number): number | null {
+  const envelope = unwrapPanelEnvelope(responseText);
+  if (!envelope) return null;
+
+  for (const chunk of envelope.html.split('id="career-card-').slice(1)) {
+    const idMatch = chunk.match(/^(\d+)"/);
+    if (!idMatch || Number(idMatch[1]) !== careerId) continue;
+    const lock = chunk.match(/Lv (\d+) Required/);
+    return lock ? Number(lock[1]) : null;
+  }
+  return null;
+}
+
+/**
  * Live per-cycle check for whether Overtime is actually clickable for one
  * specific career right now — reads the same `panel.php?type=careers` fetch
  * `runner.ts` already makes every cycle for `parseCareerCooldownSeconds`'s
