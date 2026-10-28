@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.51.1] - 2026-10-28
+
+### Fixed
+- Career Auto: level-locked jobs could still be picked during the
+  after-shift break. While the break counts down, the game replaces every
+  job card's button with the same timer, locked ones included, so their
+  "Lv N Required" lock wasn't there to see (a level-190 job was picked at
+  level 130 this way). A job whose card level is above yours now counts as
+  locked too: the "Auto-run this job" button doesn't appear on it, it's left
+  out of the job list in the popup and panel, and the runner stops with
+  "<job> needs level N" instead of sending a shift.
+
 ## [0.51.0] - 2026-10-28
 
 ### Added
