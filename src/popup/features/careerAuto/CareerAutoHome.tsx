@@ -49,6 +49,8 @@ export function CareerAutoHome() {
   // background service worker that scheduled it.
   const [nextAlarmAt, setNextAlarmAt] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   async function loadCatalog() {
     setCatalogLoading(true);
@@ -179,6 +181,24 @@ export function CareerAutoHome() {
     }
   }
 
+  // One check right now, even with Auto-Run off — for a wait the runner
+  // can't see end early (bailing out, a discharge, an energy refill).
+  // Background also writes the status to storage; setting it from the
+  // response too doesn't depend on that listener firing first.
+  async function runNow() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      const fresh = (await chrome.runtime.sendMessage({ type: 'career-auto-run-requested' })) as CareerAutoStatus | null;
+      setStatus(fresh);
+    } catch (err) {
+      console.error(LOG_PREFIX, 'career run-now failed', err);
+      setRunError('Could not reach the background service — try again in a moment.');
+    } finally {
+      setRunning(false);
+    }
+  }
+
   function setShiftMode(mode: CareerAutoConfig['shiftMode']) {
     if (!config) return;
     saveConfig({ ...config, shiftMode: mode });
@@ -223,6 +243,14 @@ export function CareerAutoHome() {
           </span>
         </div>
       )}
+
+      <button class="ff-archive-secondary" disabled={running || config.careerId == null} onClick={runNow}>
+        {running ? 'Running…' : 'Run Now'}
+      </button>
+      <div class="ff-field__hint">
+        Runs one check right now, even with Auto-Run off. Handy after bailing out early or refilling energy.
+      </div>
+      {runError && <div class="ff-health-alert__hint">{runError}</div>}
 
       <div class="ff-section-label">Job</div>
 

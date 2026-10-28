@@ -6,10 +6,18 @@ import type { ExtensionMessage } from '@/shared/messaging';
 import { parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { storage } from '@/shared/storage';
-import type { StreetIntelAutoConfig } from '@/shared/types';
-import { onConfigChanged, scheduleNextCheck } from './actionRunner';
+import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import { onConfigChanged, runIfEligible, scheduleNextCheck } from './actionRunner';
 
 export { handleAlarm as handleAutoAlarm } from './actionRunner';
+
+/** Run Now from the popup or the in-page panel: one check right now through
+ *  the same guard as the alarm, even with Auto-Attempt off, then the fresh
+ *  status. A no-op if a check is already running. */
+export async function runAutoCheckNow(): Promise<StreetIntelAutoStatus | null> {
+  await runIfEligible(true);
+  return storage.getStreetIntelAutoStatus();
+}
 
 /**
  * Re-arms the auto-attempt alarm on service-worker startup if enabled —

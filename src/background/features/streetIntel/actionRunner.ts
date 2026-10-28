@@ -11,7 +11,7 @@ import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
+import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
 import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
@@ -24,6 +24,7 @@ import type {
   ScoutedCandidateLog,
   StreetIntelAutoConfig,
   StreetIntelAutoStatus,
+  StreetIntelAutoWaiting,
   StreetIntelModeTally,
 } from '@/shared/types';
 
@@ -76,6 +77,12 @@ export function onConfigChanged(config: StreetIntelAutoConfig): void {
 function localDateKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function blockedWaiting(status: LiveStatus): StreetIntelAutoWaiting {
+  if (status.jailed) return { kind: 'jail', until: Date.now() + status.jailSeconds * 1000 };
+  if (status.hospitalized) return { kind: 'hospital', until: Date.now() + status.hospitalSeconds * 1000 };
+  return { kind: 'travel', until: Date.now() + status.travelSeconds * 1000 };
 }
 
 /** Reads current status, merges in `patch`, writes the result back — every
@@ -557,19 +564,22 @@ function pickComplicationChoice(choice: ScoutedChoice, complicationStats: Record
 // stopping for.
 let cycleInFlight = false;
 
-export async function runIfEligible(): Promise<void> {
+/** `force` is Run Now: one check even with Auto-Attempt switched off. Its
+ *  own reschedule is cleared afterwards when still off, so nothing follows. */
+export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce();
+    await runIfEligibleOnce(force);
+    if (force && !(await storage.getStreetIntelAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.STREET_INTEL_AUTO);
   } finally {
     cycleInFlight = false;
   }
 }
 
-async function runIfEligibleOnce(): Promise<void> {
+async function runIfEligibleOnce(force: boolean): Promise<void> {
   const config = await storage.getStreetIntelAutoConfig();
-  if (!config.enabled) return;
+  if (!config.enabled && !force) return;
 
   const status = await fetchLiveStatus();
   if (!status) {
@@ -581,7 +591,10 @@ async function runIfEligibleOnce(): Promise<void> {
   // evidence either way of whether Street Intel specifically requires being
   // stationary (zero real attempts happened while travelling, but that could
   // just mean it was never tried), so this defaults to the conservative gate.
+  // Polled rather than held until release: bailing out or a discharge ends
+  // it early.
   if (status.travelling || status.jailed || status.hospitalized) {
+    await updateStatus({ waiting: blockedWaiting(status) });
     scheduleNextCheck(null);
     return;
   }
@@ -605,13 +618,18 @@ async function runIfEligibleOnce(): Promise<void> {
   // The panel's own live cooldown bar is ground truth over our tracked
   // `nextEligibleAt`, which can go stale if the same account plays manually
   // in-game too (same residual risk as Career's tracked cooldown).
+  // Also replaces the tracked value, so the popup and panel stop showing a
+  // past time as "due now" after a manual attempt.
   if (panel.cooldownSeconds !== null) {
-    scheduleNextCheck(Date.now() + panel.cooldownSeconds * 1000);
+    const until = Date.now() + panel.cooldownSeconds * 1000;
+    await updateStatus({ nextEligibleAt: until, waiting: { kind: 'cooldown', until } });
+    scheduleNextCheck(until);
     return;
   }
 
-  const candidates = panel.opportunities
-    .filter((o) => o.staminaCost > 0 && o.approaches.length > 0 && status.stamina >= o.scoutCost + o.staminaCost)
+  const attemptable = panel.opportunities.filter((o) => o.staminaCost > 0 && o.approaches.length > 0);
+  const candidates = attemptable
+    .filter((o) => status.stamina >= o.scoutCost + o.staminaCost)
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
 
   // Only needed for `oddsMode: 'computed'` and `scoutMode: 'smart'` — raw
@@ -640,7 +658,11 @@ async function runIfEligibleOnce(): Promise<void> {
       // Nothing affordable cleared the bar this cycle — the scouted log is
       // still worth keeping (it's the whole answer to "what did it consider
       // and why didn't it act"), even though no attempt happened.
-      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now(), lastCycleSkipped: skipped, modeTallies: cycleTallies });
+      const waiting: StreetIntelAutoWaiting =
+        candidates.length === 0 && attemptable.length > 0
+          ? { kind: 'stamina', need: Math.min(...attemptable.map((o) => o.scoutCost + o.staminaCost)), have: status.stamina }
+          : { kind: 'no-pick' };
+      await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now(), lastCycleSkipped: skipped, modeTallies: cycleTallies, waiting });
       scheduleNextCheck(null);
       return;
     }
@@ -805,6 +827,7 @@ async function runIfEligibleOnce(): Promise<void> {
       complicationStats,
       complicationTypeStats,
       lastCycleSkipped: skipped,
+      waiting: null,
       modeTallies: bumpModeTally(cycleTallies, tallyKey, {
         attempts: 1,
         attemptStamina: choice.opportunity.staminaCost,
@@ -831,10 +854,11 @@ async function runIfEligibleOnce(): Promise<void> {
       // attempt/complication call) came back blocked instead. Not a sign
       // anything is broken, so this must not reach `pause()` the way it used
       // to (see gameAction.ts's SystemicActionError doc for the full story).
-      // A fresh status read gives the exact release time when available;
-      // falls back to the normal re-poll cadence otherwise.
+      // Polled like the pre-flight gate above, not held until release —
+      // the release time alone left it idle after bailing out early.
       const freshStatus = await fetchLiveStatus();
-      scheduleNextCheck(freshStatus ? statusReleaseAt(freshStatus) : null);
+      if (freshStatus && (freshStatus.travelling || freshStatus.jailed || freshStatus.hospitalized)) await updateStatus({ waiting: blockedWaiting(freshStatus) });
+      scheduleNextCheck(null);
       return;
     }
     if (err instanceof SystemicActionError) {

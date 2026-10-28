@@ -13,8 +13,9 @@ import {
   handlePollAlarm as handleStreetIntelPollAlarm,
   handleAutoAlarm as handleStreetIntelAutoAlarm,
   initAuto as initStreetIntelAuto,
+  runAutoCheckNow as runStreetIntelAutoCheckNow,
 } from './features/streetIntel';
-import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto } from './features/careerAuto';
+import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import { handleAlarm as handleFuryCatcherAlarm, init as initFuryCatcher, runCheckNow as runFuryCatcherCheckNow } from './features/furyCatcher';
 import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
@@ -226,6 +227,16 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
 
   if (msg.type === 'career-auto-next-check-requested') {
     return chrome.alarms.get(ALARM_NAMES.CAREER_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
+  }
+
+  // Run Now from Career Auto's popup tab or in-page panel.
+  if (msg.type === 'career-auto-run-requested') {
+    return runCareerAutoCheckNow();
+  }
+
+  // Run Now from Street Intel Auto's popup tab or in-page panel.
+  if (msg.type === 'street-intel-auto-run-requested') {
+    return runStreetIntelAutoCheckNow();
   }
 
   // Sent by the popup's Crimes Auto "Check Now" button — see that message

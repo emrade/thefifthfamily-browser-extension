@@ -1,5 +1,6 @@
 import {
   ALARM_NAMES,
+  REAL_ESTATE_AUTO_BLOCKED_RECHECK_MS,
   REAL_ESTATE_AUTO_HISTORY_MAX,
   REAL_ESTATE_AUTO_IMMEDIATE_CHECK_DELAY_MS,
   REAL_ESTATE_AUTO_JITTER_MS,
@@ -11,7 +12,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { hoursSinceCollected } from '@/shared/realEstateVaults';
-import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, statusReleaseAt } from '../../gameAction';
+import { SystemicActionError, blockedRecheckAt, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
 import { handleMessage as handleVaultMessage, readLiveVaults } from './vaultReminder';
 import type { RealEstateAutoConfig, RealEstateAutoRun, RealEstateAutoStatus, RealEstateAutoTally, RealEstateVaultState } from '@/shared/types';
 
@@ -111,11 +112,18 @@ export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
 // both read the vaults as due and collect twice.
 let cycleInFlight = false;
 
-export async function runCycle(): Promise<void> {
+/** `force` is Check Now: one cycle even with auto-collect switched off. Its
+ *  own reschedule is cleared afterwards when still off, so nothing follows. */
+export async function runCycle(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runCycleOnce();
+    await runCycleOnce(force);
+    if (force && !(await storage.getRealEstateAutoConfig()).enabled) {
+      await chrome.alarms.clear(ALARM_NAMES.REAL_ESTATE_AUTO);
+      const status = await storage.getRealEstateAutoStatus();
+      if (status?.nextCheckAt) await storage.setRealEstateAutoStatus({ ...status, nextCheckAt: null });
+    }
   } finally {
     cycleInFlight = false;
   }
@@ -147,9 +155,9 @@ async function bankIt(status: RealEstateAutoStatus): Promise<number | null> {
   return null;
 }
 
-async function runCycleOnce(): Promise<void> {
+async function runCycleOnce(force: boolean): Promise<void> {
   const config = await storage.getRealEstateAutoConfig();
-  if (!config.enabled) return;
+  if (!config.enabled && !force) return;
 
   const status = await loadStatus();
   status.note = null;
@@ -171,7 +179,7 @@ async function runCycleOnce(): Promise<void> {
       return;
     }
     if (live.jailed || live.hospitalized) {
-      blocked(live.jailed ? 'In jail. Waiting to be released.' : 'In hospital. Waiting to be released.', statusReleaseAt(live) + jitter());
+      blocked(live.jailed ? 'In jail. Checking again every few minutes.' : 'In hospital. Checking again every few minutes.', blockedRecheckAt(live, REAL_ESTATE_AUTO_BLOCKED_RECHECK_MS));
       await persist();
       return;
     }
@@ -247,7 +255,7 @@ async function runCycleOnce(): Promise<void> {
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
       const fresh = await fetchLiveStatus().catch(() => null);
-      blocked('Blocked by jail, hospital or travel. Waiting.', (fresh ? statusReleaseAt(fresh) : Date.now() + REAL_ESTATE_AUTO_RETRY_MS) + jitter());
+      blocked('Blocked by jail, hospital or travel. Checking again every few minutes.', blockedRecheckAt(fresh, REAL_ESTATE_AUTO_BLOCKED_RECHECK_MS));
       await persist();
       return;
     }
@@ -291,7 +299,7 @@ async function onVaultsChanged(state: RealEstateVaultState | undefined): Promise
 }
 
 export async function runCheckNow(): Promise<RealEstateAutoStatus | null> {
-  await runCycle();
+  await runCycle(true);
   return storage.getRealEstateAutoStatus();
 }
 

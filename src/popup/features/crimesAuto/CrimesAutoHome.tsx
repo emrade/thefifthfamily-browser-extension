@@ -146,7 +146,7 @@ export function CrimesAutoHome() {
       </button>
       <div class="ff-field__hint">
         Used a Nerve consumable in-game? The automation won't notice until its next scheduled check — this forces one
-        immediately instead of waiting.
+        immediately instead of waiting. Works even with Auto-Run off (one check, nothing scheduled after it).
       </div>
 
       {checkNowError && <div class="ff-health-alert__hint">{checkNowError}</div>}

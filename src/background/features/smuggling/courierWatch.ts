@@ -3,7 +3,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { getRoster } from '@/shared/petRoster';
-import { SystemicActionError, fetchLiveStatus, statusReleaseAt } from '../../gameAction';
+import { SystemicActionError, blockedRecheckAt, fetchLiveStatus } from '../../gameAction';
 import { REQUEST_TIMEOUT_MS, isRequestTimeout } from '@/shared/requestLog/loggedFetch';
 import { cancelShipment, fetchPanel, isDailyCapReached, runCourierBatch, runOffloadBatch } from './petCourier';
 import type { CourierAutoConfig, CourierRunSummary, CourierWatchSummary, FleetEntry, PendingCourierReturn, PetRosterEntry, SmugglingV2Snapshot } from '@/shared/types';
@@ -359,7 +359,7 @@ async function handleBatchStop(summary: CourierRunSummary, alarmName: string): P
   if (!summary.notRun) consecutiveTimeouts = 0;
   if (summary.stoppedReason === 'status-blocked') {
     const freshStatus = await fetchLiveStatus();
-    chrome.alarms.create(alarmName, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
+    chrome.alarms.create(alarmName, { when: blockedRecheckAt(freshStatus, 60_000) });
     return true;
   }
   if (summary.stoppedReason === 'shape-changed' || summary.stoppedReason === 'session-error' || summary.stoppedReason === 'repeated-rejection') {
@@ -605,7 +605,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
     return;
   }
   if (status.travelling || status.jailed || status.hospitalized) {
-    chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: statusReleaseAt(status) });
+    chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: blockedRecheckAt(status, 60_000) });
     return;
   }
 
@@ -630,7 +630,7 @@ export async function handleDestPollAlarm(alarm: chrome.alarms.Alarm): Promise<v
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
       const freshStatus = await fetchLiveStatus();
-      chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_DEST_POLL, { when: blockedRecheckAt(freshStatus, 60_000) });
       return;
     }
     if (err instanceof SystemicActionError) {
@@ -667,7 +667,7 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
     return;
   }
   if (status.travelling || status.jailed || status.hospitalized) {
-    chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: statusReleaseAt(status) });
+    chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: blockedRecheckAt(status, 60_000) });
     return;
   }
 
@@ -691,7 +691,7 @@ export async function handleCourierReturnAlarm(alarm: chrome.alarms.Alarm): Prom
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
       const freshStatus = await fetchLiveStatus();
-      chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: freshStatus ? statusReleaseAt(freshStatus) : Date.now() + 60_000 });
+      chrome.alarms.create(ALARM_NAMES.SMUGGLING_COURIER_RETURN, { when: blockedRecheckAt(freshStatus, 60_000) });
       return;
     }
     if (err instanceof SystemicActionError) {

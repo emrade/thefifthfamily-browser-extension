@@ -105,6 +105,13 @@ const PANEL_CSS = `
   color: #d9c48a; font-size: 9.5px; font-weight: 700; cursor: pointer;
 }
 #${CONTAINER_ID} .ff-cap-link:disabled { opacity: 0.45; cursor: default; }
+#${CONTAINER_ID} .ff-cap-run {
+  box-sizing: border-box; display: block; width: 100%; height: auto; margin: 0; padding: 7px 10px; border-radius: 8px;
+  font-size: 11px; font-weight: 700; line-height: 1.2; cursor: pointer;
+  background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.5); color: #d9c48a;
+}
+#${CONTAINER_ID} .ff-cap-run:hover:not(:disabled) { border-color: #c9a84c; }
+#${CONTAINER_ID} .ff-cap-run:disabled { opacity: 0.45; cursor: default; }
 
 .ff-cap-waiting { font-size: 10.5px; color: #fbbf24; padding: 2px 0 8px; line-height: 1.4; }
 .ff-cap-stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
@@ -141,6 +148,8 @@ let catalog: CareerCatalogEntry[] | null = null;
 let catalogLoading = false;
 let catalogError: string | null = null;
 let nextAlarmAt: number | null = null;
+let running = false;
+let runError: string | null = null;
 /** The job search box's text; filters the dropdown by name, like the popup's. */
 let jobQuery = '';
 /** The card whose "Auto-run this job" was tapped and is waiting on Confirm. */
@@ -221,6 +230,24 @@ async function loadCatalog(): Promise<void> {
     catalogError = 'Could not read the job list. Try again in a moment.';
   } finally {
     catalogLoading = false;
+    renderAll();
+  }
+}
+
+/** Run Now: one check right now, even with Auto-Run off — for a wait the
+ *  runner can't see end early (bailing out, a discharge, an energy refill). */
+async function runNow(): Promise<void> {
+  running = true;
+  runError = null;
+  renderAll();
+  try {
+    status = (await chrome.runtime.sendMessage({ type: 'career-auto-run-requested' })) as CareerAutoStatus | null;
+  } catch (err) {
+    console.error(LOG_PREFIX, 'career auto panel run-now failed', err);
+    runError = 'Could not reach the background service. Try again in a moment.';
+  } finally {
+    running = false;
+    await refreshNextAlarm();
     renderAll();
   }
 }
@@ -313,6 +340,12 @@ function bodyHtml(now: number): string {
       }<br>Check the job in-game, then switch Auto-Run back on above.</div>`,
     );
   }
+
+  parts.push(
+    `<button class="ff-cap-run" type="button" data-ff-act="run" ${running || config.careerId == null ? 'disabled' : ''}>${running ? 'Running…' : 'Run Now'}</button>`,
+  );
+  parts.push('<div class="ff-cap-hint">Runs one check right now, even with Auto-Run off. Handy after bailing out early or refilling energy.</div>');
+  if (runError) parts.push(`<div class="ff-cap-hint">${escapeHtml(runError)}</div>`);
 
   parts.push('<div class="ff-cap-label">Job</div>');
   parts.push(`<input class="ff-cap-search" type="text" placeholder="Search jobs…" data-ff-field="search" value="${escapeHtml(jobQuery)}">`);
@@ -441,6 +474,7 @@ function buildPanel(): HTMLDivElement {
   });
   el.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-ff-act="refresh"]')) void loadCatalog();
+    if ((e.target as HTMLElement).closest('[data-ff-act="run"]')) void runNow();
   });
   el.addEventListener('input', (e) => {
     const target = e.target as HTMLInputElement;

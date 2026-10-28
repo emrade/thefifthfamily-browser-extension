@@ -4,7 +4,7 @@ import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, fetchLiveStatus, postAction, statusReleaseAt, type LiveStatus } from '../../gameAction';
+import { SystemicActionError, blockedRecheckAt, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { parseCrimesCatalog } from './crimesPanelParser';
 import type { CrimeAttemptResult, CrimesAutoConfig, CrimesAutoStatus } from '@/shared/types';
 
@@ -197,19 +197,22 @@ export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
 // to occasionally deliver one scheduled alarm twice.
 let cycleInFlight = false;
 
-export async function runIfEligible(): Promise<void> {
+/** `force` is Run Now: one cycle even with automation switched off. Its
+ *  own reschedule is cleared afterwards when still off, so nothing follows. */
+export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce();
+    await runIfEligibleOnce(force);
+    if (force && !(await storage.getCrimesAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.CRIMES_AUTO);
   } finally {
     cycleInFlight = false;
   }
 }
 
-async function runIfEligibleOnce(): Promise<void> {
+async function runIfEligibleOnce(force: boolean): Promise<void> {
   const config = await storage.getCrimesAutoConfig();
-  if (!config.enabled) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
+  if (!config.enabled && !force) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
 
   const liveStatus = await fetchLiveStatus();
   if (!liveStatus) {
@@ -220,8 +223,9 @@ async function runIfEligibleOnce(): Promise<void> {
   // Hospitalized/travelling aren't things this feature can do anything
   // about — same three-gate shape careerAuto/courier use, minus jailed,
   // which gets an active response (bail) below instead of a passive wait.
+  // Polled rather than held until release: a discharge can end it early.
   if (liveStatus.hospitalized || liveStatus.travelling) {
-    scheduleAt(statusReleaseAt(liveStatus));
+    scheduleAt(blockedRecheckAt(liveStatus, CRIMES_AUTO_FALLBACK_INTERVAL_MS));
     return;
   }
 
@@ -308,7 +312,7 @@ async function runIfEligibleOnce(): Promise<void> {
           await storage.setCrimesAutoStatus({ ...status, bailsPaid: status.bailsPaid + 1, bailCashSpent: status.bailCashSpent + result.spent });
         }
       }
-      scheduleAt(freshStatus ? statusReleaseAt(freshStatus) : Date.now() + CRIMES_AUTO_FALLBACK_INTERVAL_MS);
+      scheduleAt(blockedRecheckAt(freshStatus, CRIMES_AUTO_FALLBACK_INTERVAL_MS));
       return;
     }
     // A repeated rejection is a well-formed response the game kept giving,

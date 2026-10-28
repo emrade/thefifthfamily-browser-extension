@@ -3,6 +3,7 @@ import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
+import { streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 /**
@@ -25,10 +26,9 @@ import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/type
  * which (unlike Dexie's `db`) a content script can read/write directly — no
  * message round trip needed, same as courierPanel.ts's own config reads.
  * `chrome.alarms`, unlike `chrome.storage`, isn't reachable from a content
- * script at all, so the one thing this asks background for is the poll
- * alarm's own `scheduledTime`, and only for the "no attempt has run yet, so
- * `nextEligibleAt` is still null" case — see the 'street-intel-next-check-requested'
- * message's own doc in messaging.ts.
+ * script at all, so this asks background for the poll alarm's own
+ * `scheduledTime` — see the 'street-intel-next-check-requested' message's
+ * own doc in messaging.ts — and for Run Now.
  */
 
 const CONTAINER_ID = 'ff-si-status-panel';
@@ -134,18 +134,31 @@ const PANEL_CSS = `
 }
 .ff-sip-row { font-size: 10.5px; color: #ccc; padding: 2px 0; line-height: 1.4; }
 .ff-sip-empty { font-size: 10.5px; color: #6b6455; padding: 4px 0; }
+.ff-sip-waiting { font-size: 10.5px; color: #fbbf24; padding: 2px 0 6px; line-height: 1.4; }
+.ff-sip-hint { font-size: 9.5px; color: #8b8578; line-height: 1.45; margin: 5px 0 12px; }
+.ff-sip-run {
+  box-sizing: border-box; display: block; width: 100%; padding: 7px 10px; border-radius: 8px;
+  font-family: 'Inter', system-ui, sans-serif; font-size: 11px; font-weight: 700; line-height: 1.2; cursor: pointer;
+  background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.5); color: #d9c48a;
+}
+.ff-sip-run:hover:not(:disabled) { border-color: #c9a84c; }
+.ff-sip-run:disabled { opacity: 0.45; cursor: default; }
 `;
 
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
 let config: StreetIntelAutoConfig | null = null;
 let status: StreetIntelAutoStatus | null = null;
-// Cached from background on refresh, not re-fetched every tick — see the
-// module doc's note on why this can't be read straight from chrome.alarms
-// here. Only actually used while `status?.nextEligibleAt` is null (no
-// attempt has run yet this session), same fallback the popup itself uses.
+// Cached from background on refresh and every few ticks — see the module
+// doc's note on why this can't be read straight from chrome.alarms here.
+// Preferred over `status.nextEligibleAt`, same as the popup: that one is a
+// past time ("due now") for as long as jail, hospital or an empty board
+// keeps the runner from attempting.
 let cachedNextAlarmAt: number | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+let ticks = 0;
+let running = false;
+let runError: string | null = null;
 
 function localDateKey(): string {
   const d = new Date();
@@ -184,7 +197,8 @@ function renderStatus(): string {
 
   const attemptsToday = status?.attemptsTodayDate === localDateKey() ? status.attemptsToday : 0;
   const cashToday = status?.attemptsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
-  const nextRunAt = config.enabled ? (status?.nextEligibleAt ?? cachedNextAlarmAt) : null;
+  const nextRunAt = config.enabled ? (cachedNextAlarmAt ?? status?.nextEligibleAt ?? null) : null;
+  const waiting = config.enabled ? streetIntelWaitingText(status?.waiting, config.minSuccessPct, Date.now()) : null;
 
   parts.push('<div class="ff-sip-stat-grid">');
   parts.push(`<div class="ff-sip-stat-tile"><div class="ff-sip-stat-tile__value">${attemptsToday}</div><div class="ff-sip-stat-tile__label">Attempts Today</div></div>`);
@@ -211,6 +225,7 @@ function renderStatus(): string {
     parts.push(`<div class="ff-sip-row-head">Next Check</div>`);
     parts.push(`<div class="ff-sip-row">${formatNextRun(nextRunAt, Date.now())}</div>`);
   }
+  if (waiting) parts.push(`<div class="ff-sip-waiting">${waiting}</div>`);
 
   return parts.join('');
 }
@@ -237,6 +252,16 @@ function renderToggle(): void {
     scoutStatus.textContent = smartScouting ? 'Only scouts cards that could beat the best found.' : 'Off — scouts the 2 highest-paying cards.';
   }
 
+  const runBtn = panelEl.querySelector<HTMLButtonElement>('.ff-sip-run');
+  if (runBtn) {
+    runBtn.disabled = running;
+    runBtn.textContent = running ? 'Running…' : 'Run Now';
+  }
+  const runHint = panelEl.querySelector('.ff-sip-run-hint');
+  if (runHint) {
+    runHint.textContent = runError ?? 'Runs one check right now, even with Auto-Attempt off. Handy after bailing out early or refilling Stamina.';
+  }
+
   const smartComplications = config.complicationMode === 'avoidBlocked';
   const cplxToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   const cplxStatus = panelEl.querySelector('.ff-sip-cplx-status');
@@ -260,14 +285,40 @@ async function refresh(): Promise<void> {
     const [nextConfig, nextStatus] = await Promise.all([storage.getStreetIntelAutoConfig(), storage.getStreetIntelAutoStatus()]);
     config = nextConfig;
     status = nextStatus;
-    // Only worth asking background for this when it'd actually be used —
-    // `nextEligibleAt` covers every case once at least one attempt has run.
-    if (config.enabled && !status?.nextEligibleAt) {
-      cachedNextAlarmAt = (await chrome.runtime.sendMessage({ type: 'street-intel-next-check-requested' })) as number | null;
-    }
+    await refreshNextAlarm();
     renderAll();
   } catch (err) {
     console.error(LOG_PREFIX, 'street intel status panel refresh failed', err);
+  }
+}
+
+async function refreshNextAlarm(): Promise<void> {
+  if (!config?.enabled) {
+    cachedNextAlarmAt = null;
+    return;
+  }
+  try {
+    cachedNextAlarmAt = (await chrome.runtime.sendMessage({ type: 'street-intel-next-check-requested' })) as number | null;
+  } catch (err) {
+    console.error(LOG_PREFIX, 'street intel status panel next-check read failed', err);
+  }
+}
+
+/** Run Now: one check right now, even with Auto-Attempt off — for a wait the
+ *  runner can't see end early (bailing out, a discharge, a Stamina refill). */
+async function runNow(): Promise<void> {
+  running = true;
+  runError = null;
+  renderAll();
+  try {
+    status = (await chrome.runtime.sendMessage({ type: 'street-intel-auto-run-requested' })) as StreetIntelAutoStatus | null;
+  } catch (err) {
+    console.error(LOG_PREFIX, 'street intel status panel run-now failed', err);
+    runError = 'Could not reach the background service. Try again in a moment.';
+  } finally {
+    running = false;
+    await refreshNextAlarm();
+    renderAll();
   }
 }
 
@@ -279,7 +330,14 @@ function setExpanded(next: boolean): void {
     // Ticks the "Next Check" countdown live while the panel is open — a
     // plain re-render off already-fetched state, no network/game call, so a
     // 1s cadence costs nothing. Matches the popup's own countdown cadence.
-    if (tickTimer === null) tickTimer = setInterval(() => renderAll(), 1_000);
+    // The alarm itself is re-read every 5s, since some checks reschedule
+    // without writing status — same cadence as the Careers panel.
+    if (tickTimer === null) {
+      tickTimer = setInterval(() => {
+        if (++ticks % 5 === 0) void refreshNextAlarm().then(renderAll);
+        else renderAll();
+      }, 1_000);
+    }
   } else if (tickTimer !== null) {
     clearInterval(tickTimer);
     tickTimer = null;
@@ -306,6 +364,8 @@ function buildPanel(): HTMLDivElement {
         </div>
         <input class="ff-sip-auto-toggle ff-sip-toggle" type="checkbox">
       </label>
+      <button class="ff-sip-run" type="button">Run Now</button>
+      <div class="ff-sip-hint ff-sip-run-hint"></div>
       <label class="ff-sip-toggle-row">
         <div class="ff-sip-toggle-row__text">
           <div class="ff-sip-toggle-row__title">Smart scouting</div>
@@ -326,6 +386,7 @@ function buildPanel(): HTMLDivElement {
 
   el.querySelector('.ff-sip-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-sip-close')?.addEventListener('click', () => setExpanded(false));
+  el.querySelector('.ff-sip-run')?.addEventListener('click', () => void runNow());
 
   const writeConfig = (patch: Partial<StreetIntelAutoConfig>) => {
     if (!config) return;

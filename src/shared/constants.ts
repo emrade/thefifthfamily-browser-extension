@@ -492,6 +492,9 @@ export const REAL_ESTATE_AUTO_JITTER_MS: [number, number] = [60_000, 10 * 60_000
 /** Retry when the check couldn't run (no game session yet, offline). */
 export const REAL_ESTATE_AUTO_RETRY_MS = 30 * 60_000;
 
+/** Re-check while jailed or hospitalized, in case of an early release. */
+export const REAL_ESTATE_AUTO_BLOCKED_RECHECK_MS = 2 * 60_000;
+
 export const REAL_ESTATE_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 
 /** Auto-collect runs kept for the popup's history list. */

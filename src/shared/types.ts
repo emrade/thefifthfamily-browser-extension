@@ -1146,7 +1146,20 @@ export interface StreetIntelAutoStatus {
   /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
    *  Optional for pre-existing statuses. */
   modeTallies?: Record<string, StreetIntelModeTally>;
+  /** Why the last check didn't attempt anything; null after an attempt.
+   *  Optional for pre-existing statuses. */
+  waiting?: StreetIntelAutoWaiting | null;
 }
+
+/** What a Street Intel Auto check found blocking it, same idea as
+ *  `CareerAutoWaiting`. `until` is the game's own countdown, for context only:
+ *  blocked checks still poll, since bailing out or a discharge can end it
+ *  early. `stamina` is the cheapest scout + attempt on the board; `no-pick`
+ *  means nothing affordable cleared the success floor (or nothing was listed). */
+export type StreetIntelAutoWaiting =
+  | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
+  | { kind: 'stamina'; need: number; have: number }
+  | { kind: 'no-pick' };
 
 /**
  * One hourly price sample for one stock market symbol — see

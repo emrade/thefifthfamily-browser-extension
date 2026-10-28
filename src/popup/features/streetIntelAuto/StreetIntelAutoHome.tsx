@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { NumberInput } from '@/popup/views/NumberInput';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
+import { LOG_PREFIX } from '@/shared/log';
+import { streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 const COMPLICATION_KEYS: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
@@ -40,6 +42,8 @@ export function StreetIntelAutoHome() {
   const [now, setNow] = useState(Date.now());
   const [nextAlarmAt, setNextAlarmAt] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([storage.getStreetIntelAutoConfig(), storage.getStreetIntelAutoStatus()]).then(([c, s]) => {
@@ -74,7 +78,12 @@ export function StreetIntelAutoHome() {
     return () => clearInterval(id);
   }, [config?.enabled]);
 
-  const nextRunAt = config?.enabled ? (status?.nextEligibleAt ?? nextAlarmAt) : null;
+  // The scheduled alarm is when the runner will actually check next. The
+  // tracked cooldown is only a fallback for before the alarm is read:
+  // preferring it showed "due now" for as long as jail, hospital or a
+  // board with nothing worth attempting kept it in the past.
+  const nextRunAt = config?.enabled ? (nextAlarmAt ?? status?.nextEligibleAt ?? null) : null;
+  const waitingLine = config?.enabled ? streetIntelWaitingText(status?.waiting, config.minSuccessPct, now) : null;
   const attemptsToday = status?.attemptsTodayDate === localDateKey() ? status.attemptsToday : 0;
   const cashToday = status?.attemptsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
 
@@ -91,6 +100,24 @@ export function StreetIntelAutoHome() {
       const next = { ...status, pausedReason: null, pausedMessage: null, pausedAt: null };
       setStatus(next);
       await storage.setStreetIntelAutoStatus(next);
+    }
+  }
+
+  // One check right now, even with Auto-Attempt off — for a wait the runner
+  // can't see end early (bailing out, a discharge, a Stamina refill).
+  // Background also writes the status to storage; setting it from the
+  // response too doesn't depend on that listener firing first.
+  async function runNow() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      const fresh = (await chrome.runtime.sendMessage({ type: 'street-intel-auto-run-requested' })) as StreetIntelAutoStatus | null;
+      setStatus(fresh);
+    } catch (err) {
+      console.error(LOG_PREFIX, 'street intel run-now failed', err);
+      setRunError('Could not reach the background service — try again in a moment.');
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -147,6 +174,14 @@ export function StreetIntelAutoHome() {
           </span>
         </div>
       )}
+
+      <button class="ff-archive-secondary" disabled={running} onClick={runNow}>
+        {running ? 'Running…' : 'Run Now'}
+      </button>
+      <div class="ff-field__hint">
+        Runs one check right now, even with Auto-Attempt off. Handy after bailing out early or refilling Stamina.
+      </div>
+      {runError && <div class="ff-health-alert__hint">{runError}</div>}
 
       <div class="ff-section-label">Risk</div>
 
@@ -237,6 +272,8 @@ export function StreetIntelAutoHome() {
       )}
 
       <div class="ff-section-label">Status</div>
+
+      {waitingLine && <div class="ff-auto-row">{waitingLine}</div>}
 
       {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts run yet.</div>}
 

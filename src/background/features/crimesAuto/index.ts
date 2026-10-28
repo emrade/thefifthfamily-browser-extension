@@ -11,11 +11,11 @@ export { handleAlarm } from './runner';
  * left of a scheduled alarm — see `'crimes-check-requested'`'s own doc
  * comment in shared/messaging.ts for the gap this closes (a manually-used
  * Nerve consumable making the account ready earlier than a previously
- * computed `nerveReadyAt` wait accounted for). A no-op, same as the alarm
- * path, if automation is currently disabled or a cycle is already running.
+ * computed `nerveReadyAt` wait accounted for). Runs once even while
+ * automation is switched off; a no-op if a cycle is already running.
  */
 export async function runCheckNow(): Promise<CrimesAutoStatus | null> {
-  await runIfEligible();
+  await runIfEligible(true);
   return storage.getCrimesAutoStatus();
 }
 

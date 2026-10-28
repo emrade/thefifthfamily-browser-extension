@@ -2,9 +2,9 @@ import { GAME_ORIGIN, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
-import type { CareerAutoConfig, CareerCatalogEntry } from '@/shared/types';
+import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry } from '@/shared/types';
 import { parseCareersCatalog } from './careersPanelParser';
-import { onConfigChanged, scheduleNextCheck } from './runner';
+import { onConfigChanged, runIfEligible, scheduleNextCheck } from './runner';
 
 export { handleAlarm } from './runner';
 
@@ -15,6 +15,14 @@ export { handleAlarm } from './runner';
 export async function fetchCareerCatalog(): Promise<CareerCatalogEntry[]> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=careers&_t=${Date.now()}`, { credentials: 'include' });
   return parseCareersCatalog(await res.text());
+}
+
+/** Run Now from the popup or the in-page panel: one check right now through
+ *  the same guard as the alarm, even while switched off, then the fresh
+ *  status. A no-op if a check is already running or no job is picked. */
+export async function runCheckNow(): Promise<CareerAutoStatus | null> {
+  await runIfEligible(true);
+  return storage.getCareerAutoStatus();
 }
 
 /**

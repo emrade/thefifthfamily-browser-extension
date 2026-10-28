@@ -154,19 +154,23 @@ async function pause(reason: 'fired' | 'error', message: string): Promise<void> 
 // just a duplicate firing.
 let cycleInFlight = false;
 
-export async function runIfEligible(): Promise<void> {
+/** `force` is Run Now: one check even with automation switched off. Its own
+ *  reschedule is cleared afterwards when still off, so nothing follows. */
+export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce();
+    await runIfEligibleOnce(force);
+    if (force && !(await storage.getCareerAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
   } finally {
     cycleInFlight = false;
   }
 }
 
-async function runIfEligibleOnce(): Promise<void> {
+async function runIfEligibleOnce(force: boolean): Promise<void> {
   const config = await storage.getCareerAutoConfig();
-  if (!config.enabled || config.careerId == null) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
+  if (config.careerId == null) return; // no job picked — nothing to run
+  if (!config.enabled && !force) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
 
   const status = await fetchLiveStatus();
   if (!status) {

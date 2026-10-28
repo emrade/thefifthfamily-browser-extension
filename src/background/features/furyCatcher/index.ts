@@ -7,9 +7,10 @@ import { onConfigChanged, runCycle } from './runner';
 export { handleAlarm } from './runner';
 
 /** "Check Now" from the popup or the in-page overlay — runs a cycle through
- *  the same guard as the alarm, then returns the fresh status. */
+ *  the same guard as the alarm (even while switched off), then returns the
+ *  fresh status. */
 export async function runCheckNow(): Promise<FuryCatcherStatus | null> {
-  await runCycle();
+  await runCycle(true);
   return storage.getFuryCatcherStatus();
 }
 

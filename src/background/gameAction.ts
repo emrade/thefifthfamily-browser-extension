@@ -352,6 +352,16 @@ export function statusReleaseAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospit
   return Date.now() + (seconds + 2) * 1000;
 }
 
+/** When to look again while jailed/hospitalized/travelling: the release time
+ *  if it's sooner, otherwise `pollMs` from now. Waiting for the release time
+ *  alone left automations idle for the rest of the original sentence after
+ *  the player bailed out or was discharged early; polling picks that up
+ *  within one interval. `status` null (couldn't read it) just polls. */
+export function blockedRecheckAt(status: Pick<LiveStatus, 'jailSeconds' | 'hospitalSeconds' | 'travelSeconds'> | null, pollMs: number): number {
+  const poll = Date.now() + pollMs;
+  return status ? Math.min(statusReleaseAt(status), poll) : poll;
+}
+
 let cashHold: Promise<void> | null = null;
 
 /**

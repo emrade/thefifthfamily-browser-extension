@@ -111,9 +111,8 @@ export type ExtensionMessage =
   // same way the popup does — no round trip needed. `chrome.alarms`, unlike
   // `chrome.storage`, isn't reachable from a content script at all, so the
   // one thing that *does* need asking background is the poll alarm's own
-  // `scheduledTime`, for the narrow "no attempt has ever run yet, so
-  // `StreetIntelAutoStatus.nextEligibleAt` is still null" case — mirrors
-  // `StreetIntelAutoHome.tsx`'s own `nextAlarmAt` fallback in the popup.
+  // `scheduledTime`, which the overlay shows as Next Check (preferred over
+  // the tracked cooldown, same as `StreetIntelAutoHome.tsx` in the popup).
   | { type: 'street-intel-next-check-requested' }
   // Sent from the popup's Career Auto tab, not a content-script adapter — same
   // request/response exception as 'courier-run-requested'. Returns a fresh
@@ -125,6 +124,14 @@ export type ExtensionMessage =
   // scheduled alarm time, which a content script can't read itself (same
   // reason as 'street-intel-next-check-requested'). Returns number | null.
   | { type: 'career-auto-next-check-requested' }
+  // Run Now from the popup's Career Auto tab or the in-page Careers panel:
+  // one check right now, even with automation off (a no-op if one is already
+  // running), returning the fresh `CareerAutoStatus`. For a wait the runner
+  // can't see end early (a manual refill, bailing out of jail).
+  | { type: 'career-auto-run-requested' }
+  // Same as 'career-auto-run-requested', for Street Intel Auto-Attempt.
+  // Returns the fresh `StreetIntelAutoStatus`.
+  | { type: 'street-intel-auto-run-requested' }
   // Sent from the popup's Crimes Auto tab's "Check Now" button — same
   // "run for real right now, return the resulting fresh status" exception as
   // 'stock-tracker-poll-requested'. Exists for the gap a purely time-based
@@ -135,12 +142,12 @@ export type ExtensionMessage =
   // of it going unnoticed until the original wait elapses anyway.
   | { type: 'crimes-check-requested' }
   // Sent from the Fury Catcher's popup tab and in-page overlay "Check Now" —
-  // runs a cycle right now (a no-op if one is already running or it's off)
+  // runs a cycle right now, even when it's off (a no-op if one is already running)
   // and returns the fresh `FuryCatcherStatus`. For an energy refill done by
   // hand that the scheduled wait didn't account for.
   | { type: 'fury-catcher-check-requested' }
   // Sent from the Real Estate Auto-Collect popup tab's "Check Now": runs a
-  // check right now (collects only if it's due) and returns the fresh
+  // check right now, even when it's off (collects only if it's due), and returns the fresh
   // `RealEstateAutoStatus`.
   | { type: 'real-estate-auto-check-requested' }
   // Sent from the in-page Street Racing overlay on mount/refresh — same

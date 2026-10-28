@@ -12,7 +12,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
-import { SystemicActionError, fetchLiveStatus, postAction, sleep, statusReleaseAt, type LiveStatus } from '../../gameAction';
+import { SystemicActionError, blockedRecheckAt, fetchLiveStatus, postAction, sleep, type LiveStatus } from '../../gameAction';
 import type { FuryCatcherConfig, FuryCatcherStatus, FuryCatcherTally } from '@/shared/types';
 
 /**
@@ -238,19 +238,26 @@ async function drinkOne(): Promise<number | null> {
 // change) so two triggers can't both chase off the same energy reading.
 let cycleInFlight = false;
 
-export async function runCycle(): Promise<void> {
+/** `force` is Check Now: one cycle even with the catcher switched off. Its
+ *  own reschedule is cleared afterwards when still off, so nothing follows. */
+export async function runCycle(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runCycleOnce();
+    await runCycleOnce(force);
+    if (force && !(await storage.getFuryCatcherConfig()).enabled) {
+      await chrome.alarms.clear(ALARM_NAMES.FURY_CATCHER);
+      const status = await storage.getFuryCatcherStatus();
+      if (status?.nextCheckAt) await storage.setFuryCatcherStatus({ ...status, nextCheckAt: null });
+    }
   } finally {
     cycleInFlight = false;
   }
 }
 
-async function runCycleOnce(): Promise<void> {
+async function runCycleOnce(force: boolean): Promise<void> {
   const config = await storage.getFuryCatcherConfig();
-  if (!config.enabled) return;
+  if (!config.enabled && !force) return;
 
   const status = await loadStatus();
   status.note = null;
@@ -268,10 +275,11 @@ async function runCycleOnce(): Promise<void> {
       return;
     }
     // Travelling is fine (chases captured mid-travel); hospital is a confirmed
-    // block, and jail is assumed to be one.
+    // block, and jail is assumed to be one. Polled rather than held until
+    // release: bailing out or a discharge can end it early.
     if (live.hospitalized || live.jailed) {
-      status.note = live.hospitalized ? 'In hospital — waiting to be released.' : 'In jail — waiting to be released.';
-      scheduleAt(status, statusReleaseAt(live));
+      status.note = live.hospitalized ? 'In hospital — checking again every minute.' : 'In jail — checking again every minute.';
+      scheduleAt(status, blockedRecheckAt(live, FURY_CATCHER_FALLBACK_INTERVAL_MS));
       await persist();
       return;
     }
@@ -359,8 +367,8 @@ async function runCycleOnce(): Promise<void> {
       }
       if (/in hospital/i.test(error)) {
         const fresh = await fetchLiveStatus();
-        status.note = 'In hospital — waiting to be released.';
-        scheduleAt(status, fresh ? statusReleaseAt(fresh) : Date.now() + FURY_CATCHER_FALLBACK_INTERVAL_MS);
+        status.note = 'In hospital — checking again every minute.';
+        scheduleAt(status, blockedRecheckAt(fresh, FURY_CATCHER_FALLBACK_INTERVAL_MS));
         await persist();
         return;
       }
@@ -391,8 +399,8 @@ async function runCycleOnce(): Promise<void> {
   } catch (err) {
     if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
       const fresh = await fetchLiveStatus();
-      status.note = 'Blocked by jail/hospital/travel — waiting.';
-      scheduleAt(status, fresh ? statusReleaseAt(fresh) : Date.now() + FURY_CATCHER_FALLBACK_INTERVAL_MS);
+      status.note = 'Blocked by jail/hospital/travel — checking again every minute.';
+      scheduleAt(status, blockedRecheckAt(fresh, FURY_CATCHER_FALLBACK_INTERVAL_MS));
       await persist();
       return;
     }

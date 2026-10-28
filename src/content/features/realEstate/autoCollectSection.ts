@@ -187,7 +187,7 @@ function render(): void {
     }
     <div class="ff-re-auto-setting">
       Collect after <input class="ff-re-auto-hours" type="number" min="${REAL_ESTATE_AUTO_MIN_INTERVAL_HOURS}" max="${REAL_ESTATE_AUTO_MAX_INTERVAL_HOURS}" value="${config.intervalHours}"> hours
-      <button class="ff-re-auto-check" type="button" ${checking || !on ? 'disabled' : ''}>${checking ? 'Checking…' : 'Check now'}</button>
+      <button class="ff-re-auto-check" type="button" ${checking ? 'disabled' : ''}>${checking ? 'Checking…' : 'Check now'}</button>
     </div>
     ${hint}
     ${on && status?.note ? `<div class="ff-re-auto-note">${escapeHtml(status.note)}</div>` : ''}
