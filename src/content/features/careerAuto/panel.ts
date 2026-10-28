@@ -148,6 +148,8 @@ let catalog: CareerCatalogEntry[] | null = null;
 let catalogLoading = false;
 let catalogError: string | null = null;
 let nextAlarmAt: number | null = null;
+/** From the last stats the game tab fetched; null until read. */
+let playerLevel: number | null = null;
 let running = false;
 let runError: string | null = null;
 /** The job search box's text; filters the dropdown by name, like the popup's. */
@@ -501,6 +503,12 @@ function readCard(card: Element): Pick<CareerCatalogEntry, 'careerId' | 'name' |
   // row put the pick button on locked jobs (2026-10-26: job 22, "Lv 140
   // Required" at level 129, picked and rejected with "Level too low.").
   if (/Lv \d+ Required/.test(card.textContent ?? '')) return null;
+  // That lock is gone during the after-shift break (every card shows the
+  // same countdown instead), so a card above the player's level is locked
+  // too. 2026-10-28: a level-190 job was picked at level 130 during a break.
+  // Same rule as the background's `cardRequiredLevel`.
+  const cardLevel = Number(card.querySelector('.cv2-card-lv')?.textContent?.match(/Level\s+(\d+)/)?.[1]);
+  if (playerLevel && cardLevel > playerLevel) return null;
   const name = card.querySelector('.cv2-card-name')?.textContent?.trim();
   if (!name) return null;
   let energyCost: number | null = null;
@@ -598,10 +606,11 @@ export function initCareerAutoPanel(): void {
   // game's handlers on the card around it.
   document.addEventListener('click', onCardClick, true);
 
-  Promise.all([storage.getCareerAutoConfig(), storage.getCareerAutoStatus()])
-    .then(([c, s]) => {
+  Promise.all([storage.getCareerAutoConfig(), storage.getCareerAutoStatus(), storage.getLatestStats()])
+    .then(([c, s, stats]) => {
       config = c;
       status = s;
+      playerLevel = stats?.level || null;
       updateVisibility();
       renderAll();
     })
@@ -615,7 +624,11 @@ export function initCareerAutoPanel(): void {
     const statusChanged = STORAGE_KEYS.CAREER_AUTO_STATUS in changes;
     if (configChanged) config = changes[STORAGE_KEYS.CAREER_AUTO_CONFIG].newValue ?? config;
     if (statusChanged) status = changes[STORAGE_KEYS.CAREER_AUTO_STATUS].newValue ?? null;
-    if (!configChanged && !statusChanged) return;
+    // A level-up unlocks jobs; the card buttons follow it.
+    const nextLevel = STORAGE_KEYS.LATEST_STATS in changes ? changes[STORAGE_KEYS.LATEST_STATS].newValue?.level || null : playerLevel;
+    const levelChanged = nextLevel !== playerLevel;
+    playerLevel = nextLevel;
+    if (!configChanged && !statusChanged && !levelChanged) return;
     renderAll();
     if (expanded) void refreshNextAlarm();
   });

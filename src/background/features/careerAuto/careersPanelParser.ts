@@ -43,11 +43,34 @@ import type { CareerCatalogEntry } from '@/shared/types';
  * safe because that class only ever renders on a section header, never
  * inside a card.
  */
+/**
+ * A job card's level lock. The "Lv N Required" button is the obvious signal,
+ * but **it's missing during the after-shift break**: the game swaps the button
+ * row of all ~100 cards for the same countdown, locked ones included, so a
+ * locked job looks exactly like an open one (confirmed 2026-10-28 in every
+ * break snapshot; the player picked a level-190 job at level 130 that way).
+ * The card's own "Level N" header is there in every state, so when the
+ * player's level is known, a card above it counts as locked too. Checked on
+ * 86 snapshots (2026-10-27/28): every open card was at or below the player's
+ * level and every locked one above it, apart from a few seconds after a
+ * level-up while the stored level lagged, which only errs toward "locked".
+ *
+ * Returns the level still needed, or null when the job is open (or the card
+ * reads no level at all).
+ */
+export function cardRequiredLevel(chunk: string, playerLevel: number | null | undefined): number | null {
+  const lock = chunk.match(/Lv (\d+) Required/);
+  if (lock) return Number(lock[1]);
+  const cardLevel = chunk.match(/cv2-card-lv">Level (\d+)/);
+  if (cardLevel && playerLevel && Number(cardLevel[1]) > playerLevel) return Number(cardLevel[1]);
+  return null;
+}
+
 function decodeEntities(text: string): string {
   return text.replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/&#039;/g, "'");
 }
 
-export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] {
+export function parseCareersCatalog(responseText: string, playerLevel?: number | null): CareerCatalogEntry[] {
   const envelope = unwrapPanelEnvelope(responseText);
   if (!envelope) return [];
 
@@ -81,7 +104,7 @@ export function parseCareersCatalog(responseText: string): CareerCatalogEntry[] 
         continue;
       }
 
-      if (/Lv \d+ Required/.test(chunk)) continue; // level-locked — not a real choice
+      if (cardRequiredLevel(chunk, playerLevel) !== null) continue; // level-locked — not a real choice (see `cardRequiredLevel`)
 
       const nameMatch = chunk.match(/cv2-card-name">([^<]+)</);
       if (!nameMatch) continue;
@@ -158,21 +181,19 @@ export function parseCareerCooldownSeconds(responseText: string): number | null 
 }
 
 /**
- * The level a career still needs, from its card's "Lv N Required" lock
- * button (same copy `parseCareersCatalog` skips locked jobs on), or `null`
- * when it's unlocked or not on the page. The runner checks this every cycle
- * so a locked job that got picked anyway never reaches `career.php` (which
+ * The level a career still needs (see `cardRequiredLevel`), or `null` when
+ * it's unlocked or not on the page. The runner checks this every cycle so a
+ * locked job that got picked anyway never reaches `career.php` (which
  * answers "Level too low."). Confirmed real 2026-10-26: job 22, level 129.
  */
-export function careerRequiredLevel(responseText: string, careerId: number): number | null {
+export function careerRequiredLevel(responseText: string, careerId: number, playerLevel?: number | null): number | null {
   const envelope = unwrapPanelEnvelope(responseText);
   if (!envelope) return null;
 
   for (const chunk of envelope.html.split('id="career-card-').slice(1)) {
     const idMatch = chunk.match(/^(\d+)"/);
     if (!idMatch || Number(idMatch[1]) !== careerId) continue;
-    const lock = chunk.match(/Lv (\d+) Required/);
-    return lock ? Number(lock[1]) : null;
+    return cardRequiredLevel(chunk, playerLevel);
   }
   return null;
 }

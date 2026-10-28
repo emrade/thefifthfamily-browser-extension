@@ -3,6 +3,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
 import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry } from '@/shared/types';
+import { fetchLiveStatus } from '../../gameAction';
 import { parseCareersCatalog } from './careersPanelParser';
 import { onConfigChanged, runIfEligible, scheduleNextCheck } from './runner';
 
@@ -14,7 +15,12 @@ export { handleAlarm } from './runner';
  *  than the network round trip. */
 export async function fetchCareerCatalog(): Promise<CareerCatalogEntry[]> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=careers&_t=${Date.now()}`, { credentials: 'include' });
-  return parseCareersCatalog(await res.text());
+  const text = await res.text();
+  // The player's level keeps locked jobs out of the list during the
+  // after-shift break, when their lock isn't shown (see `cardRequiredLevel`).
+  // Live first; the last stats a game tab saw if that read fails.
+  const level = (await fetchLiveStatus().catch(() => null))?.level || (await storage.getLatestStats())?.level || null;
+  return parseCareersCatalog(text, level);
 }
 
 /** Run Now from the popup or the in-page panel: one check right now through

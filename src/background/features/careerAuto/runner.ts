@@ -210,7 +210,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   }
   // A level-locked job can't be worked at all: stop rather than send a shift
   // the game will only reject ("Level too low.").
-  const requiredLevel = panelHtml !== null ? careerRequiredLevel(panelHtml, config.careerId) : null;
+  const requiredLevel = panelHtml !== null ? careerRequiredLevel(panelHtml, config.careerId, status.level) : null;
   if (requiredLevel !== null) {
     await pause('error', `${config.careerName} needs level ${requiredLevel}. Pick a job you've unlocked, then switch Auto-Run back on.`);
     return;

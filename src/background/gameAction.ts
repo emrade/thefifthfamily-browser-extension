@@ -259,6 +259,9 @@ export interface LiveStatus {
   nerve: number;
   maxNerve: number;
   cash: number;
+  /** Player level — Career Auto compares it with a job card's own "Level N",
+   *  since the "Lv N Required" lock is hidden during the after-shift break. */
+  level: number;
   travelling: boolean;
   jailed: boolean;
   hospitalized: boolean;
@@ -327,6 +330,7 @@ export async function fetchLiveStatus(): Promise<LiveStatus | null> {
     nerve: Number(json.stats.nerve) || 0,
     maxNerve: Number(json.stats.max_nerve) || 0,
     cash: Number(json.stats.cash) || 0,
+    level: Number(json.stats.level) || 0,
     travelling: Boolean(json.status.travelling),
     jailed: Boolean(json.status.jailed),
     hospitalized: Boolean(json.status.hospitalized),
