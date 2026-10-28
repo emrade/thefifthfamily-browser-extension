@@ -15,6 +15,7 @@ import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, ty
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
 import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
+import { bumpComplicationTypeStats, recordComplicationOutcome } from './complicationTally';
 import type {
   ComplicationChoiceKey,
   ComplicationTrackingBucket,
@@ -135,20 +136,6 @@ function bumpComplicationStats(
   };
 }
 
-/** Same folding as `bumpComplicationStats`, keyed by the complication's own
- *  scenario text instead of direct/fallback — see `ComplicationTypeStats`'s
- *  doc comment in shared/types.ts for why this exists alongside the other
- *  tracker rather than replacing it. */
-function bumpComplicationTypeStats(current: ComplicationTypeStats | undefined, type: string, choice: string, success: boolean): ComplicationTypeStats {
-  const base = current ?? {};
-  if (!isComplicationChoiceKey(choice)) return base;
-  const bucket = base[type] ?? { fight: { attempts: 0, successes: 0 }, run: { attempts: 0, successes: 0 }, talk: { attempts: 0, successes: 0 } };
-  const prior = bucket[choice];
-  return {
-    ...base,
-    [type]: { ...bucket, [choice]: { attempts: prior.attempts + 1, successes: prior.successes + (success ? 1 : 0) } },
-  };
-}
 
 function modeKey(config: StreetIntelAutoConfig): string {
   return `${config.scoutMode}+${config.complicationMode}`;
@@ -721,7 +708,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       // Opt-in override: same pick unless it's a known loser for this exact
       // scenario — see `@/shared/streetIntelComplications`.
       if (config.complicationMode === 'avoidBlocked' && complicationType !== null && isComplicationChoiceKey(complicationChoice)) {
-        const picked = pickAvoidingBlocked(complicationType, complicationChoice, previousStatus?.complicationTypeStats);
+        const picked = pickAvoidingBlocked(complicationType, complicationChoice, await storage.getStreetIntelComplicationTally());
         complicationChoice = picked.choice;
         complicationAvoided = picked.avoided;
       }
@@ -736,6 +723,9 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       // this one follow-up result is unknown, not that anything is broken.
       if (compResp?.ok === true) {
         complicationSuccess = Boolean(compResp.comp_success);
+        if (complicationType !== null && isComplicationChoiceKey(complicationChoice) && typeof compResp.comp_success === 'boolean') {
+          await recordComplicationOutcome(complicationType, complicationChoice, compResp.comp_success, Date.now());
+        }
         if (!complicationSuccess) {
           complicationCashLost =
             (Number(compResp.cash_lost_from_hand) || 0) + (Number(compResp.cash_lost_from_bank) || 0) || Number(compResp.cash_lost) || 0;
@@ -790,7 +780,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       ? bumpComplicationStats(previousStatus?.complicationStats, complicationChoice!, wasFallback, complicationSuccess!)
       : (previousStatus?.complicationStats ?? EMPTY_COMPLICATION_STATS);
     const complicationTypeStats =
-      haveResolvedComplication && complicationType !== null
+      haveResolvedComplication && complicationType !== null && isComplicationChoiceKey(complicationChoice!)
         ? bumpComplicationTypeStats(previousStatus?.complicationTypeStats, complicationType, complicationChoice!, complicationSuccess!)
         : (previousStatus?.complicationTypeStats ?? {});
 

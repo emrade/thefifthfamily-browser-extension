@@ -1,6 +1,7 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS } from '@/shared/constants';
+import { sendMessage } from '@/shared/messaging';
 import { storage } from '@/shared/storage';
 import { describeComplicationChoices, isKnownScenario, normalizeScenario } from '@/shared/streetIntelComplications';
 import type { ComplicationChoiceKey, ComplicationTypeStats } from '@/shared/types';
@@ -81,23 +82,40 @@ const STYLE = `
 
 let pendingScenario: { text: string; at: number } | null = null;
 let typeStats: ComplicationTypeStats | undefined;
+/** Scenario per `opportunity_id` from this tab's own attempts, so a manual
+ *  complication result can be credited to the right scenario. */
+const scenarioByOpportunity = new Map<string, string>();
 
 /** Fed every `POST /actions/street_intel.php` from index.ts — keeps the
  *  scenario of the latest attempt that came back with a complication, so the
- *  dialog that follows can be matched to it exactly. */
-export function recordAttemptResponse(requestBody: string, responseText: string): void {
-  const action = new URLSearchParams(requestBody).get('action');
+ *  dialog that follows can be matched to it exactly, and reports each
+ *  resolved manual complication to the live tally. */
+export function recordAttemptResponse(requestBody: string, responseText: string, timestamp: number): void {
+  const params = new URLSearchParams(requestBody);
+  const action = params.get('action');
+  const opportunityId = params.get('opportunity_id');
+  let json: any;
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    return; // Not JSON — nothing to record.
+  }
+
   if (action === 'complication') {
     pendingScenario = null; // answered — the next dialog belongs to a new attempt
+    const scenario = opportunityId ? scenarioByOpportunity.get(opportunityId) : undefined;
+    const choice = params.get('choice');
+    if (scenario && json?.ok && typeof json.comp_success === 'boolean' && (choice === 'fight' || choice === 'run' || choice === 'talk')) {
+      scenarioByOpportunity.delete(opportunityId!);
+      sendMessage({ type: 'street-intel-complication-resolved', scenario, choice, success: json.comp_success, timestamp });
+    }
     return;
   }
   if (action !== 'attempt') return;
-  try {
-    const json = JSON.parse(responseText);
-    const type = json?.ok && json.has_complication ? json.complication?.type : null;
-    if (typeof type === 'string' && type) pendingScenario = { text: type, at: Date.now() };
-  } catch {
-    // Not JSON — nothing to record.
+  const type = json?.ok && json.has_complication ? json.complication?.type : null;
+  if (typeof type === 'string' && type) {
+    pendingScenario = { text: type, at: Date.now() };
+    if (opportunityId) scenarioByOpportunity.set(opportunityId, type);
   }
 }
 
@@ -191,17 +209,18 @@ export function initStreetIntelComplicationHint(): void {
   injectStyleOnce(STYLE_ID, STYLE);
 
   storage
-    .getStreetIntelAutoStatus()
-    .then((status) => {
-      typeStats = status?.complicationTypeStats;
+    .getStreetIntelComplicationTally()
+    .then((tally) => {
+      typeStats = tally;
       refresh();
     })
-    .catch((err) => console.error(LOG_PREFIX, 'street intel complication hint: status read failed', err));
+    .catch((err) => console.error(LOG_PREFIX, 'street intel complication hint: tally read failed', err));
 
-  // The runner's live tally keeps growing — pick it up without a reload.
+  // The live tally grows with every complication, manual or automated —
+  // pick it up without a reload.
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS in changes)) return;
-    typeStats = changes[STORAGE_KEYS.STREET_INTEL_AUTO_STATUS].newValue?.complicationTypeStats;
+    if (area !== 'local' || !(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY in changes)) return;
+    typeStats = changes[STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY].newValue;
     refresh();
   });
 

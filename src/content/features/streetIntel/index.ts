@@ -18,7 +18,7 @@ export function handleCapturedRequest(req: CapturedRequest) {
     // background, unlike the message below.
     if (req.requestBody) {
       recordScoutResponse(req.requestBody, req.responseText);
-      recordAttemptResponse(req.requestBody, req.responseText);
+      recordAttemptResponse(req.requestBody, req.responseText, req.timestamp);
     }
 
     const message = parseStreetIntelAction(req.requestBody, req.responseText, req.timestamp);

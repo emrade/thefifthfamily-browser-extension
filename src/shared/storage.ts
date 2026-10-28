@@ -7,6 +7,7 @@ import type {
   ArenaWatchStatus,
   CareerAutoConfig,
   CareerAutoStatus,
+  ComplicationTypeStats,
   CourierAutoConfig,
   CourierRunSummary,
   CourierWatchState,
@@ -212,6 +213,10 @@ export const storage = {
 
   getStreetIntelAutoStatus: () => get<StreetIntelAutoStatus | null>(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, null),
   setStreetIntelAutoStatus: (v: StreetIntelAutoStatus) => set(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, v),
+  /** Complications resolved since `SEED_CUTOFF`, manual and automated — see
+   *  background/features/streetIntel/complicationTally.ts. Background-only writer. */
+  getStreetIntelComplicationTally: () => get<ComplicationTypeStats>(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, {}),
+  setStreetIntelComplicationTally: (v: ComplicationTypeStats) => set(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, v),
 
   // Same merge-with-defaults reasoning as the prefs above.
   getRealEstateAdvisorPreferences: async (): Promise<RealEstateAdvisorPreferences> => {

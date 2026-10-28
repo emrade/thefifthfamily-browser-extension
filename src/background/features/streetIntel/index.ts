@@ -8,6 +8,7 @@ import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { storage } from '@/shared/storage';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 import { onConfigChanged, runIfEligible, scheduleNextCheck } from './actionRunner';
+import { recordComplicationOutcome } from './complicationTally';
 
 export { handleAlarm as handleAutoAlarm } from './actionRunner';
 
@@ -61,6 +62,10 @@ export function initAuto(): void {
  * cycle alone.
  */
 export async function handleMessage(msg: ExtensionMessage) {
+  if (msg.type === 'street-intel-complication-resolved') {
+    await recordComplicationOutcome(msg.scenario, msg.choice, msg.success, msg.timestamp);
+    return;
+  }
   if (msg.type !== 'street-intel-viewed') return;
   const existing = await chrome.alarms.get(ALARM_NAMES.STREET_INTEL_POLL);
   if (!existing) scheduleNextPoll();

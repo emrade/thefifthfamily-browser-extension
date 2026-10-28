@@ -1,4 +1,4 @@
-import type { CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
+import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
 import { LOG_PREFIX } from './log';
 
 /**
@@ -103,6 +103,13 @@ export type ExtensionMessage =
   // the poll re-fetches the panel itself on every cycle rather than working off
   // whatever this particular view happened to show.
   | { type: 'street-intel-viewed'; timestamp: number }
+  // A complication resolved by hand on the page, paired with its attempt's
+  // scenario by `opportunity_id` in content/features/streetIntel/
+  // complicationHint.ts. Folded into the live complication tally — see
+  // background/features/streetIntel/complicationTally.ts. The auto-runner's
+  // own complications never pass through the page hook, so nothing is
+  // counted twice.
+  | { type: 'street-intel-complication-resolved'; scenario: string; choice: ComplicationChoiceKey; success: boolean; timestamp: number }
   // Sent from the in-page Street Intel status overlay (content/features/
   // streetIntel/statusPanel.ts) — same request/response exception as
   // 'stock-tracker-status-requested'. Everything else that overlay shows

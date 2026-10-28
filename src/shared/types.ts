@@ -1136,7 +1136,11 @@ export interface StreetIntelAutoStatus {
    *  the only way to eventually know which choice actually wins more, rather
    *  than guessing. See docs/street-intel-complication-tracking.md. */
   complicationStats: Record<ComplicationChoiceKey, ComplicationTrackingBucket>;
-  /** See `ComplicationTypeStats`'s own doc comment. */
+  /** See `ComplicationTypeStats`'s own doc comment. The auto-runner's
+   *  all-time record, kept as history only: ranking (FF PICK/AVOID,
+   *  `avoidBlocked`) reads the seed table plus the separate post-cutoff tally
+   *  instead, which also counts manual play — see
+   *  background/features/streetIntel/complicationTally.ts. */
   complicationTypeStats: ComplicationTypeStats;
   /** How many affordable candidates the last cycle left unscouted because
    *  smart scouting proved none of them could beat what it had already found.
