@@ -9,6 +9,50 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.51.0] - 2026-10-28
+
+### Added
+- Run Now: Career Auto and Street Intel Auto-Attempt get a Run Now button in
+  both the popup and their in-page panel. It runs one check right away, even
+  with the feature switched off (nothing is scheduled after it). Crimes,
+  Fury Catcher and Real Estate's existing Check Now buttons now work while
+  switched off too.
+- Street Intel: a "Big cards only" switch (off by default) with an
+  adjustable floor, $900k by default, compared with the middle of a card's
+  pay range. Cheaper cards aren't scouted or attempted, so Stamina builds up
+  for big ones, which paid over twice as much cash per Stamina (Oct 10–28).
+  Once Stamina is 90% full it takes any card, so regen is never wasted.
+- Street Intel: a line under Next Check saying why it's waiting: "In
+  jail/hospital until …", "On cooldown until …", "Waiting for 12 Stamina",
+  "Nothing on the board clears 50% yet", or "Saving Stamina for cards paying
+  $900k+".
+- Street Intel complication hint (FF PICK/AVOID) and smart complication
+  choices now learn from complications you resolve by hand, not just
+  automated ones.
+- Career Auto Panel: a job search box, like the popup's.
+
+### Fixed
+- Street Intel: Next Check no longer sits on "due now" while jailed,
+  hospitalized, short on Stamina or after a manual attempt. It now counts
+  down to the check that's actually scheduled.
+- Street Intel complication records no longer freeze at their seeded values
+  (e.g. a 3/3 that never moved): the table is rebuilt from every archive up
+  to Oct 28 (711 complications) and new results are added on top of it.
+- Career Auto: the "Auto-run this job" button no longer appears on
+  level-locked job cards, and the runner stops with a clear message instead
+  of sending a shift for a job you're too low-level for ("Level too low.").
+- Arena Fight Advisor: adjusted for the new season's fixed bounty ladder
+  (25/30/35/40 by level, boss 45). Refresh advice no longer compares new
+  lineups against last season's bigger ones (which would have said
+  "Refresh" on almost every page), and its starting estimates now use the
+  new values.
+
+### Changed
+- Crimes, Fury Catcher, Real Estate, Street Intel and the Pet Courier watch
+  re-check every minute or two while you're jailed, hospitalized or
+  travelling, instead of waiting for the original release time, so bailing
+  out or a discharge is picked up right away.
+
 ## [0.50.0] - 2026-10-23
 
 ### Added
