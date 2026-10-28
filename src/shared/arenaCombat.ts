@@ -124,13 +124,33 @@ export const ARENA_BAND_PRIOR_DATE = '20 Oct';
 const MIN_WIN_CHANCE = 0.01;
 const MAX_WIN_CHANCE = 0.99;
 
+/** When the fixed bounty ladder went live: the season that started Wednesday
+ *  28 October 00:00 server time (23:00 UTC on the 27th; the first ladder page
+ *  in the archive is 23:05 UTC). From then on the four regulars on a page pay
+ *  25 / 30 / 35 / 40 from lowest to highest level and the boss pays 45
+ *  (Gazette, "Arena Reward Changeover & Bounty System Adjustment", 27 Oct).
+ *  Before, bounty was a slot base (10/20/40/70) × a strength multiplier
+ *  (×0.8–×2), so pages ran ~8 / 20 / 48 / 105–140 with a 120–180 boss.
+ *
+ *  Lineups recorded before this are on that old scale (a fresh lineup
+ *  expected ~150 at max HP 850, vs a 130 ceiling now) and are ignored:
+ *  they're only reset by a max-HP change, so with the same gear locked in
+ *  they would have made every new lineup look below average and the advisor
+ *  call for a Refresh on almost every page. */
+export const ARENA_BOUNTY_LADDER_FROM = Date.UTC(2026, 9, 27, 23, 0, 0);
+
 /** Expected points a fresh set of four regular opponents banks when played
- *  riskiest first, from 136 real lineups: mean 87 (103 last season, 77 this
- *  one). Only the fallback: it moves a lot with the loadout (re-checked
- *  2026-10-15 on 287 lineups: mean 55 at max HP 710, 109 at 737, 86 at 804,
- *  153 at 850), so the advisor measures the lineups it sees itself
- *  (`lineupBenchmark`) and uses this until it has enough of them. */
-export const TYPICAL_LINEUP_POINTS = 87;
+ *  riskiest first — only the fallback until `ARENA_LINEUP_MIN_SAMPLES`
+ *  lineups have been seen with the current loadout (`lineupBenchmark`).
+ *
+ *  45 under the bounty ladder (`ARENA_BOUNTY_LADDER_FROM`): the 21 lineups
+ *  seen on its first day (2026-10-28) expected 25–71, mean 41, median 37,
+ *  scored with the game's own quoted win % (median 55%), rounded up a
+ *  little since the advisor's band win chances run above the quoted %.
+ *  Was 87 under the old bounties (136 lineups, 2026-10-05), which most new
+ *  lineups can't even reach — every lineup would have read as worth a
+ *  Refresh until the advisor had measured its own. */
+export const TYPICAL_LINEUP_POINTS = 45;
 
 /** Fresh lineups needed with the current loadout before their own average
  *  replaces `TYPICAL_LINEUP_POINTS` (a lineup's expected points spread
@@ -138,14 +158,20 @@ export const TYPICAL_LINEUP_POINTS = 87;
 export const ARENA_LINEUP_MIN_SAMPLES = 8;
 export const ARENA_LINEUP_MAX_SAMPLES = 60;
 
+/** The recorded lineups comparable with a new one: same max HP (loadout)
+ *  and on the current bounty scale (see `ARENA_BOUNTY_LADDER_FROM`). */
+function comparableLineups(record: ArenaLineupPoints | null, maxHp: number): ArenaLineupPoints['lineups'] {
+  return record && record.maxHp === maxHp ? record.lineups.filter((l) => l.at >= ARENA_BOUNTY_LADDER_FROM) : [];
+}
+
 /** Adds one fresh lineup's expected points. A lineup already counted (same
  *  key) is left alone, so repaints don't count it twice; a new max HP starts
- *  the record over. */
+ *  the record over, and lineups from before the bounty ladder are dropped. */
 export function recordLineup(
   prev: ArenaLineupPoints | null,
   lineup: { maxHp: number; key: string; points: number; at: number },
 ): ArenaLineupPoints {
-  const same = prev !== null && prev.maxHp === lineup.maxHp ? prev.lineups : [];
+  const same = comparableLineups(prev, lineup.maxHp);
   if (same.some((l) => l.key === lineup.key)) return prev!;
   return {
     maxHp: lineup.maxHp,
@@ -156,17 +182,18 @@ export function recordLineup(
 /** What re-rolling until something better turns up is worth, from the
  *  same fresh lineups as `lineupBenchmark` (null until there are enough).
  *  A Refresh can't be undone, so a re-roll can land lower; keep re-rolling
- *  and the lineup you stop on is one that beats `current`. Measured
- *  2026-10-15 at max HP 850: a 105-bounty Beatable lineup ~155, one with a
- *  Beatable 140 ~184, one where the 140 is Avoid ~51; about half of all
- *  re-rolls had a Beatable 140. */
+ *  and the lineup you stop on is one that beats `current`. Under the bounty
+ *  ladder every lineup pays the same 130, so a better re-roll only means
+ *  easier opponents; before it (2026-10-15, max HP 850) it mostly meant
+ *  finding a Beatable 105/140 bounty (~155–184 vs ~51 when the 140 was
+ *  Avoid). */
 export function rerollOutlook(
   record: ArenaLineupPoints | null,
   maxHp: number,
   excludeKey: string | null,
   current: number,
 ): { seen: number; beatShare: number; beatMean: number } | null {
-  const others = record && record.maxHp === maxHp ? record.lineups.filter((l) => l.key !== excludeKey) : [];
+  const others = comparableLineups(record, maxHp).filter((l) => l.key !== excludeKey);
   if (others.length < ARENA_LINEUP_MIN_SAMPLES) return null;
   const better = others.filter((l) => l.points > current);
   return {
@@ -184,7 +211,7 @@ export function lineupBenchmark(
   maxHp: number,
   excludeKey: string | null,
 ): { points: number; measured: number | null } {
-  const others = record && record.maxHp === maxHp ? record.lineups.filter((l) => l.key !== excludeKey) : [];
+  const others = comparableLineups(record, maxHp).filter((l) => l.key !== excludeKey);
   if (others.length < ARENA_LINEUP_MIN_SAMPLES) return { points: TYPICAL_LINEUP_POINTS, measured: null };
   return { points: others.reduce((s, l) => s + l.points, 0) / others.length, measured: others.length };
 }

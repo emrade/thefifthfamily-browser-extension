@@ -34,7 +34,9 @@ import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail }
  * should bank, what to do about the boss, and whether a Refresh is worth it.
  *
  * Built around the pot, since banked pots are the season score: a win adds
- * the opponent's bounty, any loss wipes the unbanked pot. The order is
+ * the opponent's bounty (read from the card: 25/30/35/40 by level and 45 for
+ * the boss since the 28 Oct season — see `ARENA_BOUNTY_LADDER_FROM`), any
+ * loss wipes the unbanked pot. The order is
  * riskiest first (the player's own way of playing: every opponent has to be
  * fought to unlock the boss, and an early loss only wipes a small pot), the
  * boss is worth fighting only while the pot is under `bossPotLimit`, and a
@@ -59,9 +61,11 @@ const FEATURE_KEY = 'arena';
 const STYLE_ID = 'ff-arena-advisor-style';
 const BANNER_ID = 'ff-arv-banner';
 const BADGE_CLASS = 'ff-arv-strip';
-/** Bounty to assume for a boss card whose bounty can't be read — the most
- *  common boss bounty in the archive (120/144/180 seen). */
-const FALLBACK_BOSS_BOUNTY = 144;
+/** Bounty to assume for a boss card whose bounty can't be read. The
+ *  Vigilante Boss pays a flat 45 under the bounty ladder
+ *  (`ARENA_BOUNTY_LADDER_FROM`); it was 120–180 before, and 144 here, which
+ *  would have made a boss look worth risking a pot ~3× larger than it is. */
+const FALLBACK_BOSS_BOUNTY = 45;
 
 // Colours follow the game's own palette: green/amber/red accents on a dark
 // tinted fill, uppercase spaced labels like its BOUNTY / PASSIVE tags.
@@ -453,7 +457,7 @@ function paint(): void {
   const bench = lineupBenchmark(lineupRecord, profile.maxHp, freshKey);
   const benchNote = bench.measured
     ? `the average of the last ${bench.measured} fresh lineups you've seen with this gear`
-    : 'an average from past seasons, until a few more fresh lineups with this gear have been seen';
+    : 'a starting estimate, until a few more fresh lineups with this gear have been seen';
 
   let bossIsSkip = false;
   if (boss && bossVerdict) {
@@ -493,7 +497,6 @@ function paint(): void {
     const lineup = expectedPot(ordered);
     const costNote = refresh.free ? 'The free Refresh' : `Refresh (${escapeHtml(refresh.cost) || 'paid'})`;
     const bossNote = bossIsSkip ? ' The boss is a likely skip, so these four are most of the page.' : '';
-    const bigKeeper = ordered.find((f) => f.bounty >= 100 && f.p >= 0.75);
     const diff = bench.points - lineup;
     const signed = `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}`;
     const outlook = rerollOutlook(lineupRecord, profile.maxHp, freshKey, lineup);
@@ -511,10 +514,11 @@ function paint(): void {
     } else if (lineup < bench.points) {
       text = `Worth it: this lineup should bank <b>~${fmt(lineup)}</b>; an average re-roll banks ~${fmt(bench.points)}, ${signed} (${benchNote}).${chase}${bossNote} ${costNote} re-rolls all four opponents (not the boss) and locks once you attack.`;
     } else {
-      const why = bigKeeper
-        ? `${escapeHtml(bigKeeper.item.c.card.name)} (${bigKeeper.bounty} bounty) is ${verdictWord(bigKeeper.item.v, bigKeeper.p)}, and `
-        : '';
-      text = `Keep this lineup: ${why}it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).${chase}`;
+      // There used to be a "X (140 bounty) is Beatable, and" reason here for
+      // a winnable bounty of 100+. Under the bounty ladder no regular pays
+      // more than 40, so it could never show; lineups differ only in how
+      // winnable they are, which the expected pot already covers.
+      text = `Keep this lineup: it should bank <b>~${fmt(lineup)}</b>, at least the ~${fmt(bench.points)} an average re-roll banks (${benchNote}).${chase}`;
     }
     lines.push(`<div class="ff-arv-line"><span class="ff-arv-label">Refresh?</span><span class="ff-arv-text">${text}</span></div>`);
   }

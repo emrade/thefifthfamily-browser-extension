@@ -377,7 +377,58 @@ assuming.
 
 ---
 
-## Pot, bounty and Refresh (2026-10-05)
+## Bounty ladder (season starting 2026-10-28)
+
+The Gazette's "Arena Reward Changeover & Bounty System Adjustment" (27 Oct
+2026) replaced strength-scaled bounties with a fixed ladder, live from
+Wednesday 28 October 00:00 server time (23:00 UTC on the 27th; the first
+ladder page in the archive is 23:05 UTC):
+
+- **The four regulars pay 25 / 30 / 35 / 40, lowest level to highest.** The
+  Vigilante Boss pays **45**. Confirmed on the account's own pages from
+  2026-10-27 23:05 UTC: the cards still carry `.ar-opp-bounty`, now always
+  those five numbers.
+- **Unchanged:** how targets are chosen, win chances, the Page Pot, banking,
+  the Boss gate, and Refresh (which applies the same ladder to the re-roll).
+- **Bounty is no longer a strength signal.** It's level order only: on
+  2026-10-28 NEMESIS (Lv 107, 4,888 CP) paid 25 and MubX (Lv 120, 3,528 CP)
+  paid 30. The advisor's verdicts never used bounty, so they're unaffected.
+
+What it changes in play:
+
+- **A page is worth at most 175** (130 from the regulars + 45 boss), down
+  from ~300–390. Every player's season score shrinks the same way.
+- **Refresh can't find a big bounty any more.** Every lineup pays 130, so a
+  re-roll only helps if the four are more winnable. On the 21 lineups seen
+  on 2026-10-28 the expected pot (game's quoted %, riskiest first) was
+  25–71, mean 41 — vs 51–184 under the old bounties.
+- **The boss is usually a skip with a full pot.** The rule below is
+  unchanged (`p·bounty ÷ (1 − p)`), but with a 45 bounty: a 75% boss is worth
+  risking up to ~135 (any pot), 60% up to ~67, 50% up to ~45. After four
+  wins (130), only a ~75%+ boss is worth fighting.
+- **Riskiest first is still the order** — with near-equal bounties it's
+  essentially optimal.
+
+Advisor changes made for it (2026-10-28):
+
+- `ARENA_BOUNTY_LADDER_FROM` (shared/arenaCombat.ts): the Refresh benchmark
+  ignores lineups recorded before the ladder. That history is only reset by
+  a max-HP (loadout) change, so with the same gear locked in it would have
+  compared new lineups (≤130) against old ones (~150 at max HP 850) and
+  called for a Refresh on almost every page.
+- `TYPICAL_LINEUP_POINTS` 87 → **45**, the fallback until 8 lineups have
+  been measured with the current loadout (87 is more than most ladder
+  lineups can bank at all).
+- `FALLBACK_BOSS_BOUNTY` 144 → **45**, used only when the boss card's bounty
+  can't be read.
+- Dropped the Refresh "X (140 bounty) is Beatable" keep-reason, which needed
+  a bounty of 100+ and can no longer show.
+
+The section below describes the bounties **before** this change; its
+measured numbers (bounty multipliers, ~87 per lineup, Refresh backtest) are
+history.
+
+## Pot, bounty and Refresh (2026-10-05, before the bounty ladder)
 
 Banked pots are the season score, so this is what actually decides ranking.
 
