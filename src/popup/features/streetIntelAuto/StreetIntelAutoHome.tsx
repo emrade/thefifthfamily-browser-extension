@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { NumberInput } from '@/popup/views/NumberInput';
-import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
+import { ALARM_NAMES, STORAGE_KEYS, STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 const COMPLICATION_KEYS: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
@@ -28,8 +28,8 @@ const SCOUT_MODE_LABEL: Record<string, string> = { topPayout: 'Top 2 by payout',
 const COMPLICATION_MODE_LABEL: Record<string, string> = { reuse: 'reuse approach', avoidBlocked: 'avoid losing choices' };
 
 function modeTallyLabel(key: string): string {
-  const [scout, complication] = key.split('+');
-  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}`;
+  const [scout, complication, big] = key.split('+');
+  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${big ? ' · big cards only' : ''}`;
 }
 
 function riskLabel(tier: string): string {
@@ -134,6 +134,17 @@ export function StreetIntelAutoHome() {
   function setScoutMode(smart: boolean) {
     if (!config) return;
     saveConfig({ ...config, scoutMode: smart ? 'smart' : 'topPayout' });
+  }
+
+  function setBigCardsOnly(on: boolean) {
+    if (!config) return;
+    saveConfig({ ...config, bigCardsOnly: on });
+  }
+
+  // Entered in $k, stored in dollars.
+  function setBigCardFloorK(valueK: number) {
+    if (!config || !Number.isFinite(valueK)) return;
+    saveConfig({ ...config, bigCardFloor: Math.max(0, Math.round(valueK)) * 1_000 });
   }
 
   function setComplicationMode(avoidBlocked: boolean) {
@@ -249,6 +260,35 @@ export function StreetIntelAutoHome() {
           onChange={(e) => setComplicationMode((e.target as HTMLInputElement).checked)}
         />
       </label>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Big cards only</div>
+          <div class="ff-toggle-row__status">
+            {config.bigCardsOnly
+              ? `Only cards paying ${formatFloor(config.bigCardFloor)}+; takes any card once Stamina is ${Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full.`
+              : 'Off — takes any card that clears the success floor.'}
+          </div>
+        </div>
+        <input type="checkbox" class="ff-toggle" checked={config.bigCardsOnly} onChange={(e) => setBigCardsOnly((e.target as HTMLInputElement).checked)} />
+      </label>
+
+      <div class="ff-field">
+        <div class="ff-field__label">Big card floor ($k)</div>
+        <div class="ff-field__hint">
+          Compared with the middle of a card's pay range: at 900, "$686k – $1.2M" counts and "$617k – $1.08M" doesn't.
+          $1M+ cards paid over twice as much cash per Stamina as smaller ones (Oct 10–28). Cheaper cards aren't scouted while
+          this is on, so Stamina builds up for big ones — until the bar is {Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full, when it takes
+          any card so regen isn't wasted.
+        </div>
+        <NumberInput
+          class="ff-select ff-field__control"
+          min={0}
+          step={50}
+          value={Math.round(config.bigCardFloor / 1_000)}
+          onCommit={setBigCardFloorK}
+        />
+      </div>
 
       {modeTallies.length > 0 && (
         <>

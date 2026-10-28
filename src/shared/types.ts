@@ -946,6 +946,14 @@ export interface StreetIntelAutoConfig {
    *  2026-10-04 analysis and cost 86% of all complication cash lost
    *  (verification/street-intel/verify_complication_blocked_choices.py). */
   complicationMode: StreetIntelComplicationMode;
+  /** "Big cards only": skip (and don't scout) any card whose reward midpoint
+   *  is under `bigCardFloor`, saving Stamina for bigger ones — they pay far
+   *  more per Stamina (see `STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR`). Off
+   *  by default. Lifted while Stamina is at least
+   *  `STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE` of max, so a full bar
+   *  never wastes regen. */
+  bigCardsOnly: boolean;
+  bigCardFloor: number;
 }
 
 export type StreetIntelScoutMode = 'topPayout' | 'smart';
@@ -1159,11 +1167,15 @@ export interface StreetIntelAutoStatus {
  *  `CareerAutoWaiting`. `until` is the game's own countdown, for context only:
  *  blocked checks still poll, since bailing out or a discharge can end it
  *  early. `stamina` is the cheapest scout + attempt on the board; `no-pick`
- *  means nothing affordable cleared the success floor (or nothing was listed). */
+ *  means nothing affordable cleared the success floor (or nothing was listed);
+ *  `saving` is "Big cards only" waiting for a card at its floor. */
 export type StreetIntelAutoWaiting =
   | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
   | { kind: 'stamina'; need: number; have: number }
-  | { kind: 'no-pick' };
+  | { kind: 'no-pick' }
+  /** "Big cards only" found nothing at or above its floor and is saving
+   *  Stamina until one appears (or the bar reaches its release point). */
+  | { kind: 'saving'; floor: number; have: number; releaseAt: number };
 
 /**
  * One hourly price sample for one stock market symbol — see

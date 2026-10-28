@@ -36,6 +36,7 @@ import {
   FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
   REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
   STORAGE_KEYS,
+  STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR,
   STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
@@ -67,6 +68,8 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   // non-smart scouting behavior — see `StreetIntelAutoConfig.scoutMode`.
   scoutMode: 'topPayout',
   complicationMode: 'reuse',
+  bigCardsOnly: false,
+  bigCardFloor: STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR,
 };
 
 // All three default off, no exception for `watchEnabled` — every kill switch

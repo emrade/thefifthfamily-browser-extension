@@ -1,6 +1,7 @@
 import {
   ALARM_NAMES,
   GAME_ORIGIN,
+  STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE,
   STREET_INTEL_AUTO_BUFFER_MS,
   STREET_INTEL_AUTO_FALLBACK_INTERVAL_MS,
   STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS,
@@ -137,8 +138,10 @@ function bumpComplicationStats(
 }
 
 
+/** "+big" is appended while "Big cards only" is on, so its results can be
+ *  compared against normal picking. */
 function modeKey(config: StreetIntelAutoConfig): string {
-  return `${config.scoutMode}+${config.complicationMode}`;
+  return `${config.scoutMode}+${config.complicationMode}${config.bigCardsOnly ? '+big' : ''}`;
 }
 
 /** Adds `delta` into the running tally for whichever scoutMode+complicationMode
@@ -614,7 +617,13 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
     return;
   }
 
-  const attemptable = panel.opportunities.filter((o) => o.staminaCost > 0 && o.approaches.length > 0);
+  // "Big cards only": cards under the floor are left alone, not even scouted,
+  // unless Stamina is near full — then everything is fair game, so regen
+  // isn't lost to a full bar while waiting for a big card.
+  const releaseAt = Math.ceil(status.maxStamina * STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE);
+  const bigOnly = config.bigCardsOnly && !(status.maxStamina > 0 && status.stamina >= releaseAt);
+  const listed = panel.opportunities.filter((o) => o.staminaCost > 0 && o.approaches.length > 0);
+  const attemptable = bigOnly ? listed.filter((o) => rewardMidpoint(o) >= config.bigCardFloor) : listed;
   const candidates = attemptable
     .filter((o) => status.stamina >= o.scoutCost + o.staminaCost)
     .sort((a, b) => rewardMidpoint(b) / b.staminaCost - rewardMidpoint(a) / a.staminaCost);
@@ -648,7 +657,9 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       const waiting: StreetIntelAutoWaiting =
         candidates.length === 0 && attemptable.length > 0
           ? { kind: 'stamina', need: Math.min(...attemptable.map((o) => o.scoutCost + o.staminaCost)), have: status.stamina }
-          : { kind: 'no-pick' };
+          : bigOnly && attemptable.length === 0
+            ? { kind: 'saving', floor: config.bigCardFloor, have: status.stamina, releaseAt }
+            : { kind: 'no-pick' };
       await updateStatus({ lastCycleScouted: log, lastCycleAt: Date.now(), lastCycleSkipped: skipped, modeTallies: cycleTallies, waiting });
       scheduleNextCheck(null);
       return;

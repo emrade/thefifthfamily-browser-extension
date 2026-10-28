@@ -1,9 +1,9 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { STORAGE_KEYS, STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE, STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR } from '@/shared/constants';
 import { storage } from '@/shared/storage';
-import { streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 /**
@@ -269,6 +269,17 @@ function renderToggle(): void {
   if (cplxStatus) {
     cplxStatus.textContent = smartComplications ? 'Avoids choices that never win in that scenario.' : 'Off — reuses the attempt approach.';
   }
+
+  // `=== true` and a fallback floor for the same raw-stored-config reason as above.
+  const bigOnly = config.bigCardsOnly === true;
+  const bigToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-big-toggle');
+  const bigStatus = panelEl.querySelector('.ff-sip-big-status');
+  if (bigToggle) bigToggle.checked = bigOnly;
+  if (bigStatus) {
+    bigStatus.textContent = bigOnly
+      ? `Only cards paying ${formatFloor(config.bigCardFloor ?? STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR)}+ until Stamina is ${Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full. Set the amount in the popup.`
+      : 'Off — takes any card that clears the success floor.';
+  }
 }
 
 function renderAll(): void {
@@ -380,6 +391,13 @@ function buildPanel(): HTMLDivElement {
         </div>
         <input class="ff-sip-cplx-toggle ff-sip-toggle" type="checkbox">
       </label>
+      <label class="ff-sip-toggle-row">
+        <div class="ff-sip-toggle-row__text">
+          <div class="ff-sip-toggle-row__title">Big cards only</div>
+          <div class="ff-sip-toggle-row__status ff-sip-big-status">Loading…</div>
+        </div>
+        <input class="ff-sip-big-toggle ff-sip-toggle" type="checkbox">
+      </label>
       <div class="ff-sip-status"><div class="ff-sip-empty">Loading…</div></div>
     </div>
   `;
@@ -406,6 +424,9 @@ function buildPanel(): HTMLDivElement {
 
   const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
+
+  const bigToggle = el.querySelector<HTMLInputElement>('.ff-sip-big-toggle');
+  bigToggle?.addEventListener('change', () => writeConfig({ bigCardsOnly: bigToggle.checked }));
 
   return el;
 }

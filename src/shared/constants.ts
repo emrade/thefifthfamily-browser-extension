@@ -260,6 +260,17 @@ export const STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // sub-60% disaster. 50 sits just above that realized floor.
 export const STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT = 50;
 
+// "Big cards only" floor, on the card's reward midpoint (the same number the
+// runner ranks by). Since 10-10, cards with a $1M+ midpoint paid $67k-136k per
+// Stamina against $15k-46k below $1M, and 21-51 of them appeared every day,
+// enough to spend a day's Stamina on. $900k is the player's chosen default:
+// "$686k - $1.2M" (midpoint $943k) counts, "$617k - $1.08M" ($849k) doesn't.
+export const STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR = 900_000;
+
+// At or above this share of max Stamina, "Big cards only" takes normal cards
+// too, so regen isn't lost to a full bar while it waits for a big one.
+export const STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE = 0.9;
+
 /** How many cards `scoutMode: 'topPayout'` scouts per cycle — the highest-
  *  paying ones. 2 beat 3 in the 2026-10-04 replay ($20.6M vs $20.1M/day):
  *  the third card rarely won, but its scout cost Stamina every cycle. */
