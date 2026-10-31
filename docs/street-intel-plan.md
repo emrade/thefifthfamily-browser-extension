@@ -397,8 +397,9 @@ Policy replay (real panel snapshots and real Stamina income, 2026-09-14..
 
 A big-targets-only filter idles most of the Stamina (500-700/day wasted at
 the cap), so it wasn't built. What shipped instead — the two smart modes
-**opt-in and off by default**, both toggled from the popup's Street Intel Auto
-tab and the in-page overlay:
+**opt-in and off by default**, both set from the popup's Street Intel Auto
+tab and the in-page panel (since 2026-10-31 Smart scouting is one option of a
+Scouting dropdown — see the next section):
 
 - **Smart scouting** (`scoutMode: 'smart'`): scouts candidates in order of
   their best *possible* EV — `upperBoundEstimate()` in
@@ -410,7 +411,7 @@ tab and the in-page overlay:
   beats its bound. Only 5 of 7,645 real cards ever scouted above the bound,
   and being wrong only costs a missed card, never a bad attempt.
 - **Top 2 by payout** (`scoutMode: 'topPayout'`, the default — what the
-  Smart scouting switch falls back to when off): scouts only the 2
+  old Smart scouting switch fell back to when off): scouts only the 2
   highest-paying affordable cards per cycle. Replaced the original
   scout-everything behavior on 2026-10-05, at the account owner's request,
   rather than keeping that as the fallback — it had no reason to exist once
@@ -430,6 +431,129 @@ popup — so the new modes can be judged on live results, not just the replay.
 calibration rests on only 8 real attempts, and at 50-54% odds ~13% of
 attempts are disasters (jail). Worth revisiting once there's more data.
 
+### Exact odds, Go blind and the Scouting choice (2026-10-31)
+
+**What changed in the game data we use.** The game publishes every tip-off at
+`wiki.php?section=intel` (read with `verification/wiki/wiki.py`, see the
+use-wiki skill): 240 cards with base success, risk, rewards, cost and
+approaches. Checked against the archive it is the game's own data — base
+success equalled the scouted `base_pct` on all 149 scouted cards (9,341
+scouts) and every other field matched all 150 cards seen on the board. On
+top of that, the board itself names each card's conditions as a sentence
+(the Scout button's `data-modifier`, which the game shows as "Unknown
+modifier in play. Scout to reveal."), and each of the 39 sentences always
+means the same modifiers. With the player's own bonuses (same on every
+card; mastery per category), every input to the odds formula is known
+before scouting: replaying every scout since 2026-08-21 from only what was
+known before it predicts 99.0% of them exactly. Full detail and evidence:
+`docs/street-intel-estimate-calculation.md` §6 (corrections) and §6a.
+
+**Why this mattered.** Smart scouting decides what to scout from the *best
+odds a card could possibly have* — the highest base ever seen for its risk
+tier and the best possible conditions. That bound is deliberately high
+(cards averaged ~18 points above their real odds in October), so it can
+scout a card a real number would have ruled out: a "Hostile (−7%)" card is
+treated as if it were favorable. Conditions also weren't used before a scout
+at all, and after one only partly (a hidden approach's stat-specific part
+was assumed zero; the code called it unrecoverable).
+
+**Decisions (and why):**
+
+- **Existing behavior is kept exactly, new behavior is chosen.** Top 2 by
+  payout and Smart are unchanged — Smart is handed no predictions at all —
+  and everything new is a separate option or an off-by-default setting.
+  That's how this extension adds features: the previous method stays as its
+  own choice. (A first version changed Smart in place; it was reworked
+  before release for this reason.)
+- **One Scouting dropdown instead of switches.** Top 2, Smart, Smart exact
+  odds and Go blind are mutually exclusive answers to one question — how a
+  cycle decides what to scout — so two switches could be on at once with no
+  clear winner. Existing configs carry over (`topPayout`/`smart` keep their
+  values).
+- **Smart, exact odds** (`scoutMode: 'exact'`): Smart's ranking and stopping
+  rule, but each card ranked by its exact predicted odds, and a card
+  predicted under the minimum success % isn't scouted. A card that can't be
+  predicted (not in the wiki yet, no scout of its category's mastery yet)
+  falls back to Smart's bound. Kept as its own option even though October's
+  replay gain is small, because it decides on the game's real values rather
+  than best-case guesses; live per-mode tallies will show whether it pulls
+  ahead.
+- **Go blind (test)** (`scoutMode: 'blind'`): no scout — attempts the
+  best-EV card whose predicted odds clear the minimum success %, sending the
+  game's own Go Blind request (`attempt` with `scouted=0`; every archived
+  attempt, 3,869, shows that's the only difference between the two buttons,
+  with no other call around it). It's a **test**: the archive can't say
+  whether a blind attempt is rolled at the same odds — only 23 manual blind
+  attempts exist (15 successes against 15.9 predicted: no sign of a penalty,
+  too few to rule out a small one). Every automated attempt now records its
+  predicted odds and result, blind and scouted against the same prediction
+  (`StreetIntelAutoStatus.oddsCheck`, shown in the popup and panel once there
+  are blind attempts); a couple of hundred blind attempts settle it.
+- **Go blind falls back to Smart, exact odds** for a cycle where no card
+  can be predicted or none clears — so it keeps earning, and those scouted
+  attempts are the comparison's baseline.
+- **Exact odds on the page are a separate page setting** ("Street Intel
+  Exact Odds Before Scouting", off by default) — it only changes what the
+  approach dialog shows when playing by hand, not what the automation does.
+  It also fixes the dialog showing no estimate until something was scouted
+  that session.
+- **Passive recording is always on** (player modifiers from every scout and
+  attempt, `background/features/streetIntel/playerMods.ts`; `oddsCheck`) —
+  it changes no decision.
+
+**Replay** (`verification/street-intel/simulate_scout_modes.py`, October,
+real board snapshots, Stamina and cooldowns, $800k card minimum lifted at
+90%, 50% minimum success; expected net per calendar day incl. archive gaps):
+
+| Scouting | Net/day | Attempts/day | Scout Stamina/day |
+| --- | --- | --- | --- |
+| Top 2 by payout | $41.17M | 43.4 | 51.9 |
+| Smart | $41.21M | 43.6 | 45.3 |
+| Smart, exact odds | $41.32M | 43.7 | 43.7 |
+| Go blind *(if blind rolls the same)* | $42.55M | 45.5 | 0 |
+
+With the card minimum on, few cards qualify per cycle, so Smart already
+scouts about one card per attempt and exact odds can only trim a little.
+Go blind's gain is the ~45 Stamina/day of scouting turned into ~2 more
+attempts — real only if blind rolls the same, which is what the test is for.
+
+**Keeping it current.** `verification/street-intel/build_intel_tables.py`
+rebuilds the catalog and the condition table and re-runs the 99% check
+(refusing to write below 98%). Rerun it when `wiki.py diff intel` shows a
+change, a new condition sentence appears, or level 132+ cards show up.
+
+### In-page panel (redesigned 2026-11-01)
+
+The floating panel on the Street Intel page (`statusPanel.ts`) had grown
+into one long scroll: the Auto-Attempt switch, Run Now, strategy switches,
+loose dollar inputs that didn't line up with the switches, monospace status
+text and the stats at the bottom. The player plays from this page and rarely
+opens the popup (it closes easily), so the panel is the main surface. It's
+now three tabs:
+
+- **Overview — what's happening.** The Auto-Attempt switch with one live
+  status line (running and the next check countdown, what it's waiting on,
+  or a red "stopped" notice with the game's message), today's attempts and
+  earnings side by side, the last attempt (result in color, reward, card and
+  risk, approach and odds — scouted, computed or worked out blind —
+  complication outcome), the Go blind test figures when that mode is on, and
+  "Run one check now" last as a secondary action. The collapsed badge gains a
+  status dot (green running, amber stopped).
+- **Settings — how it decides.** Grouped as Scouting (method, minimum
+  success %), Which cards (minimum card value, extreme rule and amount),
+  Complications and Odds. Every setting has its control on the right at one
+  size (a `$` or `%` inside the field) and a plain explanation under it;
+  the extreme amount greys out while its rule is off. Minimum success % and
+  the odds source are new to the panel — "every setting explained" was the
+  ask, and both shape which card gets attempted.
+- **Analytics** — unchanged.
+
+The switch and Run button are built once and only updated, while the rest
+of Overview re-renders each second for the countdown — so a click or
+keyboard focus is never lost mid-tick. Every control the game's own
+stylesheet also styles is ID-scoped and `!important`, checked against
+oversized game-like defaults in a preview.
+
 ### Residual risk
 
 Same shape as Career's: the tracked cooldown is this feature's *own*, seeded only from
@@ -442,3 +566,12 @@ odds for complication choices). Smart scouting's bound rests on the highest `bas
 and modifiers ever observed — a game change that raised them would make it stop
 scouting a little early (a missed card, not a bad attempt) until the constants in
 `streetIntelEstimate.ts` are updated.
+
+Smart, exact odds and Go blind rest on two tables built from outside data
+(the wiki catalog, the condition sentences). If the game changes a card's
+base or a sentence's meaning without the tables being rebuilt, predictions
+drift: for exact odds that costs a mis-ranked scout, not a bad attempt (the
+attempt is still chosen on real scouted odds); for Go blind it can mean an
+attempt below the intended floor, which is why it's labelled a test and why
+`oddsCheck` tracks predicted against real outcomes. A card or sentence the
+tables don't know is never predicted — it falls back to scouting.
