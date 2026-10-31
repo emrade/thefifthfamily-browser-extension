@@ -9,6 +9,25 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.52.1] - 2026-10-31
+
+### Fixed
+- Street Intel Analytics stuck on "Loading analytics…" in both the popup
+  and the in-page panel. On first start the tab waited for the whole
+  one-time history load, including a replay of the extension's own archive
+  since the last export, and that replay only saved its progress at the
+  end. If Firefox suspended the background partway through, it started
+  over on every wake and the tab never loaded. The tab now only waits for
+  the seed (your history since Oct 1), the archive replay fills in after
+  it and resumes where it stopped, and both screens give up after 15
+  seconds with a message and retry on their own instead of spinning.
+
+### Changed
+- Minimum card value and extreme card minimum are entered as full dollar
+  amounts, formatted with commas as you type (1,000,000), instead of in
+  $k. In the in-page panel the fields keep their size and no longer pick up
+  the game's own input styling.
+
 ## [0.52.0] - 2026-10-31
 
 ### Added
