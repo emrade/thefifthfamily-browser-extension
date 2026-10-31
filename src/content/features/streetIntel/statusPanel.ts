@@ -4,8 +4,9 @@ import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import { formatDollars, parseDollars, reformatDollarInput } from '@/shared/moneyInput';
 import type { StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
-import { ANALYTICS_CSS, renderStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
+import { ANALYTICS_CSS, renderStreetIntelAnalytics, requestStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 /**
@@ -162,12 +163,17 @@ const PANEL_CSS = `
 #${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-pane-auto { display: none; }
 .ff-sip-field { margin: -4px 0 12px; padding: 0 2px; }
 .ff-sip-field-row { display: flex; align-items: center; gap: 8px; }
-.ff-sip-field-label { flex: 1; font-size: 11px; font-weight: 700; color: #f1ede2; }
-.ff-sip-input {
-  width: 74px; padding: 4px 6px; border-radius: 6px; text-align: right;
-  font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 11.5px;
-  background: rgba(0,0,0,0.45); border: 1px solid rgba(201,168,76,0.34); color: #f1ede2;
+.ff-sip-field-label { flex: 1; min-width: 0; font-size: 11px; font-weight: 700; color: #f1ede2; }
+/* ID-scoped and !important: the game's own input styles (full width, big
+ * padding, spinners) otherwise win and squeeze the label. */
+#${CONTAINER_ID} input.ff-sip-input {
+  flex: 0 0 auto !important; box-sizing: border-box !important; width: 112px !important; height: 26px !important;
+  margin: 0 !important; padding: 3px 8px !important; border-radius: 6px !important; text-align: right !important;
+  font-family: 'Courier New', ui-monospace, Menlo, monospace !important; font-size: 12px !important; line-height: 1 !important;
+  background: rgba(0,0,0,0.45) !important; border: 1px solid rgba(201,168,76,0.34) !important; color: #f1ede2 !important;
+  box-shadow: none !important; outline: none !important;
 }
+#${CONTAINER_ID} input.ff-sip-input:focus { border-color: #c9a84c !important; }
 `;
 
 let panelEl: HTMLDivElement | null = null;
@@ -299,12 +305,12 @@ function renderToggle(): void {
   }
 
   const release = Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100);
-  setInputValue('.ff-sip-min-input', Math.round(config.minCardValue / 1_000));
+  setInputValue('.ff-sip-min-input', config.minCardValue);
   const minHint = panelEl.querySelector('.ff-sip-min-hint');
   if (minHint) {
     minHint.textContent =
       config.minCardValue > 0
-        ? `Skips cards worth under ${formatFloor(config.minCardValue)} (middle of the pay range) until Stamina is ${release}% full. 0 = no minimum.`
+        ? `Skips cards worth under ${formatFloor(config.minCardValue)} (middle of the pay range) until Stamina is ${release}% full. 0 means no minimum.`
         : 'No minimum — takes any card that clears the success floor.';
   }
 
@@ -316,26 +322,26 @@ function renderToggle(): void {
       ? `Extreme cards need ${formatFloor(Math.max(config.minCardValue, config.extremeMinValue))}+.`
       : 'Off — extreme cards use the same minimum.';
   }
-  setInputValue('.ff-sip-extreme-input', Math.round(config.extremeMinValue / 1_000));
+  setInputValue('.ff-sip-extreme-input', config.extremeMinValue);
 }
 
 /** Leaves a field alone while it's being typed in. */
 function setInputValue(selector: string, value: number): void {
   const input = panelEl?.querySelector<HTMLInputElement>(selector);
-  if (input && document.activeElement !== input) input.value = String(value);
+  if (input && document.activeElement !== input) input.value = formatDollars(String(value));
 }
 
 function renderAnalytics(): void {
   const pane = panelEl?.querySelector('.ff-sip-pane-analytics');
   if (!pane || !config) return;
   if (analytics) pane.innerHTML = renderStreetIntelAnalytics(analytics, config);
-  else pane.innerHTML = `<div class="ff-sip-empty">${analyticsError ? 'Could not load analytics. Try again in a moment.' : 'Loading analytics…'}</div>`;
+  else pane.innerHTML = `<div class="ff-sip-empty">${analyticsError ? "Analytics didn't load — trying again shortly." : 'Loading analytics…'}</div>`;
 }
 
 async function refreshAnalytics(): Promise<void> {
   if (!expanded || activeTab !== 'analytics') return;
   try {
-    analytics = (await chrome.runtime.sendMessage({ type: 'street-intel-analytics-requested' })) as StreetIntelAnalytics;
+    analytics = await requestStreetIntelAnalytics();
     analyticsError = false;
   } catch (err) {
     console.error(LOG_PREFIX, 'street intel status panel analytics read failed', err);
@@ -475,8 +481,8 @@ function buildPanel(): HTMLDivElement {
       </label>
       <div class="ff-sip-field">
         <div class="ff-sip-field-row">
-          <span class="ff-sip-field-label">Minimum card value ($k)</span>
-          <input class="ff-sip-input ff-sip-min-input" type="number" min="0" step="50">
+          <span class="ff-sip-field-label">Minimum card value ($)</span>
+          <input class="ff-sip-input ff-sip-min-input" type="text" inputmode="numeric">
         </div>
         <div class="ff-sip-hint ff-sip-min-hint"></div>
       </div>
@@ -489,8 +495,8 @@ function buildPanel(): HTMLDivElement {
       </label>
       <div class="ff-sip-field">
         <div class="ff-sip-field-row">
-          <span class="ff-sip-field-label">Extreme minimum ($k)</span>
-          <input class="ff-sip-input ff-sip-extreme-input" type="number" min="0" step="50">
+          <span class="ff-sip-field-label">Extreme minimum ($)</span>
+          <input class="ff-sip-input ff-sip-extreme-input" type="text" inputmode="numeric">
         </div>
         <div class="ff-sip-hint">Under $1M, extreme cards failed ~40% and paid no more per Stamina than high-risk ones.</div>
       </div>
@@ -522,22 +528,21 @@ function buildPanel(): HTMLDivElement {
   const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
 
-  // Entered in $k, stored in dollars; committed on change (Enter or leaving the field).
-  const thousands = (input: HTMLInputElement): number | null => {
-    const value = Number(input.value);
-    return input.value.trim() !== '' && Number.isFinite(value) ? Math.max(0, Math.round(value)) * 1_000 : null;
-  };
+  // Dollar fields: commas added as you type, committed on change (Enter or
+  // leaving the field).
   const minInput = el.querySelector<HTMLInputElement>('.ff-sip-min-input');
+  minInput?.addEventListener('input', () => reformatDollarInput(minInput));
   minInput?.addEventListener('change', () => {
-    const value = thousands(minInput);
+    const value = parseDollars(minInput.value);
     if (value !== null) writeConfig({ minCardValue: value });
   });
 
   const extremeToggle = el.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
   extremeToggle?.addEventListener('change', () => writeConfig({ extremeMinEnabled: extremeToggle.checked }));
   const extremeInput = el.querySelector<HTMLInputElement>('.ff-sip-extreme-input');
+  extremeInput?.addEventListener('input', () => reformatDollarInput(extremeInput));
   extremeInput?.addEventListener('change', () => {
-    const value = thousands(extremeInput);
+    const value = parseDollars(extremeInput.value);
     if (value !== null) writeConfig({ extremeMinValue: value });
   });
 

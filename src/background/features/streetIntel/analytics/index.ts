@@ -4,6 +4,7 @@ import { storage } from '@/shared/storage';
 import { decompressText } from '@/shared/requestLog/compress';
 import type { RecordRequestInput } from '@/shared/requestLog/record';
 import { buildStreetIntelAnalytics, gameDay, type SiAttemptRecord, type SiDrop, type StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
+import type { StreetIntelAnalyticsSeedState } from '@/shared/types';
 import { parseStreetIntelOpportunities } from '../streetIntelPanelRegexParser';
 import { ANALYTICS_SEED_CUTOFF, seedAttempts, seedCards, seedDays, seedPrices } from './seed';
 
@@ -20,11 +21,20 @@ import { ANALYTICS_SEED_CUTOFF, seedAttempts, seedCards, seedDays, seedPrices } 
  * days under its byte budget, which is why this keeps its own small tables.
  *
  * Starts from an archive-built seed (see ./seed.ts) and, once, replays the
- * extension's own archive between the seed's cutoff and this worker's start,
- * so nothing between the export and the update is missing.
+ * extension's own archive between the seed's cutoff and the first start
+ * after the update, so nothing between the export and the update is missing.
  *
- * Writes go through one chain: the seed must land before live traffic, and
- * an attempt and its complication arrive moments apart.
+ * The replay decompresses every archived Street Intel response, which can
+ * outlast Firefox's ~30s idle limit for the background: 0.52.0 waited for
+ * all of it before answering the Analytics tab and saved nothing until the
+ * end, so a background suspended mid-replay restarted it from scratch on
+ * every wake and the tab never loaded. Now the tab only waits for the seed
+ * import, and the replay runs on its own chain, saving its progress after
+ * every batch.
+ *
+ * Live writes go through one chain: an attempt and its complication arrive
+ * moments apart. The replay covers an earlier window, so the two only meet
+ * on a day's scout total, which is updated in a transaction.
  */
 
 const DAY_MS = 86_400_000;
@@ -37,8 +47,12 @@ const REPLAY_BATCH = 100;
 const REPLAY_ENDPOINTS = ['GET /api/panel.php?type=street_intel', 'POST /actions/street_intel.php'];
 
 const workerStartedAt = Date.now();
-let chain: Promise<void> = Promise.resolve();
 let lastPruneAt = 0;
+
+/** Resolves once the seed is in (or failed to load), so the tab never waits
+ *  on the archive replay. */
+let seedReady: Promise<void> = Promise.resolve();
+let chain: Promise<void> = Promise.resolve();
 
 function enqueue(task: () => Promise<void>): Promise<void> {
   chain = chain.then(task).catch((err) => console.error(LOG_PREFIX, 'street intel analytics write failed', err));
@@ -65,6 +79,8 @@ async function ingest(input: Observed): Promise<void> {
     return;
   }
   if (input.method !== 'POST' || !url.pathname.endsWith('/actions/street_intel.php') || !input.requestBody) return;
+  // Cheap check before parsing: scouts, attempts and complications are all that's kept.
+  if (!/action=(scout|attempt|complication)\b/.test(input.requestBody)) return;
 
   let resp: Record<string, unknown>;
   try {
@@ -107,8 +123,10 @@ async function ingestScout(resp: Record<string, unknown>, at: number): Promise<v
   if (resp.cached === true) return;
   const day = gameDay(at);
   const cost = typeof resp.scout_cost === 'number' ? resp.scout_cost : 1;
-  const existing = await db.siDays.get(day);
-  await db.siDays.put({ day, scoutStamina: (existing?.scoutStamina ?? 0) + cost });
+  await db.transaction('rw', db.siDays, async () => {
+    const existing = await db.siDays.get(day);
+    await db.siDays.put({ day, scoutStamina: (existing?.scoutStamina ?? 0) + cost });
+  });
 }
 
 function num(value: unknown): number {
@@ -160,32 +178,41 @@ async function ingestComplication(id: number, resp: Record<string, unknown>): Pr
   await db.siAttempts.put({ ...attempt, complicationSuccess: resp.comp_success, cashLost, drops: [...attempt.drops, ...dropsOf(resp)] });
 }
 
-/** Loads the seed and replays the archive after it — once per install. */
-async function ensureSeeded(): Promise<void> {
-  if ((await storage.getStreetIntelAnalyticsSeeded()) === null) {
-    await db.transaction('rw', [db.siAttempts, db.siCards, db.siDays], async () => {
-      await db.siAttempts.bulkPut(seedAttempts());
-      await db.siCards.bulkPut(seedCards());
-      await db.siDays.bulkPut(seedDays());
-    });
-    const replayed = await replayArchive(ANALYTICS_SEED_CUTOFF, workerStartedAt);
-    await storage.setStreetIntelAnalyticsSeeded(ANALYTICS_SEED_CUTOFF);
-    console.info(LOG_PREFIX, `street intel analytics seeded; replayed ${replayed} archived requests since the seed`);
-  }
-  await prune();
+/** Imports the seed once per install; returns where the archive replay
+ *  stands (null once it's done, or if 0.52.0 already finished it). */
+async function importSeed(): Promise<StreetIntelAnalyticsSeedState | null> {
+  const state = await storage.getStreetIntelAnalyticsSeeded();
+  if (typeof state === 'number') return null;
+  if (state) return state.replayedThrough < state.replayUntil ? state : null;
+  const startedAt = Date.now();
+  await db.transaction('rw', [db.siAttempts, db.siCards, db.siDays], async () => {
+    await db.siAttempts.bulkPut(seedAttempts());
+    await db.siCards.bulkPut(seedCards());
+    await db.siDays.bulkPut(seedDays());
+  });
+  const next = { cutoff: ANALYTICS_SEED_CUTOFF, replayUntil: workerStartedAt, replayedThrough: ANALYTICS_SEED_CUTOFF };
+  await storage.setStreetIntelAnalyticsSeeded(next);
+  console.info(LOG_PREFIX, `street intel analytics: seed imported in ${Date.now() - startedAt} ms`);
+  return next;
 }
 
-/** Feeds archived Street Intel traffic in (from, to) through the same
- *  ingest as live traffic, oldest first. */
-async function replayArchive(from: number, to: number): Promise<number> {
+/** Feeds archived Street Intel traffic after `replayedThrough` and before
+ *  `replayUntil` through the same ingest as live traffic, oldest first,
+ *  saving progress after every batch. */
+async function replayArchive(state: StreetIntelAnalyticsSeedState): Promise<void> {
+  const startedAt = Date.now();
   const keys: number[] = [];
   for (const endpoint of REPLAY_ENDPOINTS) {
-    const ids = (await db.requestLog.where('[endpoint+timestamp]').between([endpoint, from], [endpoint, to], false, false).primaryKeys()) as number[];
+    const ids = (await db.requestLog
+      .where('[endpoint+timestamp]')
+      .between([endpoint, state.replayedThrough], [endpoint, state.replayUntil], false, false)
+      .primaryKeys()) as number[];
     keys.push(...ids);
   }
   // Ids are assigned in write order, which is time order.
   keys.sort((a, b) => a - b);
   let replayed = 0;
+  let through = state.replayedThrough;
   for (let offset = 0; offset < keys.length; offset += REPLAY_BATCH) {
     const rows = await db.requestLog.bulkGet(keys.slice(offset, offset + REPLAY_BATCH));
     for (const row of rows) {
@@ -200,9 +227,12 @@ async function replayArchive(from: number, to: number): Promise<number> {
       } catch {
         // One unreadable row shouldn't stop the replay.
       }
+      through = Math.max(through, row.timestamp);
     }
+    await storage.setStreetIntelAnalyticsSeeded({ ...state, replayedThrough: through });
   }
-  return replayed;
+  await storage.setStreetIntelAnalyticsSeeded({ ...state, replayedThrough: state.replayUntil });
+  console.info(LOG_PREFIX, `street intel analytics: replayed ${replayed} of ${keys.length} archived requests in ${Date.now() - startedAt} ms`);
 }
 
 async function prune(): Promise<void> {
@@ -214,12 +244,26 @@ async function prune(): Promise<void> {
 }
 
 export function initStreetIntelAnalytics(): void {
-  void enqueue(ensureSeeded);
+  const imported = importSeed();
+  seedReady = imported.then(
+    () => undefined,
+    (err) => console.error(LOG_PREFIX, 'street intel analytics seed import failed', err),
+  );
+  // Live traffic waits for the seed, so a live attempt can't be overwritten by it.
+  chain = seedReady;
+  void imported
+    .then(async (state) => {
+      if (state) await replayArchive(state);
+      await prune();
+    })
+    .catch((err) => console.error(LOG_PREFIX, 'street intel analytics archive replay failed', err));
 }
 
-/** The Analytics tab's summary — answered after any pending writes land. */
+/** The Analytics tab's summary. Waits for the seed import and the live
+ *  writes queued so far — never for the archive replay. */
 export async function getStreetIntelAnalytics(): Promise<StreetIntelAnalytics> {
   if (Date.now() - lastPruneAt > PRUNE_INTERVAL_MS) void enqueue(prune);
+  await seedReady;
   await chain;
   const now = Date.now();
   const [attempts, cards, days, config, book] = await Promise.all([

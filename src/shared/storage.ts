@@ -1,5 +1,6 @@
 import type {
   StaleGameTabs,
+  StreetIntelAnalyticsSeedState,
   RealEstateVaultState,
   ArenaLineupPoints,
   ArenaMyProfile,
@@ -235,11 +236,11 @@ export const storage = {
    *  background/features/streetIntel/complicationTally.ts. Background-only writer. */
   getStreetIntelComplicationTally: () => get<ComplicationTypeStats>(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, {}),
   setStreetIntelComplicationTally: (v: ComplicationTypeStats) => set(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, v),
-  /** The seed cutoff once Street Intel Analytics has loaded its archive-built
-   *  history (and replayed the extension's own archive after it) — see
-   *  background/features/streetIntel/analytics/. Null until then. */
-  getStreetIntelAnalyticsSeeded: () => get<number | null>(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, null),
-  setStreetIntelAnalyticsSeeded: (v: number) => set(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, v),
+  /** Street Intel Analytics' one-time history load — see
+   *  background/features/streetIntel/analytics/. Null until the seed is in.
+   *  A bare number is a load 0.52.0 finished in one go. */
+  getStreetIntelAnalyticsSeeded: () => get<StreetIntelAnalyticsSeedState | number | null>(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, null),
+  setStreetIntelAnalyticsSeeded: (v: StreetIntelAnalyticsSeedState) => set(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, v),
 
   // Same merge-with-defaults reasoning as the prefs above.
   getRealEstateAdvisorPreferences: async (): Promise<RealEstateAdvisorPreferences> => {

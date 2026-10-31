@@ -1170,6 +1170,16 @@ export interface StreetIntelAutoStatus {
   waiting?: StreetIntelAutoWaiting | null;
 }
 
+/** Progress of Street Intel Analytics' one-time history load: the seed is
+ *  in, and the extension's own archive is replayed from `cutoff` up to
+ *  `replayUntil` (the first start after the update), `replayedThrough`
+ *  saved after every batch so a suspended background resumes there. */
+export interface StreetIntelAnalyticsSeedState {
+  cutoff: number;
+  replayUntil: number;
+  replayedThrough: number;
+}
+
 /** What a Street Intel Auto check found blocking it, same idea as
  *  `CareerAutoWaiting`. `until` is the game's own countdown, for context only:
  *  blocked checks still poll, since bailing out or a discharge can end it

@@ -46,6 +46,21 @@ export const ANALYTICS_CSS = `
 .ff-sia-foot { color: #6b6455; font-size: 9px; }
 `;
 
+/** How long the tab waits for background before saying so. */
+const ANALYTICS_REQUEST_TIMEOUT_MS = 15_000;
+
+/** Asks background for the summary, giving up after a while rather than
+ *  showing "Loading…" forever if it never answers. */
+export function requestStreetIntelAnalytics(): Promise<StreetIntelAnalytics> {
+  return Promise.race([
+    chrome.runtime.sendMessage({ type: 'street-intel-analytics-requested' }).then((a: StreetIntelAnalytics | undefined) => {
+      if (!a) throw new Error('no analytics in the reply');
+      return a;
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), ANALYTICS_REQUEST_TIMEOUT_MS)),
+  ]);
+}
+
 export function money(amount: number): string {
   const sign = amount < 0 ? '-' : '';
   const abs = Math.abs(amount);

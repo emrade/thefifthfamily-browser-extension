@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { NumberInput } from '@/popup/views/NumberInput';
+import { MoneyInput } from '@/popup/views/MoneyInput';
 import { ALARM_NAMES, STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
@@ -139,10 +140,9 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, scoutMode: smart ? 'smart' : 'topPayout' });
   }
 
-  // Entered in $k, stored in dollars.
-  function setMinCardValueK(valueK: number) {
-    if (!config || !Number.isFinite(valueK)) return;
-    saveConfig({ ...config, minCardValue: Math.max(0, Math.round(valueK)) * 1_000 });
+  function setMinCardValue(value: number) {
+    if (!config) return;
+    saveConfig({ ...config, minCardValue: value });
   }
 
   function setExtremeMinEnabled(on: boolean) {
@@ -150,9 +150,9 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, extremeMinEnabled: on });
   }
 
-  function setExtremeMinValueK(valueK: number) {
-    if (!config || !Number.isFinite(valueK)) return;
-    saveConfig({ ...config, extremeMinValue: Math.max(0, Math.round(valueK)) * 1_000 });
+  function setExtremeMinValue(value: number) {
+    if (!config) return;
+    saveConfig({ ...config, extremeMinValue: value });
   }
 
   function applySuggestedMinimum(value: number) {
@@ -280,20 +280,14 @@ export function StreetIntelAutoHome() {
       </label>
 
       <div class="ff-field">
-        <div class="ff-field__label">Minimum card value ($k)</div>
+        <div class="ff-field__label">Minimum card value ($)</div>
         <div class="ff-field__hint">
           Cards worth less are skipped and not scouted, so Stamina is saved for bigger ones — they pay far more per
-          Stamina. Compared with the middle of a card's pay range: at 750, "$600k – $1M" counts and "$500k – $900k"
+          Stamina. Compared with the middle of a card's pay range: at 750,000, "$600k – $1M" counts and "$500k – $900k"
           doesn't. Once Stamina is {Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100)}% full it takes any card, so regen isn't wasted. 0 means no
           minimum. See the suggested value under Analytics below.
         </div>
-        <NumberInput
-          class="ff-select ff-field__control"
-          min={0}
-          step={50}
-          value={Math.round(config.minCardValue / 1_000)}
-          onCommit={setMinCardValueK}
-        />
+        <MoneyInput class="ff-select ff-field__control" value={config.minCardValue} onCommit={setMinCardValue} />
       </div>
 
       <label class="ff-toggle-row">
@@ -314,18 +308,12 @@ export function StreetIntelAutoHome() {
       </label>
 
       <div class="ff-field">
-        <div class="ff-field__label">Extreme card minimum ($k)</div>
+        <div class="ff-field__label">Extreme card minimum ($)</div>
         <div class="ff-field__hint">
           Extreme cards fail about 40% of the time at every size, but under $1M they paid no more per Stamina than
           high-risk cards that fail half as often (Aug 10 – Oct 30, 142 attempts). Used while the switch above is on.
         </div>
-        <NumberInput
-          class="ff-select ff-field__control"
-          min={0}
-          step={50}
-          value={Math.round(config.extremeMinValue / 1_000)}
-          onCommit={setExtremeMinValueK}
-        />
+        <MoneyInput class="ff-select ff-field__control" value={config.extremeMinValue} onCommit={setExtremeMinValue} />
       </div>
 
       {modeTallies.length > 0 && (

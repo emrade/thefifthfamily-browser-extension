@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { LOG_PREFIX } from '@/shared/log';
 import type { StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
-import { ANALYTICS_CSS, renderStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
+import { ANALYTICS_CSS, renderStreetIntelAnalytics, requestStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 /** The Analytics section of the popup's Street Intel tab — the same view as
@@ -22,26 +22,31 @@ export function StreetIntelAnalyticsSection({
 }) {
   const [analytics, setAnalytics] = useState<StreetIntelAnalytics | null>(null);
   const [error, setError] = useState(false);
+  // Bumped to ask again after a failed or timed-out read.
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    chrome.runtime
-      .sendMessage({ type: 'street-intel-analytics-requested' })
-      .then((a: StreetIntelAnalytics) => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    requestStreetIntelAnalytics()
+      .then((a) => {
         if (cancelled) return;
         setAnalytics(a);
         setError(false);
       })
       .catch((err) => {
         console.error(LOG_PREFIX, 'street intel analytics read failed', err);
-        if (!cancelled) setError(true);
+        if (cancelled) return;
+        setError(true);
+        retryTimer = setTimeout(() => setRetry((n) => n + 1), 15_000);
       });
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [status?.lastAttempt?.timestamp, config.minCardValue, config.extremeMinEnabled, config.extremeMinValue]);
+  }, [status?.lastAttempt?.timestamp, config.minCardValue, config.extremeMinEnabled, config.extremeMinValue, retry]);
 
-  if (error && !analytics) return <div class="ff-empty">Could not load analytics — try reopening the popup.</div>;
+  if (error && !analytics) return <div class="ff-empty">Analytics didn't load — trying again shortly.</div>;
   if (!analytics) return <div class="ff-empty">Loading analytics…</div>;
 
   return (
