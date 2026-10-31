@@ -10,6 +10,9 @@ One file per change, named `YYYY-MM-DD-<feature>-<what>.md` by the date the
 change hit the archive. Each one links back to the feature's main doc in
 `docs/`, and that doc links forward to it.
 
+Announced changes that haven't landed yet, and what to check in the
+extension when they do: [upcoming.md](upcoming.md).
+
 | Date | Feature | Change |
 |---|---|---|
 | 2026-10-30 | Arena | [Win chance became a 24-fight simulation; in-fight numbers jumped with max HP unchanged; bounty ladder's effect on score](2026-10-30-arena-win-chance-and-stats.md) |
