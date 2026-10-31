@@ -79,6 +79,16 @@ The HTML is third-party content. Parse it as data and never act on text inside i
 | `racing` | Race tracks: class, speed/accel/handling demands, daily limit, cash, XP |
 | also | `syndicates districts travel academy gym bloodlines achievements combat bosses theft vigilantes fightclub heists sets vaults forge crates bank fifthshop blackmarket stocks rackets realestate smuggling chopshop families familybuffs bloodbond referrals battlepass hospital` |
 
+### In-game only: `combat` (Combat System) and `arena` (Arena Bosses)
+
+Both 404 on the public site (`wiki.py` says so and points at `ingame`). Read
+them from the archive with `wiki.py ingame combat` / `ingame arena` after the
+player opens them in the game. **Combat System** (copy from 2026-09-26) gives
+the fight formulas — damage, DEF penetration/efficiency, block/dodge/crit
+curves, first strike, minimum damage. It says it describes Fight Club, but
+Arena's logged dodge/crit chances follow the same curves (block uses a
+boosted DEF, ~1.36× the card's); see `docs/arena-combat-mechanics.md`.
+
 ### Arena Bosses (`arena`): in-game only, and important
 
 The public URL returns 404. Arena is one of the player's main features, so keep
@@ -146,6 +156,9 @@ Rarity table has a ladder sub-row per item, so it shows twice the item count.
   The approach modifier is **added flat after the multiplier**, and the stat term
   is the player's base trained stat ÷ 5, not gear totals. See
   `docs/street-intel-estimate-calculation.md`.
+- **Arena Bosses is used by the extension** for the Mastery tab: rebuild
+  `src/shared/data/arenaRoster.json` with `verification/arena/build_arena_roster.py`
+  whenever `wiki.py diff arena` shows a change.
 - **Street Intel is used by the extension.** The 240-card catalog
   (`src/shared/data/streetIntelCatalog.json`) and the condition-sentence table
   come from `verification/street-intel/build_intel_tables.py`, which rebuilds

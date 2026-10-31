@@ -569,6 +569,37 @@ history.
   logged fights. Replaying every archived fight in order, with the numbers
   as they would have stood at the time, gives 154/179 correct, Beatable
   81/81, Avoid 2/40.
+- **Arena Mastery** (2026-11-01; `src/shared/arenaMastery.ts`, the Arena
+  panel's **Mastery** tab, `src/content/features/arena/mastery.ts`).
+  Clearing every boss of one tier in a family pays a permanent bonus to its
+  stat (Iron River STR, SBP DEF, Kito-gumi DEX, Viola AGI: +1/+2/+3/+4% for
+  Commons/Uncommons/Rares/Legendary, +10% in all; Volkskaya all four,
+  +0.25/+0.5/+0.75/+1%); clearing a tier adds the next to the boss pool.
+  *Why it's tracked:* the rarest Commons (0.54% draw — the bosses holding
+  the best exclusives are drawn least) are what stood between three families
+  and their first bonus on 2026-10-31 (SBP: Robert Chen, Viola: Chloe
+  Moretti, Volkskaya: Alexei Romanov), and a boss appears at most once a day,
+  so knowing when one of them is on the page matters.
+  *Where the data comes from:* the **Ticket Exchange** page is the game's own
+  record — each boss's exclusive shows `data-unlocked="1"` once that boss is
+  beaten, and each family states its tier counts and Mastery earned. Opening
+  it replaces the stored record; every boss win after that is added live from
+  the `attack` response. Nothing is fetched for it. Each boss's tier and draw %
+  come from the wiki's Arena Bosses page (`src/shared/data/arenaRoster.json`,
+  built by `verification/arena/build_arena_roster.py` — the Exchange shows
+  the exclusive's rarity, which isn't the boss's tier). Checked on the
+  2026-10-29 Exchange: all 20 tier counts match the page's own, all 41 beaten
+  bosses map to the roster, and the archive's later win (Diego Alvarez,
+  10-30) is the one difference from a count rebuilt from fights.
+  The tab shows bosses beaten and tickets held, the next bonuses (closest
+  first), and per family: earned, each tier's count, and the bosses still
+  needed for the current tier with draw % and ticket price. Before the
+  Exchange has been opened once it says so rather than guess.
+  The **"Arena Needed for Mastery"** page setting (on by default) adds a note
+  to the advisor's Boss line when the page's boss is one still needed for its
+  family's current tier — e.g. "Needed for Mastery: the last Common left
+  for +1% DEF, permanent." Off until the Exchange has been read, so an
+  incomplete record never mislabels a boss.
 - **Arena page reminder** (`src/background/features/arena/watcher.ts`).
   Read-only. Reminds every 15 minutes while a page is ready to open **or**
   opened but not banked (fights left, boss unlocked, or pot unbanked), and

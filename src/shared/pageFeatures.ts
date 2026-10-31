@@ -104,6 +104,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Badges every opponent and the boss on the Arena page Beatable, Coin-flip or Avoid with how often fights like it have been won, from the stats on their card, and numbers the attack order (riskiest first). A plan above the cards shows the pot you can expect to bank, the largest pot still worth risking on the boss, and whether a Refresh is worth it for this lineup.',
   },
   {
+    id: 'arenaMasteryTag',
+    label: 'Arena Needed for Mastery',
+    description:
+      'Needs the Arena Fight Advisor. When the page’s boss is one you still need to clear its family’s current Mastery tier, the advisor’s Boss line says so — e.g. “Needed for Mastery: 1 of 1 left for +1% DEF”. Mastery is read from the Ticket Exchange (open it once to start).',
+  },
+  {
     id: 'furyCatcherPanel',
     label: 'Fury Catcher Panel',
     description:

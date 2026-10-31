@@ -7,12 +7,16 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@/shared/notifications';
 import { bossStrengthBreakEven, regularStrengthLimit } from '@/shared/arenaCombat';
 import type { ArenaMyProfile, ArenaWatchStatus } from '@/shared/types';
+import { MASTERY_TIER_LABEL, ROSTER_BOSSES, familyMastery, type ArenaMasteryState } from '@/shared/arenaMastery';
 
 /**
  * A floating panel on the live Arena page: collapsed badge by default,
- * expanding into the page reminder's toggle and last-seen state, and the
- * season numbers the fight advisor (fightAdvisor.ts) is working from, with
- * the STR limits they give. Same badge/expand shape as `courierPanel.ts`.
+ * expanding into two tabs. **Advisor**: the page reminder's toggle and
+ * last-seen state, and the season numbers the fight advisor (fightAdvisor.ts)
+ * is working from, with the STR limits they give. **Mastery**: Arena Mastery
+ * progress per family from the Ticket Exchange's own record (see
+ * `@/shared/arenaMastery`) — what's earned, each tier's count, and the bosses
+ * still needed for the next bonus. Same badge/expand shape as `courierPanel.ts`.
  *
  * The reminder toggle reads/writes the same `NotificationPreferences` key as
  * Settings, and a `chrome.storage.onChanged` listener keeps it live if
@@ -108,10 +112,140 @@ const PANEL_CSS = `
 .ff-arp-row { font-size: 10.5px; color: #ccc; padding: 2px 0; line-height: 1.4; }
 .ff-arp-muted { color: #8b8f9e; }
 .ff-arp-summary-time { font-size: 9px; color: #6b6455; margin-top: 8px; }
+
+/* Tabs: an underline row, same as the Street Intel panel's. */
+#${CONTAINER_ID}.ff-arp-on-mastery .ff-arp-panel { width: 340px; }
+.ff-arp-tabs { display: flex; gap: 2px; margin: -2px 0 14px; border-bottom: 1px solid rgba(201,168,76,0.14); }
+#${CONTAINER_ID} .ff-arp-tab {
+  flex: 0 0 auto !important; width: auto !important; margin: 0 0 -1px !important; padding: 7px 10px 8px !important;
+  background: transparent !important; border: 0 !important; border-bottom: 2px solid transparent !important; border-radius: 0 !important;
+  font: 600 12px/1 'Inter', system-ui, sans-serif !important; color: #9a917c !important; cursor: pointer;
+}
+#${CONTAINER_ID} .ff-arp-tab:hover { color: #cfc8b6 !important; }
+#${CONTAINER_ID} .ff-arp-tab.ff-on { color: #f1ede2 !important; border-bottom-color: #c9a84c !important; }
+.ff-arp-pane { display: none; }
+#${CONTAINER_ID}.ff-arp-on-advisor .ff-arp-pane-advisor,
+#${CONTAINER_ID}.ff-arp-on-mastery .ff-arp-pane-mastery { display: block; }
+
+/* Mastery */
+.ff-arm-summary { font-size: 12px; color: #cfc8b6; line-height: 1.5; }
+.ff-arm-summary b { color: #f1ede2; font-variant-numeric: tabular-nums; }
+.ff-arm-sub { font-size: 11px; color: #9a917c; margin-top: 2px; }
+.ff-arm-h { margin: 16px 0 8px; font-size: 12px; font-weight: 700; color: #d9c48a; }
+.ff-arm-next { display: grid; gap: 6px; }
+.ff-arm-step { font-size: 12px; line-height: 1.45; color: #cfc8b6; }
+.ff-arm-step b { color: #e8c766; }
+.ff-arm-fam { padding: 12px 0; border-top: 1px solid rgba(201,168,76,0.12); }
+.ff-arm-fam-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ff-arm-fam-name { font-size: 13px; font-weight: 700; color: #f1ede2; }
+.ff-arm-earned { font-size: 12px; font-weight: 700; color: #9a917c; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ff-arm-earned.ff-has { color: #4ade80; }
+.ff-arm-tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px; }
+.ff-arm-tier { padding: 6px 6px 5px; border-radius: 7px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+.ff-arm-tier-name { font-size: 10px; color: #9a917c; }
+.ff-arm-tier-count { margin-top: 2px; font-size: 12px; font-weight: 700; color: #f1ede2; font-variant-numeric: tabular-nums; }
+.ff-arm-tier-bar { height: 3px; margin-top: 5px; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.ff-arm-tier-bar i { display: block; height: 100%; background: #c9a84c; }
+.ff-arm-tier.ff-done { border-color: rgba(74,222,128,0.35); }
+.ff-arm-tier.ff-done .ff-arm-tier-bar i { background: #4ade80; }
+.ff-arm-tier.ff-locked { opacity: 0.4; }
+.ff-arm-need { margin-top: 8px; font-size: 11.5px; line-height: 1.5; color: #9a917c; }
+.ff-arm-need-row { display: flex; justify-content: space-between; gap: 10px; color: #cfc8b6; }
+.ff-arm-need-row span:last-child { color: #9a917c; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ff-arm-empty { font-size: 12px; line-height: 1.55; color: #cfc8b6; }
+.ff-arm-foot { margin-top: 12px; font-size: 10.5px; line-height: 1.5; color: #6b6455; }
 `;
 
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
+let activeTab: 'advisor' | 'mastery' = 'advisor';
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+}
+
+function shortFamily(name: string): string {
+  return name === 'Society for Balance & Prosperity' ? 'SBP' : name.replace(/ (Syndicate|Family|Bratva)$/, '');
+}
+
+function renderMastery(state: ArenaMasteryState): string {
+  if (!state.syncedAt) {
+    return `<div class="ff-arm-empty">Open the <b>Ticket Exchange</b> in the Arena once — this reads your progress from it (the game marks every boss you've beaten there), then keeps up with each boss you beat.</div>`;
+  }
+  const families = familyMastery(state);
+  const synced = new Date(state.syncedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const parts: string[] = [
+    `<div class="ff-arm-summary"><b>${state.beaten.length}</b> of ${ROSTER_BOSSES.length} bosses beaten${state.ticketsHeld !== null ? ` · <b>${state.ticketsHeld}</b> tickets` : ''}</div>`,
+    `<div class="ff-arm-sub">From the Ticket Exchange, ${synced}${state.winsSinceSync ? `, plus ${state.winsSinceSync} boss win${state.winsSinceSync === 1 ? '' : 's'} since` : ''}.</div>`,
+  ];
+
+  // Closest bonuses first: fewest bosses left in the current tier.
+  const next = families.filter((f) => f.current).sort((a, b) => a.needed.length - b.needed.length);
+  if (next.length) {
+    parts.push('<div class="ff-arm-h">Next bonuses</div><div class="ff-arm-next">');
+    for (const f of next.slice(0, 3)) {
+      const tier = f.current!;
+      const bonus = `+${f.family.tierBonus[tier]}% ${escapeHtml(f.family.stat)}`;
+      const who =
+        f.needed.length === 1
+          ? `${escapeHtml(f.needed[0].name)} (${f.needed[0].draw}% draw)`
+          : `${f.needed.length} ${MASTERY_TIER_LABEL[tier]} left`;
+      parts.push(`<div class="ff-arm-step"><b>${bonus}</b> · ${escapeHtml(shortFamily(f.family.name))} ${MASTERY_TIER_LABEL[tier]}: ${who}</div>`);
+    }
+    parts.push('</div>');
+  }
+
+  parts.push('<div class="ff-arm-h">Families</div>');
+  for (const f of families) {
+    const tiers = f.tiers
+      .map((t) => {
+        const cls = t.complete ? 'ff-done' : t.unlocked ? '' : 'ff-locked';
+        const width = t.total ? Math.round((t.done / t.total) * 100) : 0;
+        return `<div class="ff-arm-tier ${cls}" title="${MASTERY_TIER_LABEL[t.tier]}: +${t.bonus}% ${escapeHtml(f.family.stat)}${t.unlocked ? '' : ' — unlocks when the tier before is cleared'}"><div class="ff-arm-tier-name">${MASTERY_TIER_LABEL[t.tier]}</div><div class="ff-arm-tier-count">${t.unlocked ? `${t.done}/${t.total}` : 'Locked'}</div><div class="ff-arm-tier-bar"><i style="width:${width}%"></i></div></div>`;
+      })
+      .join('');
+    const need = f.current
+      ? `<div class="ff-arm-need">Still needed for ${MASTERY_TIER_LABEL[f.current]} (+${f.family.tierBonus[f.current]}%):${f.needed
+          .map((b) => `<div class="ff-arm-need-row"><span>${escapeHtml(b.name)}</span><span>${b.draw}% draw · ${b.tickets} tickets</span></div>`)
+          .join('')}</div>`
+      : '<div class="ff-arm-need">Every tier cleared.</div>';
+    parts.push(`
+      <div class="ff-arm-fam">
+        <div class="ff-arm-fam-head">
+          <span class="ff-arm-fam-name">${escapeHtml(f.family.name)}</span>
+          <span class="ff-arm-earned ${f.earned > 0 ? 'ff-has' : ''}">+${f.earned}% of +${f.family.max}% ${escapeHtml(f.family.stat)}</span>
+        </div>
+        <div class="ff-arm-tiers">${tiers}</div>
+        ${need}
+      </div>`);
+  }
+  parts.push(
+    '<div class="ff-arm-foot">A tier’s bonus is permanent once every boss in it is beaten; partial tiers pay nothing. Clearing a tier adds the next one to the boss pool. Draw % is how often a boss is a page’s boss — the best exclusives are rarest. Each boss appears at most once a day.</div>',
+  );
+  return parts.join('');
+}
+
+async function refreshMastery(): Promise<void> {
+  const pane = panelEl?.querySelector('.ff-arp-pane-mastery');
+  if (!pane) return;
+  try {
+    pane.innerHTML = renderMastery(await storage.getArenaMastery());
+  } catch (err) {
+    console.error(LOG_PREFIX, 'arena panel mastery read failed', err);
+  }
+}
+
+function setTab(tab: 'advisor' | 'mastery'): void {
+  activeTab = tab;
+  if (!panelEl) return;
+  panelEl.classList.toggle('ff-arp-on-advisor', tab === 'advisor');
+  panelEl.classList.toggle('ff-arp-on-mastery', tab === 'mastery');
+  panelEl.querySelectorAll<HTMLButtonElement>('.ff-arp-tab').forEach((b) => {
+    b.classList.toggle('ff-on', b.dataset.tab === tab);
+    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+  });
+  if (tab === 'mastery') void refreshMastery();
+}
 
 function formatCountdown(nextAt: number, now: number): string {
   const s = Math.max(0, Math.round((nextAt - now) / 1000));
@@ -180,12 +314,16 @@ async function refresh() {
 function setExpanded(next: boolean) {
   expanded = next;
   panelEl?.classList.toggle('ff-arp-expanded', expanded);
-  if (expanded) refresh();
+  if (expanded) {
+    refresh();
+    if (activeTab === 'mastery') void refreshMastery();
+  }
 }
 
 function buildPanel(): HTMLDivElement {
   const el = document.createElement('div');
   el.id = CONTAINER_ID;
+  el.className = `ff-arp-on-${activeTab}`;
   el.innerHTML = `
     <button class="ff-arp-badge" type="button">
       ${brandBadgeHtml('Arena')}
@@ -196,6 +334,12 @@ function buildPanel(): HTMLDivElement {
         ${brandBadgeHtml('Arena')}
         <button class="ff-arp-close" type="button" title="Collapse">✕</button>
       </div>
+      <div class="ff-arp-tabs" role="tablist">
+        <button class="ff-arp-tab ff-on" type="button" role="tab" data-tab="advisor">Advisor</button>
+        <button class="ff-arp-tab" type="button" role="tab" data-tab="mastery">Mastery</button>
+      </div>
+      <div class="ff-arp-pane ff-arp-pane-mastery"></div>
+      <div class="ff-arp-pane ff-arp-pane-advisor">
       <label class="ff-arp-toggle-row">
         <div class="ff-arp-toggle-row__text">
           <div class="ff-arp-toggle-row__title">Page reminder</div>
@@ -206,11 +350,15 @@ function buildPanel(): HTMLDivElement {
       <div class="ff-arp-status"><div class="ff-arp-row">Loading…</div></div>
       <div class="ff-arp-row-head">Your season numbers</div>
       <div class="ff-arp-profile"><div class="ff-arp-row">Loading…</div></div>
+      </div>
     </div>
   `;
 
   el.querySelector('.ff-arp-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-arp-close')?.addEventListener('click', () => setExpanded(false));
+  el.querySelectorAll<HTMLButtonElement>('.ff-arp-tab').forEach((b) =>
+    b.addEventListener('click', () => setTab(b.dataset.tab === 'mastery' ? 'mastery' : 'advisor')),
+  );
 
   el.querySelectorAll<HTMLInputElement>('.ff-arp-notif-toggle').forEach((notifToggle) => {
     const id = notifToggle.dataset.notifId as keyof NotificationPreferences;
@@ -271,5 +419,6 @@ export function initArenaOverlay(): void {
     if (area !== 'local') return;
     if (STORAGE_KEYS.NOTIFICATION_PREFERENCES in changes) void refreshNotifToggles();
     if (expanded && (STORAGE_KEYS.ARENA_WATCH_STATUS in changes || STORAGE_KEYS.ARENA_MY_PROFILE in changes)) void refresh();
+    if (expanded && activeTab === 'mastery' && STORAGE_KEYS.ARENA_MASTERY in changes) void refreshMastery();
   });
 }

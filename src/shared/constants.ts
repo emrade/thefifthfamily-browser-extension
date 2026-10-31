@@ -31,6 +31,7 @@ export const STORAGE_KEYS = {
   GARAGE_DO_NOT_TOUCH: 'ff_garage_do_not_touch',
   ARENA_WATCH_STATUS: 'ff_arena_watch_status',
   ARENA_MY_PROFILE: 'ff_arena_my_profile',
+  ARENA_MASTERY: 'ff_arena_mastery',
   ARENA_TRACK_RECORD: 'ff_arena_track_record',
   ARENA_LINEUP_POINTS: 'ff_arena_lineup_points',
   REAL_ESTATE_VAULTS: 'ff_real_estate_vaults',

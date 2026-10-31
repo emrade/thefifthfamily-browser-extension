@@ -25,6 +25,7 @@ import {
   type PotFight,
 } from '@/shared/arenaCombat';
 import type { ArenaBand, ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
+import { MASTERY_TIER_LABEL, neededForMastery, type ArenaMasteryState } from '@/shared/arenaMastery';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 
 /**
@@ -122,6 +123,7 @@ const CSS = `
 #${BANNER_ID} .ff-arv-word.ff-arv-avoid { background: none; }
 #${BANNER_ID} .ff-arv-note { color: #8b8578; font-size: 0.68rem; margin-top: 6px; }
 #${BANNER_ID} .ff-arv-warn { color: #f87171; font-weight: 700; }
+#${BANNER_ID} .ff-arv-mastery { color: #e8c766; font-weight: 700; }
 `;
 
 /** How long a result that went against its verdict stays in the banner. */
@@ -130,6 +132,9 @@ const SURPRISE_SHOW_MS = 24 * 60 * 60_000;
 let profile: ArenaMyProfile | null = null;
 let trackRecord: ArenaTrackRecord | null = null;
 let lineupRecord: ArenaLineupPoints | null = null;
+// The "Arena Needed for Mastery" page setting, and the progress it reads.
+let masteryTag = false;
+let mastery: ArenaMasteryState | null = null;
 /** The verdict each opponent's card showed at its latest paint, by name, so
  *  a fight's result can be scored against what the player saw before
  *  attacking. Never cleared on repaint: the game reloads the page right
@@ -482,8 +487,16 @@ function paint(): void {
       what = `${word} (${chance}) — fight it only if your pot is under <b>~${fmt(limit)}</b> when you get there; above that, <span class="ff-arv-warn">bank and skip it</span>.`;
       bossIsSkip = limit < bench.points;
     }
+    const need = masteryTag ? neededForMastery(mastery, boss.card.name) : null;
+    const masteryNote = need
+      ? ` <span class="ff-arv-mastery">Needed for Mastery: ${
+          need.left === 1
+            ? `the last ${MASTERY_TIER_LABEL[need.tier].replace(/s$/, '')} left for`
+            : `1 of ${need.left} ${MASTERY_TIER_LABEL[need.tier]} left for`
+        } +${need.bonus}% ${escapeHtml(need.family.stat)}, permanent.</span>`
+      : '';
     lines.push(
-      `<div class="ff-arv-line"><span class="ff-arv-label">Boss</span><span class="ff-arv-text">${escapeHtml(boss.card.name)} (${fam}STR ${fmt(boss.card.strength)}, your break-even ~${fmt(bossVerdict.maxStrength)}): ${what}</span></div>`,
+      `<div class="ff-arv-line"><span class="ff-arv-label">Boss</span><span class="ff-arv-text">${escapeHtml(boss.card.name)} (${fam}STR ${fmt(boss.card.strength)}, your break-even ~${fmt(bossVerdict.maxStrength)}): ${what}${masteryNote}</span></div>`,
     );
   }
 
@@ -593,8 +606,18 @@ function wireDetailEvents(): void {
   });
 }
 
-export function initArenaFightAdvisor(): void {
+export function initArenaFightAdvisor(withMasteryTag = false): void {
   enabled = true;
+  masteryTag = withMasteryTag;
+  if (masteryTag) {
+    storage
+      .getArenaMastery()
+      .then((m) => {
+        mastery = m;
+        schedulePaint();
+      })
+      .catch((err) => console.error(LOG_PREFIX, 'arena advisor mastery read failed', err));
+  }
   injectStyleOnce(STYLE_ID, CSS);
   injectDetailStyles();
   wireDetailEvents();
@@ -615,6 +638,10 @@ export function initArenaFightAdvisor(): void {
     if (area !== 'local') return;
     if (STORAGE_KEYS.ARENA_MY_PROFILE in changes) {
       profile = (changes[STORAGE_KEYS.ARENA_MY_PROFILE].newValue as ArenaMyProfile | undefined) ?? null;
+      schedulePaint();
+    }
+    if (masteryTag && STORAGE_KEYS.ARENA_MASTERY in changes) {
+      mastery = (changes[STORAGE_KEYS.ARENA_MASTERY].newValue as ArenaMasteryState | undefined) ?? null;
       schedulePaint();
     }
     if (STORAGE_KEYS.ARENA_LINEUP_POINTS in changes) {

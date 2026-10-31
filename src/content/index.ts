@@ -25,6 +25,7 @@ import { initAchievementChip } from './shared/achievementChip';
 import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
 import { initArenaOverlay } from './features/arena/overlay';
 import { handleCapturedRequest as handleArenaFightAdvisor, initArenaFightAdvisor } from './features/arena/fightAdvisor';
+import { handleCapturedRequest as handleArenaMastery } from './features/arena/mastery';
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
 import { initInventoryAutoSell } from './features/inventory/autoSell';
 import { initFuryCatcherPanel } from './features/halloween/furyCatcherPanel';
@@ -39,6 +40,7 @@ const handlers = [
   handleFightClub,
   handleStreetIntel,
   handleArenaFightAdvisor,
+  handleArenaMastery,
   handleInventoryQuickSell,
   handleRealEstateVaults,
 ];
@@ -180,7 +182,7 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
       initArenaOverlay();
     }
     if (prefs.arenaFightAdvisor) {
-      initArenaFightAdvisor();
+      initArenaFightAdvisor(prefs.arenaMasteryTag);
     }
     if (prefs.furyCatcherPanel) {
       initFuryCatcherPanel();

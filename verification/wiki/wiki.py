@@ -33,6 +33,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
@@ -52,10 +53,18 @@ def url_for(section):
 
 def download(section):
     req = urllib.request.Request(url_for(section), headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        if resp.status != 200:
-            raise SystemExit(f"{section}: HTTP {resp.status}")
-        return resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            # Some sections (arena, combat) are only in the game's own wiki panel.
+            raise SystemExit(
+                f"{section}: not on the public wiki (404) — it's in-game only. Open it in the game's wiki, "
+                f"export the archive, then run: wiki.py ingame {section}")
+        raise SystemExit(f"{section}: HTTP {err.code} from the public wiki")
+    except urllib.error.URLError as err:
+        raise SystemExit(f"{section}: couldn't reach the public wiki ({err.reason})")
 
 
 def copies(section):

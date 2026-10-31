@@ -45,6 +45,7 @@ import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
 import type { PlayerIntelMods } from './streetIntelPredict';
+import type { ArenaMasteryState } from './arenaMastery';
 
 // No job selected yet — the popup's job picker is what actually populates
 // careerId/careerName/energyCost/otEnergyCost, from a live CareerCatalogEntry,
@@ -314,6 +315,10 @@ export const storage = {
   // `attack` responses; `null` until one of those has been seen.
   getArenaMyProfile: () => get<ArenaMyProfile | null>(STORAGE_KEYS.ARENA_MY_PROFILE, null),
   setArenaMyProfile: (v: ArenaMyProfile) => set(STORAGE_KEYS.ARENA_MY_PROFILE, v),
+  /** Arena Mastery progress — the Ticket Exchange's record plus boss wins
+   *  since (see `@/shared/arenaMastery`). Written by the content script. */
+  getArenaMastery: () => get<ArenaMasteryState>(STORAGE_KEYS.ARENA_MASTERY, { syncedAt: null, ticketsHeld: null, beaten: [], winsSinceSync: 0 }),
+  setArenaMastery: (v: ArenaMasteryState) => set(STORAGE_KEYS.ARENA_MASTERY, v),
 
   // Live verdict-vs-result record, written by the fight advisor; `null`
   // until its first judged fight.
