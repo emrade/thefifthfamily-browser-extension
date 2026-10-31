@@ -36,7 +36,8 @@ import {
   FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
   REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
   STORAGE_KEYS,
-  STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR,
+  STREET_INTEL_AUTO_DEFAULT_EXTREME_MIN_VALUE,
+  STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE,
   STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 } from './constants';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
@@ -56,6 +57,12 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
   shiftMode: 'normal',
 };
 
+/** "Big cards only" fields, replaced by `minCardValue` — read once to migrate. */
+interface LegacyStreetIntelAutoConfig {
+  bigCardsOnly?: boolean;
+  bigCardFloor?: number;
+}
+
 const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   enabled: false,
   minSuccessPct: STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
@@ -68,8 +75,9 @@ const DEFAULT_STREET_INTEL_AUTO_CONFIG: StreetIntelAutoConfig = {
   // non-smart scouting behavior — see `StreetIntelAutoConfig.scoutMode`.
   scoutMode: 'topPayout',
   complicationMode: 'reuse',
-  bigCardsOnly: false,
-  bigCardFloor: STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR,
+  minCardValue: STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE,
+  extremeMinEnabled: false,
+  extremeMinValue: STREET_INTEL_AUTO_DEFAULT_EXTREME_MIN_VALUE,
 };
 
 // All three default off, no exception for `watchEnabled` — every kill switch
@@ -209,8 +217,15 @@ export const storage = {
 
   // Same merge-with-defaults/simple-nullable split as the Career Auto pair above.
   getStreetIntelAutoConfig: async (): Promise<StreetIntelAutoConfig> => {
-    const stored = await get<Partial<StreetIntelAutoConfig>>(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG, {});
-    return { ...DEFAULT_STREET_INTEL_AUTO_CONFIG, ...stored };
+    const stored = await get<Partial<StreetIntelAutoConfig> & LegacyStreetIntelAutoConfig>(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG, {});
+    const { bigCardsOnly, bigCardFloor, ...rest } = stored;
+    const config = { ...DEFAULT_STREET_INTEL_AUTO_CONFIG, ...rest };
+    // A config saved before the minimum card value replaced "Big cards only"
+    // keeps what it did: its floor if that was on, no minimum if it was off.
+    if (rest.minCardValue === undefined && Object.keys(stored).length > 0) {
+      config.minCardValue = bigCardsOnly === true ? (bigCardFloor ?? STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE) : 0;
+    }
+    return config;
   },
   setStreetIntelAutoConfig: (v: StreetIntelAutoConfig) => set(STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG, v),
 
@@ -220,6 +235,11 @@ export const storage = {
    *  background/features/streetIntel/complicationTally.ts. Background-only writer. */
   getStreetIntelComplicationTally: () => get<ComplicationTypeStats>(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, {}),
   setStreetIntelComplicationTally: (v: ComplicationTypeStats) => set(STORAGE_KEYS.STREET_INTEL_COMPLICATION_TALLY, v),
+  /** The seed cutoff once Street Intel Analytics has loaded its archive-built
+   *  history (and replayed the extension's own archive after it) — see
+   *  background/features/streetIntel/analytics/. Null until then. */
+  getStreetIntelAnalyticsSeeded: () => get<number | null>(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, null),
+  setStreetIntelAnalyticsSeeded: (v: number) => set(STORAGE_KEYS.STREET_INTEL_ANALYTICS_SEEDED, v),
 
   // Same merge-with-defaults reasoning as the prefs above.
   getRealEstateAdvisorPreferences: async (): Promise<RealEstateAdvisorPreferences> => {

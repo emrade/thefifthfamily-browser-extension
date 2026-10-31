@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { NumberInput } from '@/popup/views/NumberInput';
-import { ALARM_NAMES, STORAGE_KEYS, STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE } from '@/shared/constants';
+import { ALARM_NAMES, STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
+import { StreetIntelAnalyticsSection } from './StreetIntelAnalyticsSection';
 
 const COMPLICATION_KEYS: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
 
@@ -29,7 +30,7 @@ const COMPLICATION_MODE_LABEL: Record<string, string> = { reuse: 'reuse approach
 
 function modeTallyLabel(key: string): string {
   const [scout, complication, big] = key.split('+');
-  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${big ? ' · big cards only' : ''}`;
+  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${big ? ' · card minimum' : ''}`;
 }
 
 function riskLabel(tier: string): string {
@@ -57,7 +58,9 @@ export function StreetIntelAutoHome() {
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area !== 'local') return;
       if (STORAGE_KEYS.STREET_INTEL_AUTO_STATUS in changes) setStatus(changes[STORAGE_KEYS.STREET_INTEL_AUTO_STATUS].newValue ?? null);
-      if (STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG in changes) setConfig(changes[STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG].newValue ?? null);
+      // Re-read rather than taking `newValue`: the getter migrates a config
+      // saved before the minimum card value existed.
+      if (STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG in changes) void storage.getStreetIntelAutoConfig().then(setConfig);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -136,15 +139,30 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, scoutMode: smart ? 'smart' : 'topPayout' });
   }
 
-  function setBigCardsOnly(on: boolean) {
-    if (!config) return;
-    saveConfig({ ...config, bigCardsOnly: on });
+  // Entered in $k, stored in dollars.
+  function setMinCardValueK(valueK: number) {
+    if (!config || !Number.isFinite(valueK)) return;
+    saveConfig({ ...config, minCardValue: Math.max(0, Math.round(valueK)) * 1_000 });
   }
 
-  // Entered in $k, stored in dollars.
-  function setBigCardFloorK(valueK: number) {
+  function setExtremeMinEnabled(on: boolean) {
+    if (!config) return;
+    saveConfig({ ...config, extremeMinEnabled: on });
+  }
+
+  function setExtremeMinValueK(valueK: number) {
     if (!config || !Number.isFinite(valueK)) return;
-    saveConfig({ ...config, bigCardFloor: Math.max(0, Math.round(valueK)) * 1_000 });
+    saveConfig({ ...config, extremeMinValue: Math.max(0, Math.round(valueK)) * 1_000 });
+  }
+
+  function applySuggestedMinimum(value: number) {
+    if (!config) return;
+    saveConfig({ ...config, minCardValue: value });
+  }
+
+  function applySuggestedExtreme(value: number) {
+    if (!config) return;
+    saveConfig(value > 0 ? { ...config, extremeMinEnabled: true, extremeMinValue: value } : { ...config, extremeMinEnabled: false });
   }
 
   function setComplicationMode(avoidBlocked: boolean) {
@@ -261,32 +279,52 @@ export function StreetIntelAutoHome() {
         />
       </label>
 
-      <label class="ff-toggle-row">
-        <div class="ff-toggle-row__text">
-          <div class="ff-toggle-row__title">Big cards only</div>
-          <div class="ff-toggle-row__status">
-            {config.bigCardsOnly
-              ? `Only cards paying ${formatFloor(config.bigCardFloor)}+; takes any card once Stamina is ${Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full.`
-              : 'Off — takes any card that clears the success floor.'}
-          </div>
-        </div>
-        <input type="checkbox" class="ff-toggle" checked={config.bigCardsOnly} onChange={(e) => setBigCardsOnly((e.target as HTMLInputElement).checked)} />
-      </label>
-
       <div class="ff-field">
-        <div class="ff-field__label">Big card floor ($k)</div>
+        <div class="ff-field__label">Minimum card value ($k)</div>
         <div class="ff-field__hint">
-          Compared with the middle of a card's pay range: at 900, "$686k – $1.2M" counts and "$617k – $1.08M" doesn't.
-          $1M+ cards paid over twice as much cash per Stamina as smaller ones (Oct 10–28). Cheaper cards aren't scouted while
-          this is on, so Stamina builds up for big ones — until the bar is {Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full, when it takes
-          any card so regen isn't wasted.
+          Cards worth less are skipped and not scouted, so Stamina is saved for bigger ones — they pay far more per
+          Stamina. Compared with the middle of a card's pay range: at 750, "$600k – $1M" counts and "$500k – $900k"
+          doesn't. Once Stamina is {Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100)}% full it takes any card, so regen isn't wasted. 0 means no
+          minimum. See the suggested value under Analytics below.
         </div>
         <NumberInput
           class="ff-select ff-field__control"
           min={0}
           step={50}
-          value={Math.round(config.bigCardFloor / 1_000)}
-          onCommit={setBigCardFloorK}
+          value={Math.round(config.minCardValue / 1_000)}
+          onCommit={setMinCardValueK}
+        />
+      </div>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Extreme cards need more</div>
+          <div class="ff-toggle-row__status">
+            {config.extremeMinEnabled
+              ? `Extreme cards need ${formatFloor(Math.max(config.minCardValue, config.extremeMinValue))}+.`
+              : 'Off — extreme cards use the same minimum as the rest.'}
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.extremeMinEnabled}
+          onChange={(e) => setExtremeMinEnabled((e.target as HTMLInputElement).checked)}
+        />
+      </label>
+
+      <div class="ff-field">
+        <div class="ff-field__label">Extreme card minimum ($k)</div>
+        <div class="ff-field__hint">
+          Extreme cards fail about 40% of the time at every size, but under $1M they paid no more per Stamina than
+          high-risk cards that fail half as often (Aug 10 – Oct 30, 142 attempts). Used while the switch above is on.
+        </div>
+        <NumberInput
+          class="ff-select ff-field__control"
+          min={0}
+          step={50}
+          value={Math.round(config.extremeMinValue / 1_000)}
+          onCommit={setExtremeMinValueK}
         />
       </div>
 
@@ -310,6 +348,9 @@ export function StreetIntelAutoHome() {
           })}
         </>
       )}
+
+      <div class="ff-section-label">Analytics</div>
+      <StreetIntelAnalyticsSection config={config} status={status} onApplyMinimum={applySuggestedMinimum} onApplyExtreme={applySuggestedExtreme} />
 
       <div class="ff-section-label">Status</div>
 

@@ -946,14 +946,21 @@ export interface StreetIntelAutoConfig {
    *  2026-10-04 analysis and cost 86% of all complication cash lost
    *  (verification/street-intel/verify_complication_blocked_choices.py). */
   complicationMode: StreetIntelComplicationMode;
-  /** "Big cards only": skip (and don't scout) any card whose reward midpoint
-   *  is under `bigCardFloor`, saving Stamina for bigger ones — they pay far
-   *  more per Stamina (see `STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR`). Off
-   *  by default. Lifted while Stamina is at least
-   *  `STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE` of max, so a full bar
-   *  never wastes regen. */
-  bigCardsOnly: boolean;
-  bigCardFloor: number;
+  /** Minimum card value: skip (and don't scout) any card whose reward
+   *  midpoint is under this, saving Stamina for bigger ones — they pay far
+   *  more per Stamina (see `STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE`). 0
+   *  means no minimum. Lifted while Stamina is at least
+   *  `STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE` of max, so a full bar never
+   *  wastes regen. Replaced the "Big cards only" toggle and its floor. */
+  minCardValue: number;
+  /** Extreme-risk cards must also be worth `extremeMinValue` — they fail ~40%
+   *  of the time under $1M while paying about the same per Stamina as
+   *  high-risk cards of the same size (Aug 10–Oct 30: 142 attempts), so it
+   *  cuts failures at roughly no change in cash. Off by default; the
+   *  Analytics tab suggests it only if it would add cash. Lifted with
+   *  `minCardValue` once Stamina is near full. */
+  extremeMinEnabled: boolean;
+  extremeMinValue: number;
 }
 
 export type StreetIntelScoutMode = 'topPayout' | 'smart';
@@ -1168,13 +1175,13 @@ export interface StreetIntelAutoStatus {
  *  blocked checks still poll, since bailing out or a discharge can end it
  *  early. `stamina` is the cheapest scout + attempt on the board; `no-pick`
  *  means nothing affordable cleared the success floor (or nothing was listed);
- *  `saving` is "Big cards only" waiting for a card at its floor. */
+ *  `saving` is waiting for a card at the minimum card value. */
 export type StreetIntelAutoWaiting =
   | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
   | { kind: 'stamina'; need: number; have: number }
   | { kind: 'no-pick' }
-  /** "Big cards only" found nothing at or above its floor and is saving
-   *  Stamina until one appears (or the bar reaches its release point). */
+  /** Nothing on the board meets the minimum card value; saving Stamina
+   *  until one appears (or the bar reaches its release point). */
   | { kind: 'saving'; floor: number; have: number; releaseAt: number };
 
 /**

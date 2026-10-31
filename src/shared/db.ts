@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { District, DistrictVisit, PetRosterEntry, StockPricePoint, StockRumorRecord } from './types';
+import type { SiAnalyticsDay, SiAttemptRecord, SiCardRecord } from './streetIntelAnalytics';
 import type { EndpointProfile, RequestLogEntry } from './requestLog/types';
 
 // The database name itself (`FifthFamilyTradeAssistant`) is left as-is despite the
@@ -15,6 +16,9 @@ const db = new Dexie('FifthFamilyTradeAssistant') as Dexie & {
   petRoster: EntityTable<PetRosterEntry, 'userPetId'>;
   stockPrices: EntityTable<StockPricePoint, 'id'>;
   stockRumors: EntityTable<StockRumorRecord, 'rumorCode'>;
+  siCards: EntityTable<SiCardRecord, 'id'>;
+  siAttempts: EntityTable<SiAttemptRecord, 'id'>;
+  siDays: EntityTable<SiAnalyticsDay, 'day'>;
 };
 
 db.version(1).stores({
@@ -90,6 +94,17 @@ db.version(7).stores({
   customsEvents: null,
   travelLegs: null,
   riskObservations: null,
+});
+
+// Street Intel Analytics (see background/features/streetIntel/analytics/):
+// every card seen on the board and every attempt, keyed on the game's own
+// `opportunity_id` so re-reading a panel or replaying the archive is a plain
+// overwrite. `siDays` holds per-game-day totals that aren't per-card (paid
+// scout Stamina). Drops are valued from the inventory's QuickSellPriceBook.
+db.version(8).stores({
+  siCards: 'id, firstSeen',
+  siAttempts: 'id, at',
+  siDays: 'day',
 });
 
 /** Wipes the derived, player-facing tables — everything behind the numbers shown in

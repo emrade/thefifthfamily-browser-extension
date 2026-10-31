@@ -1,9 +1,11 @@
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
-import { STORAGE_KEYS, STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE, STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR } from '@/shared/constants';
+import { STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import type { StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
+import { ANALYTICS_CSS, renderStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
 import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 
 /**
@@ -18,9 +20,12 @@ import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/type
  * Deliberately lighter than the popup's own StreetIntelAutoHome — no minimum
  * success %, odds mode, last-cycle-scouted breakdown, or complication history
  * here; that's config/analysis, not the daily-glance snapshot this exists
- * for. Adjust those in the popup. The two strategy switches (smart scouting,
- * smart complication choices) are the exception: they're on/off toggles the
- * player wants to flip back quickly from the page if a new mode misbehaves.
+ * for. Adjust those in the popup. The strategy switches (smart scouting,
+ * smart complication choices) and the card minimums are the exception: the
+ * player plays from this page and rarely opens the popup, which closes
+ * easily. The Analytics tab is the same view as the popup's (see
+ * `@/shared/streetIntelAnalyticsView`), asked of background since its
+ * records live in IndexedDB.
  *
  * `StreetIntelAutoConfig`/`StreetIntelAutoStatus` live in `chrome.storage.local`,
  * which (unlike Dexie's `db`) a content script can read/write directly — no
@@ -143,6 +148,26 @@ const PANEL_CSS = `
 }
 .ff-sip-run:hover:not(:disabled) { border-color: #c9a84c; }
 .ff-sip-run:disabled { opacity: 0.45; cursor: default; }
+
+#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-panel { width: 360px; }
+.ff-sip-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.ff-sip-tab {
+  flex: 1; padding: 5px 8px; border-radius: 7px; cursor: pointer;
+  font-family: 'Inter', system-ui, sans-serif; font-size: 10.5px; font-weight: 700;
+  background: transparent; border: 1px solid rgba(201,168,76,0.25); color: #8b8578;
+}
+.ff-sip-tab.ff-sip-tab-active { background: rgba(201,168,76,0.14); border-color: rgba(201,168,76,0.6); color: #f1d98a; }
+#${CONTAINER_ID} .ff-sip-pane-analytics { display: none; }
+#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-pane-analytics { display: block; }
+#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-pane-auto { display: none; }
+.ff-sip-field { margin: -4px 0 12px; padding: 0 2px; }
+.ff-sip-field-row { display: flex; align-items: center; gap: 8px; }
+.ff-sip-field-label { flex: 1; font-size: 11px; font-weight: 700; color: #f1ede2; }
+.ff-sip-input {
+  width: 74px; padding: 4px 6px; border-radius: 6px; text-align: right;
+  font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 11.5px;
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(201,168,76,0.34); color: #f1ede2;
+}
 `;
 
 let panelEl: HTMLDivElement | null = null;
@@ -159,6 +184,9 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let ticks = 0;
 let running = false;
 let runError: string | null = null;
+let activeTab: 'auto' | 'analytics' = 'auto';
+let analytics: StreetIntelAnalytics | null = null;
+let analyticsError = false;
 
 function localDateKey(): string {
   const d = new Date();
@@ -270,15 +298,59 @@ function renderToggle(): void {
     cplxStatus.textContent = smartComplications ? 'Avoids choices that never win in that scenario.' : 'Off — reuses the attempt approach.';
   }
 
-  // `=== true` and a fallback floor for the same raw-stored-config reason as above.
-  const bigOnly = config.bigCardsOnly === true;
-  const bigToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-big-toggle');
-  const bigStatus = panelEl.querySelector('.ff-sip-big-status');
-  if (bigToggle) bigToggle.checked = bigOnly;
-  if (bigStatus) {
-    bigStatus.textContent = bigOnly
-      ? `Only cards paying ${formatFloor(config.bigCardFloor ?? STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR)}+ until Stamina is ${Math.round(STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE * 100)}% full. Set the amount in the popup.`
-      : 'Off — takes any card that clears the success floor.';
+  const release = Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100);
+  setInputValue('.ff-sip-min-input', Math.round(config.minCardValue / 1_000));
+  const minHint = panelEl.querySelector('.ff-sip-min-hint');
+  if (minHint) {
+    minHint.textContent =
+      config.minCardValue > 0
+        ? `Skips cards worth under ${formatFloor(config.minCardValue)} (middle of the pay range) until Stamina is ${release}% full. 0 = no minimum.`
+        : 'No minimum — takes any card that clears the success floor.';
+  }
+
+  const extremeToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
+  const extremeStatus = panelEl.querySelector('.ff-sip-extreme-status');
+  if (extremeToggle) extremeToggle.checked = config.extremeMinEnabled;
+  if (extremeStatus) {
+    extremeStatus.textContent = config.extremeMinEnabled
+      ? `Extreme cards need ${formatFloor(Math.max(config.minCardValue, config.extremeMinValue))}+.`
+      : 'Off — extreme cards use the same minimum.';
+  }
+  setInputValue('.ff-sip-extreme-input', Math.round(config.extremeMinValue / 1_000));
+}
+
+/** Leaves a field alone while it's being typed in. */
+function setInputValue(selector: string, value: number): void {
+  const input = panelEl?.querySelector<HTMLInputElement>(selector);
+  if (input && document.activeElement !== input) input.value = String(value);
+}
+
+function renderAnalytics(): void {
+  const pane = panelEl?.querySelector('.ff-sip-pane-analytics');
+  if (!pane || !config) return;
+  if (analytics) pane.innerHTML = renderStreetIntelAnalytics(analytics, config);
+  else pane.innerHTML = `<div class="ff-sip-empty">${analyticsError ? 'Could not load analytics. Try again in a moment.' : 'Loading analytics…'}</div>`;
+}
+
+async function refreshAnalytics(): Promise<void> {
+  if (!expanded || activeTab !== 'analytics') return;
+  try {
+    analytics = (await chrome.runtime.sendMessage({ type: 'street-intel-analytics-requested' })) as StreetIntelAnalytics;
+    analyticsError = false;
+  } catch (err) {
+    console.error(LOG_PREFIX, 'street intel status panel analytics read failed', err);
+    analyticsError = true;
+  }
+  renderAnalytics();
+}
+
+function setTab(tab: 'auto' | 'analytics'): void {
+  activeTab = tab;
+  panelEl?.classList.toggle('ff-sip-tab-analytics', tab === 'analytics');
+  panelEl?.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) => b.classList.toggle('ff-sip-tab-active', b.dataset.tab === tab));
+  if (tab === 'analytics') {
+    renderAnalytics();
+    void refreshAnalytics();
   }
 }
 
@@ -338,14 +410,18 @@ function setExpanded(next: boolean): void {
   panelEl?.classList.toggle('ff-sip-expanded', expanded);
   if (expanded) {
     refresh();
+    void refreshAnalytics();
     // Ticks the "Next Check" countdown live while the panel is open — a
     // plain re-render off already-fetched state, no network/game call, so a
     // 1s cadence costs nothing. Matches the popup's own countdown cadence.
     // The alarm itself is re-read every 5s, since some checks reschedule
     // without writing status — same cadence as the Careers panel.
     if (tickTimer === null) {
+      // Analytics every 30s while its tab is open: manual attempts on this
+      // page don't touch the auto status, so they'd otherwise go unseen.
       tickTimer = setInterval(() => {
-        if (++ticks % 5 === 0) void refreshNextAlarm().then(renderAll);
+        if (++ticks % 30 === 0) void refreshAnalytics();
+        if (ticks % 5 === 0) void refreshNextAlarm().then(renderAll);
         else renderAll();
       }, 1_000);
     }
@@ -368,6 +444,12 @@ function buildPanel(): HTMLDivElement {
         ${brandBadgeHtml('Street Intel')}
         <button class="ff-sip-close" type="button" title="Collapse">✕</button>
       </div>
+      <div class="ff-sip-tabs">
+        <button class="ff-sip-tab ff-sip-tab-active" type="button" data-tab="auto">Auto</button>
+        <button class="ff-sip-tab" type="button" data-tab="analytics">Analytics</button>
+      </div>
+      <div class="ff-sip-pane-analytics"></div>
+      <div class="ff-sip-pane-auto">
       <label class="ff-sip-toggle-row">
         <div class="ff-sip-toggle-row__text">
           <div class="ff-sip-toggle-row__title">Auto-Attempt</div>
@@ -391,14 +473,29 @@ function buildPanel(): HTMLDivElement {
         </div>
         <input class="ff-sip-cplx-toggle ff-sip-toggle" type="checkbox">
       </label>
+      <div class="ff-sip-field">
+        <div class="ff-sip-field-row">
+          <span class="ff-sip-field-label">Minimum card value ($k)</span>
+          <input class="ff-sip-input ff-sip-min-input" type="number" min="0" step="50">
+        </div>
+        <div class="ff-sip-hint ff-sip-min-hint"></div>
+      </div>
       <label class="ff-sip-toggle-row">
         <div class="ff-sip-toggle-row__text">
-          <div class="ff-sip-toggle-row__title">Big cards only</div>
-          <div class="ff-sip-toggle-row__status ff-sip-big-status">Loading…</div>
+          <div class="ff-sip-toggle-row__title">Extreme cards need more</div>
+          <div class="ff-sip-toggle-row__status ff-sip-extreme-status">Loading…</div>
         </div>
-        <input class="ff-sip-big-toggle ff-sip-toggle" type="checkbox">
+        <input class="ff-sip-extreme-toggle ff-sip-toggle" type="checkbox">
       </label>
+      <div class="ff-sip-field">
+        <div class="ff-sip-field-row">
+          <span class="ff-sip-field-label">Extreme minimum ($k)</span>
+          <input class="ff-sip-input ff-sip-extreme-input" type="number" min="0" step="50">
+        </div>
+        <div class="ff-sip-hint">Under $1M, extreme cards failed ~40% and paid no more per Stamina than high-risk ones.</div>
+      </div>
       <div class="ff-sip-status"><div class="ff-sip-empty">Loading…</div></div>
+      </div>
     </div>
   `;
 
@@ -425,8 +522,39 @@ function buildPanel(): HTMLDivElement {
   const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
   cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
 
-  const bigToggle = el.querySelector<HTMLInputElement>('.ff-sip-big-toggle');
-  bigToggle?.addEventListener('change', () => writeConfig({ bigCardsOnly: bigToggle.checked }));
+  // Entered in $k, stored in dollars; committed on change (Enter or leaving the field).
+  const thousands = (input: HTMLInputElement): number | null => {
+    const value = Number(input.value);
+    return input.value.trim() !== '' && Number.isFinite(value) ? Math.max(0, Math.round(value)) * 1_000 : null;
+  };
+  const minInput = el.querySelector<HTMLInputElement>('.ff-sip-min-input');
+  minInput?.addEventListener('change', () => {
+    const value = thousands(minInput);
+    if (value !== null) writeConfig({ minCardValue: value });
+  });
+
+  const extremeToggle = el.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
+  extremeToggle?.addEventListener('change', () => writeConfig({ extremeMinEnabled: extremeToggle.checked }));
+  const extremeInput = el.querySelector<HTMLInputElement>('.ff-sip-extreme-input');
+  extremeInput?.addEventListener('change', () => {
+    const value = thousands(extremeInput);
+    if (value !== null) writeConfig({ extremeMinValue: value });
+  });
+
+  el.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) =>
+    b.addEventListener('click', () => setTab(b.dataset.tab === 'analytics' ? 'analytics' : 'auto')),
+  );
+  el.querySelector('.ff-sip-pane-analytics')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const minimum = target.closest<HTMLButtonElement>('.ff-sia-apply');
+    if (minimum?.dataset.value) writeConfig({ minCardValue: Number(minimum.dataset.value) });
+    // 0 switches the extreme rule off.
+    const extreme = target.closest<HTMLButtonElement>('.ff-sia-apply-extreme');
+    if (extreme?.dataset.value) {
+      const value = Number(extreme.dataset.value);
+      writeConfig(value > 0 ? { extremeMinEnabled: true, extremeMinValue: value } : { extremeMinEnabled: false });
+    }
+  });
 
   return el;
 }
@@ -439,7 +567,7 @@ function updateVisibility(): void {
 }
 
 export function initStreetIntelStatusPanel(): void {
-  injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + PANEL_CSS);
+  injectStyleOnce(STYLE_ID, BRAND_BADGE_CSS + PANEL_CSS + ANALYTICS_CSS);
 
   panelEl = buildPanel();
   (document.body ?? document.documentElement).appendChild(panelEl);
@@ -453,12 +581,19 @@ export function initStreetIntelStatusPanel(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (STORAGE_KEYS.STREET_INTEL_AUTO_STATUS in changes) {
+      const previousAttemptAt = status?.lastAttempt?.timestamp;
       status = changes[STORAGE_KEYS.STREET_INTEL_AUTO_STATUS].newValue ?? null;
       renderAll();
+      if (status?.lastAttempt?.timestamp !== previousAttemptAt) void refreshAnalytics();
     }
     if (STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG in changes) {
-      config = changes[STORAGE_KEYS.STREET_INTEL_AUTO_CONFIG].newValue ?? null;
-      renderAll();
+      // Re-read rather than taking `newValue`: the getter migrates a config
+      // saved before the minimum card value existed.
+      void storage.getStreetIntelAutoConfig().then((next) => {
+        config = next;
+        renderAll();
+        void refreshAnalytics();
+      });
     }
   });
 

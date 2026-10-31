@@ -15,6 +15,7 @@ import {
   initAuto as initStreetIntelAuto,
   runAutoCheckNow as runStreetIntelAutoCheckNow,
 } from './features/streetIntel';
+import { getStreetIntelAnalytics, initStreetIntelAnalytics, observeStreetIntelTraffic } from './features/streetIntel/analytics';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import { handleAlarm as handleFuryCatcherAlarm, init as initFuryCatcher, runCheckNow as runFuryCatcherCheckNow } from './features/furyCatcher';
@@ -65,7 +66,7 @@ import { init as initGameTabs, reloadGameTabs } from './features/gameTabs';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { enqueueRecord } from '@/shared/requestLog/queue';
+import { enqueueRecord, observeRecords } from '@/shared/requestLog/queue';
 import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retention';
 import { setCsrfToken } from './csrfToken';
 import { upsertRoster, getRoster } from '@/shared/petRoster';
@@ -96,6 +97,12 @@ initCareerAuto();
 // Same idea, for the Street Intel auto-attempt runner — see
 // features/streetIntel/index.ts's initAuto.
 initStreetIntelAuto();
+
+// Loads Street Intel Analytics' seed once, then records Street Intel traffic
+// as it's archived — see features/streetIntel/analytics/index.ts. Registered
+// before any message can arrive, so the seed lands before live traffic.
+initStreetIntelAnalytics();
+observeRecords(observeStreetIntelTraffic);
 
 // Same idea, for the Crime Alley auto-runner — see
 // features/crimesAuto/index.ts's init.
@@ -237,6 +244,11 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Run Now from Street Intel Auto's popup tab or in-page panel.
   if (msg.type === 'street-intel-auto-run-requested') {
     return runStreetIntelAutoCheckNow();
+  }
+
+  // The Analytics tab, popup or in-page — its records live in IndexedDB.
+  if (msg.type === 'street-intel-analytics-requested') {
+    return getStreetIntelAnalytics();
   }
 
   // Sent by the popup's Crimes Auto "Check Now" button — see that message

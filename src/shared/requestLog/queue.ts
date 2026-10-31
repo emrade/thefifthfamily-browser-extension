@@ -17,7 +17,23 @@ import { recordRequest, type RecordRequestInput } from './record';
  */
 let queue: Promise<void> = Promise.resolve();
 
+/** Background features that read traffic as it's archived (Street Intel
+ *  Analytics) — handed every request before it joins the write queue. This
+ *  is the one place both page and background traffic pass through. */
+const observers: ((input: RecordRequestInput) => void)[] = [];
+
+export function observeRecords(observer: (input: RecordRequestInput) => void): void {
+  observers.push(observer);
+}
+
 export function enqueueRecord(input: RecordRequestInput): void {
+  for (const observe of observers) {
+    try {
+      observe(input);
+    } catch (err) {
+      console.error(LOG_PREFIX, 'request observer failed for', input.url, err);
+    }
+  }
   queue = queue.then(() =>
     recordRequest(input).catch((err) => console.error(LOG_PREFIX, 'request log write failed for', input.url, err)),
   );

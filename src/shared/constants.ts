@@ -17,6 +17,7 @@ export const STORAGE_KEYS = {
   STREET_INTEL_AUTO_CONFIG: 'ff_street_intel_auto_config',
   STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
   STREET_INTEL_COMPLICATION_TALLY: 'ff_street_intel_complication_tally',
+  STREET_INTEL_ANALYTICS_SEEDED: 'ff_street_intel_analytics_seeded',
   REAL_ESTATE_ADVISOR_PREFERENCES: 'ff_real_estate_advisor_preferences',
   STOCK_MARKET_BACKFILL_DONE: 'ff_stock_market_backfill_done',
   STOCK_MARKET_POLL_STATUS: 'ff_stock_market_poll_status',
@@ -260,16 +261,23 @@ export const STREET_INTEL_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // sub-60% disaster. 50 sits just above that realized floor.
 export const STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT = 50;
 
-// "Big cards only" floor, on the card's reward midpoint (the same number the
-// runner ranks by). Since 10-10, cards with a $1M+ midpoint paid $67k-136k per
-// Stamina against $15k-46k below $1M, and 21-51 of them appeared every day,
-// enough to spend a day's Stamina on. $900k is the player's chosen default:
-// "$686k - $1.2M" (midpoint $943k) counts, "$617k - $1.08M" ($849k) doesn't.
-export const STREET_INTEL_AUTO_DEFAULT_BIG_CARD_FLOOR = 900_000;
+// Default minimum card value, on the card's reward midpoint (the same number
+// the runner ranks by). Cash per Stamina climbs steeply with card size
+// (Aug 10-Oct 30: ~$10-17k under $250k, ~$45k at $500k-1M, ~$65-75k at
+// $1-2M, ~$113k at $2M+), and Stamina is the limit — it almost never sits
+// full. $750k is where the board's supply of cards at or above it matched
+// the Stamina actually spent per day (Oct 12-30); the Analytics tab
+// recomputes that from the last 7 days and suggests a value.
+export const STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE = 750_000;
 
-// At or above this share of max Stamina, "Big cards only" takes normal cards
-// too, so regen isn't lost to a full bar while it waits for a big one.
-export const STREET_INTEL_AUTO_BIG_CARD_STAMINA_RELEASE = 0.9;
+// Extreme cards fail ~40% of the time at every size, but only pay more per
+// Stamina than high-risk cards once past $1M — see
+// `StreetIntelAutoConfig.extremeMinEnabled`.
+export const STREET_INTEL_AUTO_DEFAULT_EXTREME_MIN_VALUE = 1_000_000;
+
+// At or above this share of max Stamina, the minimum card value (and the
+// extreme rule) are lifted, so regen isn't lost to a full bar while it waits.
+export const STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE = 0.9;
 
 /** How many cards `scoutMode: 'topPayout'` scouts per cycle — the highest-
  *  paying ones. 2 beat 3 in the 2026-10-04 replay ($20.6M vs $20.1M/day):

@@ -139,6 +139,10 @@ export type ExtensionMessage =
   // Same as 'career-auto-run-requested', for Street Intel Auto-Attempt.
   // Returns the fresh `StreetIntelAutoStatus`.
   | { type: 'street-intel-auto-run-requested' }
+  // Sent by the popup's and the in-page panel's Street Intel Analytics tab.
+  // Returns the `StreetIntelAnalytics` summary — its records live in the
+  // extension's IndexedDB, which a content script can't open.
+  | { type: 'street-intel-analytics-requested' }
   // Sent from the popup's Crimes Auto tab's "Check Now" button — same
   // "run for real right now, return the resulting fresh status" exception as
   // 'stock-tracker-poll-requested'. Exists for the gap a purely time-based
