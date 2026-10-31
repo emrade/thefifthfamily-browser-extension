@@ -149,6 +149,11 @@ export function gameDay(ts: number): string {
   return new Date(ts + HOUR_MS).toISOString().slice(0, 10);
 }
 
+/** When a `gameDay` key's day begins (23:00 UTC the evening before). */
+function gameDayStart(day: string): number {
+  return Date.parse(`${day}T00:00:00Z`) - HOUR_MS;
+}
+
 /** Typical `dispose_quote` cash per quality, for an item never quoted
  *  itself — the averages across every quote archived through 2026-10-28. */
 const QUALITY_TYPICAL_PRICE: Record<string, number> = {
@@ -278,6 +283,11 @@ export function buildStreetIntelAnalytics(
   prices: Map<string, number>,
   config: CardMinimumConfig,
   now: number,
+  /** The oldest card `cards` can hold (load window or retention): a day
+   *  starting before it is only partly there, and its supply would read
+   *  low. On 2026-10-31 a 9-day load window cut Oct 22 to 242 of its 431
+   *  cards and dragged the suggestion from $800k to $550k. */
+  cardsSince = 0,
 ): StreetIntelAnalytics {
   const today = gameDay(now);
 
@@ -326,7 +336,10 @@ export function buildStreetIntelAnalytics(
 
   // Board supply vs Stamina spent, on days the board was actually watched.
   const supplyDays = previous
-    .filter((d) => d.attempts >= SUPPLY_MIN_ATTEMPTS && (cardsByDay.get(d.day)?.length ?? 0) >= SUPPLY_MIN_CARDS)
+    .filter(
+      (d) =>
+        gameDayStart(d.day) >= cardsSince && d.attempts >= SUPPLY_MIN_ATTEMPTS && (cardsByDay.get(d.day)?.length ?? 0) >= SUPPLY_MIN_CARDS,
+    )
     .slice(0, RECENT_DAYS);
   const mean = (values: number[]) => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
   const supply: SiSupply = {

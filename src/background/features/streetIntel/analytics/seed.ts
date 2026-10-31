@@ -31,6 +31,10 @@ const data = seed as unknown as Seed;
 /** The newest archived row the seed was built from. */
 export const ANALYTICS_SEED_CUTOFF = data.cutoff;
 
+/** The seed's board history starts here (its oldest card); the day it falls
+ *  in is only partly covered. */
+export const ANALYTICS_SEED_CARDS_FROM = data.cards.length ? Math.min(...data.cards.map((c) => c[1])) : data.cutoff;
+
 function decodeDrop([name, quality, type, header]: SeedDrop): SiDrop {
   return { name, quality, type, header: header === 1 };
 }

@@ -6,7 +6,7 @@ import type { RecordRequestInput } from '@/shared/requestLog/record';
 import { buildStreetIntelAnalytics, gameDay, type SiAttemptRecord, type SiDrop, type StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
 import type { StreetIntelAnalyticsSeedState } from '@/shared/types';
 import { parseStreetIntelOpportunities } from '../streetIntelPanelRegexParser';
-import { ANALYTICS_SEED_CUTOFF, seedAttempts, seedCards, seedDays, seedPrices } from './seed';
+import { ANALYTICS_SEED_CARDS_FROM, ANALYTICS_SEED_CUTOFF, seedAttempts, seedCards, seedDays, seedPrices } from './seed';
 
 /**
  * Street Intel Analytics: keeps every card the board shows, every attempt
@@ -268,14 +268,16 @@ export async function getStreetIntelAnalytics(): Promise<StreetIntelAnalytics> {
   const now = Date.now();
   const [attempts, cards, days, config, book] = await Promise.all([
     db.siAttempts.where('at').above(now - 31 * DAY_MS).toArray(),
-    db.siCards.where('firstSeen').above(now - 9 * DAY_MS).toArray(),
+    // Every card kept, not a shorter window: the supply days can reach
+    // further back than a week when days are missing.
+    db.siCards.where('firstSeen').above(now - CARD_RETENTION_MS).toArray(),
     db.siDays.toArray(),
     storage.getStreetIntelAutoConfig(),
     storage.getQuickSellPriceBook(),
   ]);
   const prices = new Map(Object.entries(seedPrices()));
   for (const [name, quote] of Object.entries(book.quotesByName)) prices.set(name, quote.cash);
-  const analytics = buildStreetIntelAnalytics(attempts, cards, days, prices, config, now);
+  const analytics = buildStreetIntelAnalytics(attempts, cards, days, prices, config, now, Math.max(now - CARD_RETENTION_MS, ANALYTICS_SEED_CARDS_FROM));
   const oldest = await db.siAttempts.orderBy('at').first();
   return { ...analytics, since: oldest?.at ?? null };
 }
