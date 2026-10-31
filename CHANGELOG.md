@@ -9,6 +9,17 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.52.2] - 2026-10-31
+
+### Fixed
+- Street Intel Analytics: the suggested minimum card value could drop for
+  no reason as the day went on ($800k became $550k on Oct 31). It averages
+  the last 7 days that have data, which can reach further back than a week
+  when days are missing, but only loaded the last 9 days of board cards
+  counted from the current moment, so its oldest day was only partly
+  counted and the board looked short of big cards. It now loads every card
+  kept (14 days) and only uses days whose cards are all there.
+
 ## [0.52.1] - 2026-10-31
 
 ### Fixed
