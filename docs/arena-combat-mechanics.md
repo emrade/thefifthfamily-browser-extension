@@ -296,6 +296,13 @@ against them twice as often (9.9% vs 4.5%), and they block you less
 
 ## Bosses
 
+The in-game wiki's **Arena Bosses** page lists all 95 bosses (19 per family by
+tier), each one's exclusive item, ticket price and draw %, the pool-unlock and
+once-a-day rules, and Arena Mastery. It's in-game only. Read it with
+`verification/wiki/wiki.py ingame arena` (see the use-wiki skill). Copies from
+2026-09-26 and 2026-10-31 have identical content, so the Oct 27 season and the
+Oct 30 Arena changes left the roster, draw rates, tickets and Mastery untouched.
+
 Boss HP is fixed by level (625 at lvl 106), and the boss card and
 `boss_data` show the full stats. Each family builds its bosses around one
 stat:
