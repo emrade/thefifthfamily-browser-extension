@@ -9,6 +9,29 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.52.3] - 2026-10-31
+
+### Fixed
+- Arena Fight Advisor: your own damage and armour went stale after they
+  jumped mid-season without your max HP changing (Oct 30, ~11:00 UTC: base
+  damage ~892 → ~1,020, armour ~1,386 → ~1,505; also once on Oct 7). The
+  advisor kept averaging up to 250 older fights, so it underrated you —
+  two Iron River bosses this week scored 0.45 and 0.36 (Avoid) and were
+  both won; with your real numbers they score 1.22 and 0.77. It now keeps
+  only your last 5 fights when their median moves more than 8% (damage) or
+  4% (armour) off the earlier ones. Replayed over all 1,089 archived fights
+  it fires on those two jumps only, and no verdict got worse. A stored
+  profile corrects itself on your next fight.
+
+### Docs
+- `docs/game-changes/`: a record of game changes. First entry: the Oct 30
+  Arena patch (the card's % CHANCE is now the game's own 24-fight
+  simulation; the in-fight jump above; the bounty ladder as the reason
+  season scores are down). `upcoming.md` lists announced changes (Racing
+  V3, the Importer, Instinct in combat, prepared consumables, crimes
+  Insight, Chemical Lab, Blood Cage) and what to check in the extension
+  when each lands.
+
 ## [0.52.2] - 2026-10-31
 
 ### Fixed
