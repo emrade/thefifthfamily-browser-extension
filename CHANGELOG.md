@@ -9,6 +9,44 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.52.0] - 2026-10-31
+
+### Added
+- Street Intel Analytics: an Analytics tab in the in-page Street Intel panel
+  (now split into Auto and Analytics tabs) and an Analytics section in the
+  popup's Street Intel tab. Shows:
+  - A suggested minimum card value with an Apply button: the highest value
+    whose cards, over the last 7 days, still add up to the Stamina you
+    actually spend (with 10% slack). $800k on Oct 24–30.
+  - A suggested extreme card minimum with Apply, judged on cash alone: what
+    each amount would have changed per day in cash and failures had those
+    extreme cards' Stamina gone to other cards of similar value. Only
+    suggested if it adds at least 1% of daily cash; currently Off.
+  - Today vs your 7-day average: cash, estimated drop value, attempts, fail
+    rate, Stamina, cash per Stamina.
+  - Board vs your Stamina: how much Stamina's worth of cards at or above
+    your minimum appeared today against what you spent.
+  - Your results by card risk and value over the last 30 days (fail %,
+    cash per Stamina), greying what your minimum skips.
+  - Drops by day with estimated sale value and the best item.
+  Counts manual and automated attempts alike, starts with your history
+  since Oct 1 (built from your archive exports, plus whatever the
+  extension's own archive holds since), and records from the HTTP Archive's
+  capture, so it pauses if archive capture is off. Drops are valued at your
+  last sell quote for the item, else a typical price for its quality.
+- Street Intel Auto: optional "Extreme cards need more" rule (off by
+  default) with its own minimum (default $1M), in the popup and the in-page
+  panel.
+
+### Changed
+- Street Intel Auto: "Big cards only" is replaced by an always-on minimum
+  card value, settable in the in-page panel as well as the popup. 0 means no
+  minimum; it still takes any card once Stamina is 90% full. Existing
+  settings carry over: Big cards only on keeps its floor, off becomes no
+  minimum. New installs start at $750k. Cash per Stamina climbs steeply with
+  card size (Aug 10–Oct 30: ~$10–17k under $250k, ~$45k at $500k–1M,
+  ~$113k at $2M+), so a minimum saves Stamina for the cards that pay.
+
 ## [0.51.1] - 2026-10-28
 
 ### Fixed
