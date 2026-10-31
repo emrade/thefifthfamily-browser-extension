@@ -2,6 +2,7 @@ import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { parseDollarRange } from '@/shared/parseDollarRange';
 import { storage } from '@/shared/storage';
 import { computeEstimate, sumSharedModifiers } from '@/shared/streetIntelEstimate';
+import { predictCard } from '@/shared/streetIntelPredict';
 
 /**
  * Marks up the live Street Intel page directly — no separate list anywhere the
@@ -260,6 +261,11 @@ interface CardApproachDef {
 // that don't change between one card and the next.
 let lastScoutSeed: ScoutEstimateEntry | null = null;
 
+// The "Street Intel Exact Odds Before Scouting" page setting (off by default):
+// when on, every approach is estimated from `predictCard` instead of the
+// session's last scout. Read once at load, like every page setting.
+let exactOdds = false;
+
 /** Minimal decode for the handful of HTML entities the game double-encodes
  *  into a `data-*` attribute's JSON — same as the background parser's own
  *  `decodeAttrEntities` (streetIntelPanelRegexParser.ts), duplicated here
@@ -372,13 +378,28 @@ function estimateRiskTier(card: Element): keyof typeof BASE_PCT_BY_RISK_TIER {
  * container) rather than the whole document to avoid any coincidental match
  * elsewhere on the page.
  */
-function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; riskTier: keyof typeof BASE_PCT_BY_RISK_TIER } | null {
+interface OwningCard {
+  approaches: CardApproachDef[];
+  riskTier: keyof typeof BASE_PCT_BY_RISK_TIER;
+  /** From the Scout button's `data-title` / `data-modifier` — what
+   *  `predictCard` needs. */
+  title: string | null;
+  modifier: string | null;
+}
+
+function findOwningCard(rowTexts: string[]): OwningCard | null {
   for (const btn of Array.from(document.querySelectorAll('.si-cards [data-approaches]'))) {
     const approaches = parseCardApproaches(btn.getAttribute('data-approaches'));
     if (!approaches || approaches.length === 0) continue;
     if (approaches.every((a) => rowTexts.some((t) => t.includes(a.label)))) {
       const card = btn.closest('.si-card');
-      return { approaches, riskTier: card ? estimateRiskTier(card) : 'low' };
+      const titled = btn.hasAttribute('data-title') ? btn : card?.querySelector('[data-title]');
+      return {
+        approaches,
+        riskTier: card ? estimateRiskTier(card) : 'low',
+        title: titled?.getAttribute('data-title') ?? null,
+        modifier: titled?.getAttribute('data-modifier') ?? null,
+      };
     }
   }
   return null;
@@ -426,20 +447,30 @@ function findOwningCard(rowTexts: string[]): { approaches: CardApproachDef[]; ri
  * identify which card this dialog belongs to.
  */
 async function annotateApproaches(approaches: Element[], realBest: Element | null, realBestPct: number): Promise<void> {
-  const seed = lastScoutSeed;
-  if (!seed?.modifiers || seed.base_pct === null) return;
-
   const rowTexts = approaches.map((el) => el.textContent ?? '');
   const owning = findOwningCard(rowTexts);
   if (!owning) return;
 
-  const seedIsThisCard = rowTexts.some((t) => t.includes(seed.label));
-  const basePct = seedIsThisCard ? seed.base_pct : BASE_PCT_BY_RISK_TIER[owning.riskTier];
-  const confidence: 'exact' | 'approx' = seedIsThisCard ? 'exact' : 'approx';
-  const sharedMods = sumSharedModifiers(seed.modifiers);
-
-  const stats = await storage.getLatestStats();
+  const [stats, playerMods] = await Promise.all([storage.getLatestStats(), storage.getStreetIntelPlayerMods()]);
   if (!stats) return;
+
+  // Preferred: the card's exact odds from the wiki base, its condition
+  // sentence and the player's stored modifiers — no scout this session
+  // needed, and conditions on a hidden approach's stat are included (the
+  // seed paths below can't know those). See `@/shared/streetIntelPredict`.
+  const prediction = exactOdds && owning.title
+    ? predictCard({ title: owning.title, modifier: owning.modifier, approaches: owning.approaches }, playerMods, stats as unknown as Record<string, number>)
+    : null;
+
+  // Fallbacks, from the latest scout this session: its own card exactly
+  // ('exact'), any other card with base odds guessed from the risk tier
+  // ('approx').
+  const seed = lastScoutSeed;
+  if (!prediction && (!seed?.modifiers || seed.base_pct === null)) return;
+  const seedIsThisCard = seed !== null && rowTexts.some((t) => t.includes(seed.label));
+  const basePct = seed && seedIsThisCard && seed.base_pct !== null ? seed.base_pct : BASE_PCT_BY_RISK_TIER[owning.riskTier];
+  const confidence: 'predicted' | 'exact' | 'approx' = prediction ? 'predicted' : seedIsThisCard ? 'exact' : 'approx';
+  const sharedMods = seed?.modifiers ? sumSharedModifiers(seed.modifiers) : 0;
 
   // Owns the full remove-then-add cycle for all three outcome classes
   // itself (see `refreshApproaches`'s own comment on why) — deciding which
@@ -474,7 +505,7 @@ async function annotateApproaches(approaches: Element[], realBest: Element | nul
     const rawStat = (stats as unknown as Record<string, number>)[hidden.stat];
     if (typeof rawStat !== 'number') continue;
 
-    const predicted = computeEstimate(basePct, sharedMods, hidden, rawStat);
+    const predicted = prediction?.approaches.find((a) => a.key === hidden.key)?.pct ?? computeEstimate(basePct, sharedMods, hidden, rawStat);
 
     // Updated in place rather than "create once and leave it" — `confidence`
     // (and therefore the number itself) can legitimately change between
@@ -489,10 +520,12 @@ async function annotateApproaches(approaches: Element[], realBest: Element | nul
     }
     badge.title = hasReal
       ? "Extension's own formula estimate for this same, already-revealed approach — compare it against the real number to see how accurate the formula is. See docs/street-intel-estimate-calculation.md."
-      : confidence === 'exact'
-        ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
-        : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
-    badge.textContent = confidence === 'exact' ? `~${predicted}% est.` : `~${predicted}% est.*`;
+      : confidence === 'predicted'
+        ? "Worked out before scouting from the game's wiki (base odds), this card's conditions and your own bonuses — matched the game's number on 99% of past scouts. See docs/street-intel-estimate-calculation.md."
+        : confidence === 'exact'
+          ? "Extension estimate, computed from this card's own scouted odds — see docs/street-intel-estimate-calculation.md."
+          : "Extension estimate — this card hasn't been scouted, so its base odds are guessed from its risk tier, not known exactly.";
+    badge.textContent = confidence === 'approx' ? `~${predicted}% est.*` : `~${predicted}% est.`;
 
     // A real row's own ranking value is its real number (`realBestPct`,
     // already seeded above), never this re-derived formula estimate — so a
@@ -517,9 +550,10 @@ async function annotateApproaches(approaches: Element[], realBest: Element | nul
 
 const INSTALL_FLAG = '__ffStreetIntelHighlightsInstalled';
 
-export function initStreetIntelHighlights() {
+export function initStreetIntelHighlights(withExactOdds = false) {
   if ((window as unknown as Record<string, boolean>)[INSTALL_FLAG]) return;
   (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
+  exactOdds = withExactOdds;
 
   injectStyleOnce(STYLE_ID, STYLE);
 

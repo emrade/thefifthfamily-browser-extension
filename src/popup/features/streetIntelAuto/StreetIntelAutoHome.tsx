@@ -4,7 +4,7 @@ import { NumberInput } from '@/popup/views/NumberInput';
 import { MoneyInput } from '@/popup/views/MoneyInput';
 import { ALARM_NAMES, STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import { SCOUT_MODE_OPTIONS, formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import type { ComplicationChoiceKey, StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/types';
 import { StreetIntelAnalyticsSection } from './StreetIntelAnalyticsSection';
 
@@ -26,12 +26,17 @@ function localDateKey(): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-const SCOUT_MODE_LABEL: Record<string, string> = { topPayout: 'Top 2 by payout', smart: 'Smart scouting' };
+const SCOUT_MODE_LABEL: Record<string, string> = Object.fromEntries(SCOUT_MODE_OPTIONS.map((o) => [o.value, o.label]));
 const COMPLICATION_MODE_LABEL: Record<string, string> = { reuse: 'reuse approach', avoidBlocked: 'avoid losing choices' };
 
 function modeTallyLabel(key: string): string {
-  const [scout, complication, big] = key.split('+');
-  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${big ? ' · card minimum' : ''}`;
+  const [scout, complication, ...flags] = key.split('+');
+  return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${flags.includes('big') ? ' · card minimum' : ''}`;
+}
+
+/** "15 of 15.9 expected (94%)" — how attempts landed against their odds. */
+function oddsCheckLine(successes: number, expected: number): string {
+  return `${successes} of ${expected.toFixed(1)} expected${expected > 0 ? ` (${Math.round((successes / expected) * 100)}%)` : ''}`;
 }
 
 function riskLabel(tier: string): string {
@@ -135,9 +140,9 @@ export function StreetIntelAutoHome() {
     saveConfig({ ...config, oddsMode: mode });
   }
 
-  function setScoutMode(smart: boolean) {
+  function setScoutMode(mode: StreetIntelAutoConfig['scoutMode']) {
     if (!config) return;
-    saveConfig({ ...config, scoutMode: smart ? 'smart' : 'topPayout' });
+    saveConfig({ ...config, scoutMode: mode });
   }
 
   function setMinCardValue(value: number) {
@@ -250,17 +255,19 @@ export function StreetIntelAutoHome() {
 
       <div class="ff-section-label">Strategy</div>
 
-      <label class="ff-toggle-row">
-        <div class="ff-toggle-row__text">
-          <div class="ff-toggle-row__title">Smart scouting</div>
-          <div class="ff-toggle-row__status">
-            {config.scoutMode === 'smart'
-              ? 'Only scouts cards that could still beat the best one found so far.'
-              : 'Off — scouts the 2 highest-paying cards each cycle.'}
-          </div>
-        </div>
-        <input type="checkbox" class="ff-toggle" checked={config.scoutMode === 'smart'} onChange={(e) => setScoutMode((e.target as HTMLInputElement).checked)} />
-      </label>
+      <div class="ff-field">
+        <div class="ff-field__label">Scouting</div>
+        <div class="ff-field__hint">{SCOUT_MODE_OPTIONS.find((o) => o.value === config.scoutMode)?.detail}</div>
+        <select
+          class="ff-select ff-field__control"
+          value={config.scoutMode}
+          onChange={(e) => setScoutMode((e.target as HTMLSelectElement).value as StreetIntelAutoConfig['scoutMode'])}
+        >
+          {SCOUT_MODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
 
       <label class="ff-toggle-row">
         <div class="ff-toggle-row__text">
@@ -344,6 +351,24 @@ export function StreetIntelAutoHome() {
 
       {waitingLine && <div class="ff-auto-row">{waitingLine}</div>}
 
+      {status?.oddsCheck && status.oddsCheck.blind.attempts > 0 && (
+        <>
+          <div class="ff-field__hint">
+            Do blind attempts land as often as scouted ones? Both are judged by the same odds worked out before scouting,
+            since {new Date(status.oddsCheck.since).toLocaleDateString()}. A success is a Success or Critical Success; it
+            takes a couple of hundred blind attempts before a small difference means anything.
+          </div>
+          <div class="ff-auto-row">
+            Blind: {status.oddsCheck.blind.attempts} attempts · {oddsCheckLine(status.oddsCheck.blind.successes, status.oddsCheck.blind.expected)}
+          </div>
+          <div class="ff-auto-row">
+            Scouted: {status.oddsCheck.scouted.attempts} attempts · {oddsCheckLine(status.oddsCheck.scouted.successes, status.oddsCheck.scouted.expected)}
+            {status.oddsCheck.scouted.attempts > 0 && ` · game showed ${status.oddsCheck.scouted.shown.toFixed(1)}`}
+          </div>
+        </>
+      )}
+
+
       {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts run yet.</div>}
 
       {!status?.lastAttempt && nextRunAt && (
@@ -377,7 +402,8 @@ export function StreetIntelAutoHome() {
           <div class="ff-fc-captured">
             {status.lastAttempt.opportunityTitle} ({riskLabel(status.lastAttempt.riskTier)}
             {status.lastAttempt.legendary ? ', Legendary' : ''}) — {status.lastAttempt.approach} at{' '}
-            {status.lastAttempt.scoutedPct}%{status.lastAttempt.pctSource === 'computed' ? ' (computed)' : ' scouted'} ·{' '}
+            {status.lastAttempt.scoutedPct}%
+            {status.lastAttempt.pctSource === 'predicted' ? ' predicted, blind' : status.lastAttempt.pctSource === 'computed' ? ' (computed)' : ' scouted'} ·{' '}
             {new Date(status.lastAttempt.timestamp).toLocaleString()}
           </div>
           {status.lastAttempt.jailSeconds > 0 && (
@@ -424,7 +450,7 @@ export function StreetIntelAutoHome() {
                       .join(' · ')
                   : c.estimatePct === null
                     ? 'scout rejected'
-                    : `${c.approach} ${c.estimatePct}%`}
+                    : `${c.approach} ${c.estimatePct}%${c.pctSource === 'predicted' ? ' predicted, not scouted' : ''}`}
               </div>
             );
           })}

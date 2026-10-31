@@ -3,7 +3,7 @@ import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import { STORAGE_KEYS, STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE } from '@/shared/constants';
 import { storage } from '@/shared/storage';
-import { formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
+import { SCOUT_MODE_OPTIONS, formatFloor, streetIntelWaitingText } from '@/shared/streetIntelAutoDisplay';
 import { formatDollars, parseDollars, reformatDollarInput } from '@/shared/moneyInput';
 import type { StreetIntelAnalytics } from '@/shared/streetIntelAnalytics';
 import { ANALYTICS_CSS, renderStreetIntelAnalytics, requestStreetIntelAnalytics } from '@/shared/streetIntelAnalyticsView';
@@ -11,22 +11,18 @@ import type { StreetIntelAutoConfig, StreetIntelAutoStatus } from '@/shared/type
 
 /**
  * A floating panel on the live Street Intel page — collapsed to a small badge
- * showing today's earnings at a glance, expanding on click into the
- * Auto-Attempt toggle + a snapshot of today's stats and the last result. Same
- * shape as the Pet Courier panel (courierPanel.ts): a passive read/toggle
- * surface for a feature that already runs entirely in the background, so the
- * player doesn't have to open the popup just to check "how much did I make
- * today" while looking at this page.
+ * showing today's earnings at a glance, expanding on click into three tabs:
  *
- * Deliberately lighter than the popup's own StreetIntelAutoHome — no minimum
- * success %, odds mode, last-cycle-scouted breakdown, or complication history
- * here; that's config/analysis, not the daily-glance snapshot this exists
- * for. Adjust those in the popup. The strategy switches (smart scouting,
- * smart complication choices) and the card minimums are the exception: the
- * player plays from this page and rarely opens the popup, which closes
- * easily. The Analytics tab is the same view as the popup's (see
- * `@/shared/streetIntelAnalyticsView`), asked of background since its
- * records live in IndexedDB.
+ * - **Overview** — what's happening: the Auto-Attempt switch and its live
+ *   state (running / waiting / stopped), today's attempts and earnings, the
+ *   last attempt, Run Now.
+ * - **Settings** — how it decides, every setting with what it does in plain
+ *   words: scouting method, minimum success %, card minimums, complications,
+ *   odds source. The player plays from this page and rarely opens the popup
+ *   (which closes easily), so the panel carries the full set.
+ * - **Analytics** — the same view as the popup's (see
+ *   `@/shared/streetIntelAnalyticsView`), asked of background since its
+ *   records live in IndexedDB.
  *
  * `StreetIntelAutoConfig`/`StreetIntelAutoStatus` live in `chrome.storage.local`,
  * which (unlike Dexie's `db`) a content script can read/write directly — no
@@ -41,140 +37,197 @@ const CONTAINER_ID = 'ff-si-status-panel';
 const STYLE_ID = 'ff-si-status-panel-style';
 const STREET_INTEL_MARKER = '.si-cards';
 
+type Tab = 'overview' | 'settings' | 'analytics';
+
+// Literal values, not the popup's :root tokens — a content script runs outside
+// their scope. Everything the game's own stylesheet also styles (inputs,
+// selects, buttons) is ID-scoped and !important, or the game's full-width,
+// big-padding defaults win.
+const C = {
+  gold: '#c9a84c',
+  goldSoft: '#d9c48a',
+  ink: '#f1ede2',
+  text: '#cfc8b6',
+  muted: '#9a917c',
+  faint: '#6b6455',
+  line: 'rgba(201,168,76,0.14)',
+  field: 'rgba(0,0,0,0.42)',
+  green: '#4ade80',
+  amber: '#fbbf24',
+  red: '#f87171',
+};
+
 const PANEL_CSS = `
 #${CONTAINER_ID} {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 999999;
-  font-family: 'Inter', system-ui, sans-serif;
-  display: none;
+  position: fixed; bottom: 20px; right: 20px; z-index: 999999;
+  font-family: 'Inter', system-ui, sans-serif; display: none;
+  -webkit-font-smoothing: antialiased;
 }
 #${CONTAINER_ID}.ff-sip-visible { display: block; }
+#${CONTAINER_ID} *, #${CONTAINER_ID} *::before { box-sizing: border-box; }
 
-.ff-sip-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: linear-gradient(180deg, rgba(20,20,28,0.96), rgba(10,10,15,0.96));
-  border: 1px solid rgba(201,168,76,0.45);
-  border-radius: 999px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+/* Collapsed badge */
+#${CONTAINER_ID} .ff-sip-badge {
+  display: flex !important; align-items: center; gap: 10px; margin: 0 !important;
+  padding: 9px 16px 9px 12px !important; width: auto !important;
+  background: linear-gradient(180deg, rgba(20,20,28,0.97), rgba(10,10,15,0.97)) !important;
+  border: 1px solid rgba(201,168,76,0.45) !important; border-radius: 999px !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.5); cursor: pointer;
+  transition: border-color 0.18s ease-out, transform 0.18s ease-out;
 }
-.ff-sip-badge:hover { border-color: rgba(201,168,76,0.8); transform: translateY(-1px); }
-.ff-sip-badge-label { font-size: 10.5px; color: #d9c48a; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; }
+#${CONTAINER_ID} .ff-sip-badge:hover { border-color: rgba(201,168,76,0.85) !important; transform: translateY(-1px); }
+.ff-sip-badge-label { font-size: 11px; color: ${C.goldSoft}; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ff-sip-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: ${C.faint}; flex-shrink: 0; }
+.ff-sip-badge-dot.ff-on { background: ${C.green}; box-shadow: 0 0 0 3px rgba(74,222,128,0.16); }
+.ff-sip-badge-dot.ff-warn { background: ${C.amber}; box-shadow: 0 0 0 3px rgba(251,191,36,0.16); }
 
+/* Expanded panel */
 .ff-sip-panel {
-  display: none;
-  width: 280px;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding: 16px;
-  background: linear-gradient(180deg, rgba(16,16,22,0.98), rgba(8,8,12,0.98));
-  border: 1px solid rgba(201,168,76,0.45);
-  border-radius: 14px;
-  box-shadow: 0 10px 34px rgba(0,0,0,0.6);
-  color: #ccc;
+  display: none; width: 340px; max-height: min(78vh, 720px); overflow: hidden;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(17,16,21,0.985), rgba(9,9,12,0.985));
+  border: 1px solid rgba(201,168,76,0.4); border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.62), 0 2px 6px rgba(0,0,0,0.4);
+  color: ${C.text};
 }
-#${CONTAINER_ID}.ff-sip-expanded .ff-sip-panel { display: block; }
-#${CONTAINER_ID}.ff-sip-expanded .ff-sip-badge { display: none; }
+#${CONTAINER_ID}.ff-sip-expanded .ff-sip-panel { display: flex; }
+#${CONTAINER_ID}.ff-sip-expanded .ff-sip-badge { display: none !important; }
+#${CONTAINER_ID}.ff-sip-on-analytics .ff-sip-panel { width: 380px; }
 
-.ff-sip-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-.ff-sip-close {
-  background: none; border: none; color: #8b8f9e; font-size: 16px; line-height: 1;
-  cursor: pointer; padding: 2px 6px;
+.ff-sip-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 14px 0 16px; }
+#${CONTAINER_ID} .ff-sip-close {
+  display: grid !important; place-items: center; width: 28px !important; height: 28px !important;
+  margin: 0 !important; padding: 0 !important; border-radius: 8px !important;
+  background: transparent !important; border: 1px solid transparent !important; color: ${C.muted} !important; cursor: pointer;
 }
-.ff-sip-close:hover { color: #fff; }
+#${CONTAINER_ID} .ff-sip-close:hover { color: ${C.ink} !important; border-color: ${C.line} !important; }
+.ff-sip-close svg { width: 14px; height: 14px; }
 
-/* Ported from the popup's own .ff-toggle-row/.ff-toggle with its CSS custom
- * properties resolved to literal values — same reasoning as courierPanel.ts's
- * own copy (a content script runs outside the popup's :root token scope). */
-.ff-sip-toggle-row {
-  display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 11px 12px; margin-bottom: 12px;
-  background: #17130e; border: 1px solid rgba(201,168,76,0.16);
-  border-radius: 10px; cursor: pointer;
+/* Tabs: an underline row, not a row of boxes */
+.ff-sip-tabs { display: flex; gap: 2px; padding: 0 16px; margin-top: 12px; border-bottom: 1px solid ${C.line}; }
+#${CONTAINER_ID} .ff-sip-tab {
+  flex: 0 0 auto !important; width: auto !important; margin: 0 0 -1px !important; padding: 8px 10px 9px !important;
+  background: transparent !important; border: 0 !important; border-bottom: 2px solid transparent !important; border-radius: 0 !important;
+  font: 600 12px/1 'Inter', system-ui, sans-serif !important; color: ${C.muted} !important; cursor: pointer;
+  transition: color 0.15s ease-out, border-color 0.15s ease-out;
 }
-.ff-sip-toggle-row__text { flex: 1; min-width: 0; }
-.ff-sip-toggle-row__title { font-family: 'Inter', system-ui, sans-serif; font-weight: 700; font-size: 12.5px; color: #f1ede2; }
-.ff-sip-toggle-row__status { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 9.5px; color: #6b6455; margin-top: 1px; line-height: 1.4; }
+#${CONTAINER_ID} .ff-sip-tab:hover { color: ${C.text} !important; }
+#${CONTAINER_ID} .ff-sip-tab.ff-sip-tab-active { color: ${C.ink} !important; border-bottom-color: ${C.gold} !important; }
 
-.ff-sip-toggle {
-  flex-shrink: 0; appearance: none; -webkit-appearance: none;
-  width: 34px; height: 20px; border-radius: 10px;
-  background: rgba(0,0,0,0.5); border: 1px solid rgba(201,168,76,0.34);
-  position: relative; cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+.ff-sip-body { overflow-y: auto; padding: 16px; }
+.ff-sip-pane { display: none; }
+#${CONTAINER_ID}.ff-sip-on-overview .ff-sip-pane-overview,
+#${CONTAINER_ID}.ff-sip-on-settings .ff-sip-pane-settings,
+#${CONTAINER_ID}.ff-sip-on-analytics .ff-sip-pane-analytics { display: block; }
+
+/* Switch */
+#${CONTAINER_ID} input.ff-sip-switch {
+  flex-shrink: 0; appearance: none !important; -webkit-appearance: none !important;
+  width: 38px !important; height: 22px !important; margin: 0 !important; padding: 0 !important;
+  border-radius: 11px !important; background: rgba(0,0,0,0.5) !important; border: 1px solid rgba(201,168,76,0.34) !important;
+  position: relative; cursor: pointer; transition: background 0.18s ease-out, border-color 0.18s ease-out;
 }
-.ff-sip-toggle::before {
-  content: ''; position: absolute; top: 2px; left: 2px;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #6b6455;
-  transition: transform 0.15s cubic-bezier(.22,1,.36,1), background 0.15s;
+#${CONTAINER_ID} input.ff-sip-switch::before {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: ${C.faint}; transition: transform 0.2s cubic-bezier(.22,1,.36,1), background 0.18s ease-out;
 }
-.ff-sip-toggle:checked { background: rgba(251,191,36,0.18); border-color: #fbbf24; }
-.ff-sip-toggle:checked::before { transform: translateX(14px); background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+#${CONTAINER_ID} input.ff-sip-switch:checked { background: rgba(251,191,36,0.18) !important; border-color: ${C.amber} !important; }
+#${CONTAINER_ID} input.ff-sip-switch:checked::before { transform: translateX(16px); background: ${C.amber}; }
+#${CONTAINER_ID} input.ff-sip-switch:focus-visible { outline: 2px solid ${C.gold} !important; outline-offset: 2px; }
+
+/* Overview */
+.ff-sip-master { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.ff-sip-master-text { flex: 1; min-width: 0; }
+.ff-sip-master-title { font-size: 15px; font-weight: 700; color: ${C.ink}; letter-spacing: -0.01em; }
+.ff-sip-state { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 12px; line-height: 1.4; color: ${C.muted}; }
+.ff-sip-state .ff-sip-badge-dot { margin-top: 1px; }
+.ff-sip-state.ff-on { color: ${C.text}; }
+.ff-sip-state.ff-warn { color: ${C.amber}; }
 
 .ff-sip-alert {
-  padding: 8px 10px; margin-bottom: 12px; font-size: 10px; line-height: 1.5;
-  background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3);
-  border-radius: 7px; color: #ccc;
+  margin-top: 14px; padding: 10px 12px; font-size: 12px; line-height: 1.5;
+  background: rgba(248,113,113,0.07); border: 1px solid rgba(248,113,113,0.32); border-radius: 10px; color: ${C.text};
 }
+.ff-sip-alert strong { color: ${C.red}; display: block; margin-bottom: 2px; }
 
-/* Ported from the popup's own .ff-stat-grid/.ff-stat-tile, same "resolve the
- * :root tokens to literal values" reasoning as the toggle row above. */
-.ff-sip-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-.ff-sip-stat-tile {
-  padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px; text-align: center;
-}
-.ff-sip-stat-tile__value { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 700; color: #f1ede2; }
-.ff-sip-stat-tile__label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b6455; margin-top: 3px; }
+.ff-sip-today { display: flex; margin-top: 18px; padding: 14px 0; border-top: 1px solid ${C.line}; border-bottom: 1px solid ${C.line}; }
+.ff-sip-figure { flex: 1; min-width: 0; }
+.ff-sip-figure + .ff-sip-figure { padding-left: 16px; border-left: 1px solid ${C.line}; }
+.ff-sip-figure-value { font-size: 20px; font-weight: 700; color: ${C.ink}; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
+.ff-sip-figure-value.ff-money { color: ${C.green}; }
+.ff-sip-figure-label { margin-top: 4px; font-size: 11px; color: ${C.muted}; }
 
-.ff-sip-row-head {
-  font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #6b6455; margin: 8px 0 3px;
-}
-.ff-sip-row { font-size: 10.5px; color: #ccc; padding: 2px 0; line-height: 1.4; }
-.ff-sip-empty { font-size: 10.5px; color: #6b6455; padding: 4px 0; }
-.ff-sip-waiting { font-size: 10.5px; color: #fbbf24; padding: 2px 0 6px; line-height: 1.4; }
-.ff-sip-hint { font-size: 9.5px; color: #8b8578; line-height: 1.45; margin: 5px 0 12px; }
-.ff-sip-run {
-  box-sizing: border-box; display: block; width: 100%; padding: 7px 10px; border-radius: 8px;
-  font-family: 'Inter', system-ui, sans-serif; font-size: 11px; font-weight: 700; line-height: 1.2; cursor: pointer;
-  background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.5); color: #d9c48a;
-}
-.ff-sip-run:hover:not(:disabled) { border-color: #c9a84c; }
-.ff-sip-run:disabled { opacity: 0.45; cursor: default; }
+.ff-sip-section-title { margin: 18px 0 8px; font-size: 12px; font-weight: 700; color: ${C.goldSoft}; }
+.ff-sip-last { display: grid; gap: 3px; font-size: 12px; line-height: 1.45; }
+.ff-sip-last-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ff-sip-outcome { font-weight: 700; text-transform: capitalize; }
+.ff-sip-outcome.ff-good { color: ${C.green}; }
+.ff-sip-outcome.ff-mid { color: ${C.amber}; }
+.ff-sip-outcome.ff-bad { color: ${C.red}; }
+.ff-sip-reward { font-weight: 700; color: ${C.ink}; font-variant-numeric: tabular-nums; }
+.ff-sip-meta { color: ${C.muted}; }
+.ff-sip-empty { font-size: 12px; color: ${C.muted}; line-height: 1.5; }
 
-#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-panel { width: 360px; }
-.ff-sip-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-.ff-sip-tab {
-  flex: 1; padding: 5px 8px; border-radius: 7px; cursor: pointer;
-  font-family: 'Inter', system-ui, sans-serif; font-size: 10.5px; font-weight: 700;
-  background: transparent; border: 1px solid rgba(201,168,76,0.25); color: #8b8578;
+.ff-sip-test { margin-top: 14px; padding-top: 12px; border-top: 1px solid ${C.line}; font-size: 12px; line-height: 1.5; color: ${C.text}; }
+.ff-sip-test-row { display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }
+.ff-sip-test-note { margin-top: 4px; font-size: 11px; color: ${C.muted}; }
+
+#${CONTAINER_ID} .ff-sip-run {
+  display: block !important; width: 100% !important; margin: 18px 0 0 !important; padding: 9px 12px !important;
+  border-radius: 9px !important; font: 600 12px/1.2 'Inter', system-ui, sans-serif !important; cursor: pointer;
+  background: transparent !important; border: 1px solid rgba(201,168,76,0.45) !important; color: ${C.goldSoft} !important;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
 }
-.ff-sip-tab.ff-sip-tab-active { background: rgba(201,168,76,0.14); border-color: rgba(201,168,76,0.6); color: #f1d98a; }
-#${CONTAINER_ID} .ff-sip-pane-analytics { display: none; }
-#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-pane-analytics { display: block; }
-#${CONTAINER_ID}.ff-sip-tab-analytics .ff-sip-pane-auto { display: none; }
-.ff-sip-field { margin: -4px 0 12px; padding: 0 2px; }
-.ff-sip-field-row { display: flex; align-items: center; gap: 8px; }
-.ff-sip-field-label { flex: 1; min-width: 0; font-size: 11px; font-weight: 700; color: #f1ede2; }
-/* ID-scoped and !important: the game's own input styles (full width, big
- * padding, spinners) otherwise win and squeeze the label. */
-#${CONTAINER_ID} input.ff-sip-input {
-  flex: 0 0 auto !important; box-sizing: border-box !important; width: 112px !important; height: 26px !important;
-  margin: 0 !important; padding: 3px 8px !important; border-radius: 6px !important; text-align: right !important;
-  font-family: 'Courier New', ui-monospace, Menlo, monospace !important; font-size: 12px !important; line-height: 1 !important;
-  background: rgba(0,0,0,0.45) !important; border: 1px solid rgba(201,168,76,0.34) !important; color: #f1ede2 !important;
-  box-shadow: none !important; outline: none !important;
+#${CONTAINER_ID} .ff-sip-run:hover:not(:disabled) { background: rgba(201,168,76,0.1) !important; border-color: ${C.gold} !important; }
+#${CONTAINER_ID} .ff-sip-run:disabled { opacity: 0.5; cursor: default; }
+.ff-sip-run-hint { margin-top: 6px; font-size: 11px; line-height: 1.45; color: ${C.muted}; text-align: center; }
+
+/* Settings */
+.ff-sip-group + .ff-sip-group { margin-top: 22px; }
+.ff-sip-group-title { font-size: 12px; font-weight: 700; color: ${C.goldSoft}; padding-bottom: 6px; border-bottom: 1px solid ${C.line}; }
+.ff-sip-setting { padding: 12px 0; }
+.ff-sip-setting + .ff-sip-setting { border-top: 1px solid rgba(255,255,255,0.045); }
+.ff-sip-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ff-sip-setting-label { font-size: 13px; font-weight: 600; color: ${C.ink}; }
+.ff-sip-setting-help { margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: ${C.muted}; }
+.ff-sip-setting-help b { color: ${C.text}; font-weight: 600; }
+.ff-sip-setting-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding-left: 12px; }
+.ff-sip-setting-sub .ff-sip-setting-label { font-size: 12px; font-weight: 500; color: ${C.text}; }
+.ff-sip-setting-sub.ff-off { opacity: 0.45; }
+
+.ff-sip-control { position: relative; flex: 0 0 158px; }
+#${CONTAINER_ID} .ff-sip-control select,
+#${CONTAINER_ID} .ff-sip-control input {
+  display: block !important; width: 100% !important; height: 30px !important; margin: 0 !important;
+  padding: 0 10px !important; border-radius: 8px !important; box-shadow: none !important; outline: none !important;
+  background: ${C.field} !important; border: 1px solid rgba(201,168,76,0.3) !important; color: ${C.ink} !important;
+  font: 500 12px/30px 'Inter', system-ui, sans-serif !important; font-variant-numeric: tabular-nums !important;
+  transition: border-color 0.15s ease-out;
 }
-#${CONTAINER_ID} input.ff-sip-input:focus { border-color: #c9a84c !important; }
+#${CONTAINER_ID} .ff-sip-control select {
+  appearance: none !important; -webkit-appearance: none !important; padding-right: 28px !important; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23c9a84c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 10px center !important;
+}
+#${CONTAINER_ID} .ff-sip-control select option { background: #15141a; color: ${C.ink}; }
+#${CONTAINER_ID} .ff-sip-control input { text-align: right !important; }
+#${CONTAINER_ID} .ff-sip-control.ff-prefix input { padding-left: 22px !important; }
+#${CONTAINER_ID} .ff-sip-control.ff-suffix input { padding-right: 24px !important; }
+.ff-sip-control .ff-sip-affix { position: absolute; top: 50%; transform: translateY(-50%); font-size: 12px; color: ${C.faint}; pointer-events: none; }
+.ff-sip-control.ff-prefix .ff-sip-affix { left: 10px; }
+.ff-sip-control.ff-suffix .ff-sip-affix { right: 10px; }
+#${CONTAINER_ID} .ff-sip-control select:hover, #${CONTAINER_ID} .ff-sip-control input:hover { border-color: rgba(201,168,76,0.55) !important; }
+#${CONTAINER_ID} .ff-sip-control select:focus-visible, #${CONTAINER_ID} .ff-sip-control input:focus { border-color: ${C.gold} !important; }
+#${CONTAINER_ID} .ff-sip-control input:disabled { cursor: not-allowed; }
+.ff-sip-saved { font-size: 11px; color: ${C.green}; opacity: 0; transition: opacity 0.2s ease-out; }
+.ff-sip-saved.ff-show { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  #${CONTAINER_ID} * { transition: none !important; }
+}
 `;
+
+const CLOSE_ICON = `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
 let panelEl: HTMLDivElement | null = null;
 let expanded = false;
@@ -190,13 +243,17 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let ticks = 0;
 let running = false;
 let runError: string | null = null;
-let activeTab: 'auto' | 'analytics' = 'auto';
+let activeTab: Tab = 'overview';
 let analytics: StreetIntelAnalytics | null = null;
 let analyticsError = false;
 
 function localDateKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 }
 
 /** "4:15 PM · in 3:42" — same ticking format as the popup's own
@@ -210,125 +267,240 @@ function formatNextRun(nextRunAt: number, now: number): string {
   return `${clock} · in ${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-function badgeLabel(): string {
-  if (!config?.enabled) return 'Off';
-  const cashToday = status?.attemptsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
-  return `$${cashToday.toLocaleString()} today`;
+function today(): { attempts: number; cash: number } {
+  const current = status?.attemptsTodayDate === localDateKey();
+  return { attempts: current ? status!.attemptsToday : 0, cash: current ? (status!.cashToday ?? 0) : 0 };
 }
 
-function renderStatus(): string {
-  if (!config) return '<div class="ff-sip-empty">Loading…</div>';
+function badgeLabel(): string {
+  if (!config?.enabled) return 'Off';
+  return `$${today().cash.toLocaleString()} today`;
+}
 
+/** One line under the switch: what the runner is doing right now. */
+function stateLine(): { text: string; tone: '' | 'ff-on' | 'ff-warn' } {
+  if (!config) return { text: 'Loading…', tone: '' };
+  if (status?.pausedReason) return { text: 'Stopped — see below', tone: 'ff-warn' };
+  if (!config.enabled) return { text: 'Off — nothing will run', tone: '' };
+  const waiting = streetIntelWaitingText(status?.waiting, config.minSuccessPct, Date.now());
+  if (waiting) return { text: waiting, tone: 'ff-warn' };
+  const nextRunAt = cachedNextAlarmAt ?? status?.nextEligibleAt ?? null;
+  return { text: nextRunAt ? `Running · next check ${formatNextRun(nextRunAt, Date.now())}` : 'Running', tone: 'ff-on' };
+}
+
+/** "steel_yourself" -> "Steel yourself". */
+function approachLabel(key: string): string {
+  const words = key.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function outcomeTone(band: string): string {
+  if (band === 'success' || band === 'critical_success') return 'ff-good';
+  if (band === 'partial_success') return 'ff-mid';
+  return 'ff-bad';
+}
+
+/** Everything on Overview that changes: re-rendered on every tick. The
+ *  switch and the Run button are built once (`buildPanel`) and only updated,
+ *  so neither loses focus or a click mid-tick. */
+function renderOverview(): string {
+  if (!config) return '<div class="ff-sip-empty">Loading…</div>';
   const parts: string[] = [];
 
   if (status?.pausedReason) {
     parts.push(
-      `<div class="ff-sip-alert"><strong>Auto-Attempt stopped</strong><br>Stopped after an unexpected response from the game.${
-        status.pausedMessage ? `<br>"${status.pausedMessage}"` : ''
-      }<br>Check Street Intel in-game, then flip Auto-Attempt back on above.</div>`,
+      `<div class="ff-sip-alert"><strong>Auto-Attempt stopped</strong>It got a response from the game it didn't recognise${
+        status.pausedMessage ? `: “${escapeHtml(status.pausedMessage)}”` : '.'
+      } Check Street Intel in-game, then switch Auto-Attempt back on.</div>`,
     );
   }
 
-  const attemptsToday = status?.attemptsTodayDate === localDateKey() ? status.attemptsToday : 0;
-  const cashToday = status?.attemptsTodayDate === localDateKey() ? (status.cashToday ?? 0) : 0;
-  const nextRunAt = config.enabled ? (cachedNextAlarmAt ?? status?.nextEligibleAt ?? null) : null;
-  const waiting = config.enabled ? streetIntelWaitingText(status?.waiting, config.minSuccessPct, Date.now()) : null;
+  const t = today();
+  parts.push(`
+    <div class="ff-sip-today">
+      <div class="ff-sip-figure"><div class="ff-sip-figure-value">${t.attempts}</div><div class="ff-sip-figure-label">Attempts today</div></div>
+      <div class="ff-sip-figure"><div class="ff-sip-figure-value ff-money">$${t.cash.toLocaleString()}</div><div class="ff-sip-figure-label">Earned today</div></div>
+    </div>`);
 
-  parts.push('<div class="ff-sip-stat-grid">');
-  parts.push(`<div class="ff-sip-stat-tile"><div class="ff-sip-stat-tile__value">${attemptsToday}</div><div class="ff-sip-stat-tile__label">Attempts Today</div></div>`);
-  parts.push(
-    `<div class="ff-sip-stat-tile"><div class="ff-sip-stat-tile__value" style="color:#4ade80">$${cashToday.toLocaleString()}</div><div class="ff-sip-stat-tile__label">Earned Today</div></div>`,
-  );
-  parts.push('</div>');
-
-  if (!config.enabled) {
-    parts.push('<div class="ff-sip-empty">Auto-Attempt is off — nothing will run.</div>');
-  } else if (status?.lastAttempt) {
-    parts.push('<div class="ff-sip-row-head">Last Result</div>');
-    parts.push(
-      `<div class="ff-sip-row">${status.lastAttempt.outcomeBand || '—'} — $${status.lastAttempt.reward.toLocaleString()}</div>`,
-    );
-    parts.push(
-      `<div class="ff-sip-row">${status.lastAttempt.opportunityTitle} · ${new Date(status.lastAttempt.timestamp).toLocaleTimeString()}</div>`,
-    );
+  parts.push('<div class="ff-sip-section-title">Last attempt</div>');
+  const last = status?.lastAttempt;
+  if (last) {
+    const odds =
+      last.pctSource === 'predicted' ? `${last.scoutedPct}% worked out, blind` : last.pctSource === 'computed' ? `${last.scoutedPct}% computed` : `${last.scoutedPct}% scouted`;
+    const risk = `${last.riskTier.charAt(0).toUpperCase()}${last.riskTier.slice(1)}${last.legendary ? ', Legendary' : ''}`;
+    parts.push(`
+      <div class="ff-sip-last">
+        <div class="ff-sip-last-head">
+          <span class="ff-sip-outcome ${outcomeTone(last.outcomeBand)}">${escapeHtml((last.outcomeBand || '—').replace(/_/g, ' '))}</span>
+          <span class="ff-sip-reward">$${last.reward.toLocaleString()}</span>
+        </div>
+        <div>${escapeHtml(last.opportunityTitle)} <span class="ff-sip-meta">· ${risk}</span></div>
+        <div class="ff-sip-meta">${escapeHtml(approachLabel(last.approach))} at ${odds} · ${new Date(last.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
+        ${last.hadComplication ? `<div class="ff-sip-meta">Complication: ${escapeHtml(approachLabel(last.complicationChoice ?? '—'))}${last.complicationSuccess === null ? '' : last.complicationSuccess ? ', won' : ', lost'}</div>` : ''}
+      </div>`);
   } else {
-    parts.push('<div class="ff-sip-empty">No attempts run yet.</div>');
+    parts.push('<div class="ff-sip-empty">No attempts yet.</div>');
   }
 
-  if (nextRunAt) {
-    parts.push(`<div class="ff-sip-row-head">Next Check</div>`);
-    parts.push(`<div class="ff-sip-row">${formatNextRun(nextRunAt, Date.now())}</div>`);
+  const check = status?.oddsCheck;
+  if (config.scoutMode === 'blind' || (check && check.blind.attempts > 0)) {
+    const line = (s: number, e: number) => `${s} of ${e.toFixed(1)} expected${e > 0 ? ` (${Math.round((s / e) * 100)}%)` : ''}`;
+    parts.push(`
+      <div class="ff-sip-test">
+        <div class="ff-sip-section-title" style="margin-top:0">Go blind test</div>
+        <div class="ff-sip-test-row"><span>Blind · ${check?.blind.attempts ?? 0}</span><span>${check ? line(check.blind.successes, check.blind.expected) : '—'}</span></div>
+        <div class="ff-sip-test-row"><span>Scouted · ${check?.scouted.attempts ?? 0}</span><span>${check ? line(check.scouted.successes, check.scouted.expected) : '—'}</span></div>
+        <div class="ff-sip-test-note">Successes against the odds worked out before scouting. A couple of hundred blind attempts are needed before a small difference means anything.</div>
+      </div>`);
   }
-  if (waiting) parts.push(`<div class="ff-sip-waiting">${waiting}</div>`);
 
   return parts.join('');
 }
 
-function renderToggle(): void {
+function syncOverviewControls(): void {
   if (!panelEl || !config) return;
+  const state = stateLine();
+  const stateEl = panelEl.querySelector('.ff-sip-state');
+  if (stateEl) {
+    stateEl.className = `ff-sip-state ${state.tone}`;
+    stateEl.innerHTML = `<span class="ff-sip-badge-dot ${state.tone}"></span><span>${escapeHtml(state.text)}</span>`;
+  }
   const toggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-auto-toggle');
-  const statusText = panelEl.querySelector('.ff-sip-auto-status');
   if (toggle) toggle.checked = config.enabled;
-  if (statusText) {
-    statusText.textContent = config.enabled
-      ? `Running whenever the best scouted approach clears ${config.minSuccessPct}%.`
-      : 'Off — nothing will run.';
+  const run = panelEl.querySelector<HTMLButtonElement>('.ff-sip-run');
+  if (run) {
+    run.disabled = running;
+    run.textContent = running ? 'Running…' : 'Run one check now';
   }
-
-  // `=== 'smart'`/`=== 'avoidBlocked'` rather than trusting the field to
-  // exist: a config pushed through `chrome.storage.onChanged` is the raw
-  // stored object, which an older build may have written without these.
-  const smartScouting = config.scoutMode === 'smart';
-  const scoutToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-scout-toggle');
-  const scoutStatus = panelEl.querySelector('.ff-sip-scout-status');
-  if (scoutToggle) scoutToggle.checked = smartScouting;
-  if (scoutStatus) {
-    scoutStatus.textContent = smartScouting ? 'Only scouts cards that could beat the best found.' : 'Off — scouts the 2 highest-paying cards.';
-  }
-
-  const runBtn = panelEl.querySelector<HTMLButtonElement>('.ff-sip-run');
-  if (runBtn) {
-    runBtn.disabled = running;
-    runBtn.textContent = running ? 'Running…' : 'Run Now';
-  }
-  const runHint = panelEl.querySelector('.ff-sip-run-hint');
-  if (runHint) {
-    runHint.textContent = runError ?? 'Runs one check right now, even with Auto-Attempt off. Handy after bailing out early or refilling Stamina.';
-  }
-
-  const smartComplications = config.complicationMode === 'avoidBlocked';
-  const cplxToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
-  const cplxStatus = panelEl.querySelector('.ff-sip-cplx-status');
-  if (cplxToggle) cplxToggle.checked = smartComplications;
-  if (cplxStatus) {
-    cplxStatus.textContent = smartComplications ? 'Avoids choices that never win in that scenario.' : 'Off — reuses the attempt approach.';
-  }
-
-  const release = Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100);
-  setInputValue('.ff-sip-min-input', config.minCardValue);
-  const minHint = panelEl.querySelector('.ff-sip-min-hint');
-  if (minHint) {
-    minHint.textContent =
-      config.minCardValue > 0
-        ? `Skips cards worth under ${formatFloor(config.minCardValue)} (middle of the pay range) until Stamina is ${release}% full. 0 means no minimum.`
-        : 'No minimum — takes any card that clears the success floor.';
-  }
-
-  const extremeToggle = panelEl.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
-  const extremeStatus = panelEl.querySelector('.ff-sip-extreme-status');
-  if (extremeToggle) extremeToggle.checked = config.extremeMinEnabled;
-  if (extremeStatus) {
-    extremeStatus.textContent = config.extremeMinEnabled
-      ? `Extreme cards need ${formatFloor(Math.max(config.minCardValue, config.extremeMinValue))}+.`
-      : 'Off — extreme cards use the same minimum.';
-  }
-  setInputValue('.ff-sip-extreme-input', config.extremeMinValue);
+  const hint = panelEl.querySelector('.ff-sip-run-hint');
+  if (hint) hint.textContent = runError ?? 'Works even with Auto-Attempt off — handy after bailing out early or refilling Stamina.';
 }
 
-/** Leaves a field alone while it's being typed in. */
-function setInputValue(selector: string, value: number): void {
-  const input = panelEl?.querySelector<HTMLInputElement>(selector);
-  if (input && document.activeElement !== input) input.value = formatDollars(String(value));
+function scoutingHelp(): string {
+  return escapeHtml(SCOUT_MODE_OPTIONS.find((o) => o.value === config?.scoutMode)?.detail ?? '');
+}
+
+function minCardHelp(): string {
+  if (!config) return '';
+  const release = Math.round(STREET_INTEL_AUTO_MIN_CARD_STAMINA_RELEASE * 100);
+  return config.minCardValue > 0
+    ? `Cards worth under <b>${formatFloor(config.minCardValue)}</b> (the middle of their pay range) are skipped and never scouted, saving Stamina for bigger ones — they pay far more per Stamina. Lifted once Stamina is ${release}% full, so regen isn't wasted. 0 means no minimum.`
+    : 'No minimum — any card can be taken if it clears the minimum success %. Set an amount to skip small cards and save Stamina for bigger ones.';
+}
+
+function extremeHelp(): string {
+  if (!config) return '';
+  return `Extreme cards fail about 40% of the time at every size, and under $1M they paid no more per Stamina than high-risk cards that fail half as often (Aug 10 – Oct 30, 142 attempts). ${
+    config.extremeMinEnabled
+      ? `On: extreme cards need <b>${formatFloor(Math.max(config.minCardValue, config.extremeMinValue))}</b> or more.`
+      : 'Off: extreme cards use the same minimum as the rest.'
+  }`;
+}
+
+function settingsMarkup(): string {
+  const options = SCOUT_MODE_OPTIONS.map((o) => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
+  return `
+    <div class="ff-sip-group">
+      <div class="ff-sip-group-title">Scouting</div>
+      <div class="ff-sip-setting">
+        <div class="ff-sip-setting-row">
+          <span class="ff-sip-setting-label">Method</span>
+          <div class="ff-sip-control"><select class="ff-sip-scout-select" aria-label="Scouting method">${options}</select></div>
+        </div>
+        <div class="ff-sip-setting-help ff-sip-scout-help"></div>
+      </div>
+      <div class="ff-sip-setting">
+        <div class="ff-sip-setting-row">
+          <span class="ff-sip-setting-label">Minimum success</span>
+          <div class="ff-sip-control ff-suffix"><input class="ff-sip-pct-input" type="text" inputmode="numeric" aria-label="Minimum success percent"><span class="ff-sip-affix">%</span></div>
+        </div>
+        <div class="ff-sip-setting-help">A card is only attempted if its best approach's odds are at least this — otherwise it's skipped and no attempt is spent, whatever its risk tier.</div>
+      </div>
+    </div>
+
+    <div class="ff-sip-group">
+      <div class="ff-sip-group-title">Which cards</div>
+      <div class="ff-sip-setting">
+        <div class="ff-sip-setting-row">
+          <span class="ff-sip-setting-label">Minimum card value</span>
+          <div class="ff-sip-control ff-prefix"><span class="ff-sip-affix">$</span><input class="ff-sip-min-input" type="text" inputmode="numeric" aria-label="Minimum card value"></div>
+        </div>
+        <div class="ff-sip-setting-help ff-sip-min-help"></div>
+      </div>
+      <div class="ff-sip-setting">
+        <label class="ff-sip-setting-row" style="cursor:pointer">
+          <span class="ff-sip-setting-label">Extreme cards need more</span>
+          <input class="ff-sip-switch ff-sip-extreme-toggle" type="checkbox">
+        </label>
+        <div class="ff-sip-setting-sub ff-sip-extreme-sub">
+          <span class="ff-sip-setting-label">Extreme minimum</span>
+          <div class="ff-sip-control ff-prefix"><span class="ff-sip-affix">$</span><input class="ff-sip-extreme-input" type="text" inputmode="numeric" aria-label="Extreme card minimum"></div>
+        </div>
+        <div class="ff-sip-setting-help ff-sip-extreme-help"></div>
+      </div>
+    </div>
+
+    <div class="ff-sip-group">
+      <div class="ff-sip-group-title">Complications</div>
+      <div class="ff-sip-setting">
+        <label class="ff-sip-setting-row" style="cursor:pointer">
+          <span class="ff-sip-setting-label">Avoid losing choices</span>
+          <input class="ff-sip-switch ff-sip-cplx-toggle" type="checkbox">
+        </label>
+        <div class="ff-sip-setting-help">When a complication comes up, the attempt's own approach is reused (Steel Yourself, which has no complication match, falls back to the best win rate). <b>On:</b> unless that choice has never won in this exact scenario — then the best remaining choice for it is used instead. Choices that never won lost every time (0 of 91) and cost 86% of all complication losses.</div>
+      </div>
+    </div>
+
+    <div class="ff-sip-group">
+      <div class="ff-sip-group-title">Odds</div>
+      <div class="ff-sip-setting">
+        <div class="ff-sip-setting-row">
+          <span class="ff-sip-setting-label">After scouting, rank</span>
+          <div class="ff-sip-control">
+            <select class="ff-sip-odds-select" aria-label="Odds source">
+              <option value="revealed">Revealed only</option>
+              <option value="computed">All approaches</option>
+            </select>
+          </div>
+        </div>
+        <div class="ff-sip-setting-help"><b>Revealed only</b> (the original): only the approach the scout revealed is considered, so a card whose revealed approach misses the minimum is skipped even if another approach would clear it. <b>All approaches:</b> the card's other approaches are worked out from the same scout too (worst case a few points off) and can be picked.</div>
+      </div>
+    </div>
+
+    <div class="ff-sip-saved" aria-live="polite">Saved</div>`;
+}
+
+/** Brings the Settings controls in line with `config`, leaving a field alone
+ *  while it's being typed in. */
+function syncSettings(): void {
+  if (!panelEl || !config) return;
+  const q = <T extends Element>(sel: string) => panelEl!.querySelector<T>(sel);
+  const setSelect = (sel: string, value: string) => {
+    const el = q<HTMLSelectElement>(sel);
+    if (el && document.activeElement !== el) el.value = value;
+  };
+  const setInput = (sel: string, value: string) => {
+    const el = q<HTMLInputElement>(sel);
+    if (el && document.activeElement !== el) el.value = value;
+  };
+  setSelect('.ff-sip-scout-select', config.scoutMode);
+  setSelect('.ff-sip-odds-select', config.oddsMode);
+  setInput('.ff-sip-pct-input', String(config.minSuccessPct));
+  setInput('.ff-sip-min-input', formatDollars(String(config.minCardValue)));
+  setInput('.ff-sip-extreme-input', formatDollars(String(config.extremeMinValue)));
+  const extremeToggle = q<HTMLInputElement>('.ff-sip-extreme-toggle');
+  if (extremeToggle) extremeToggle.checked = config.extremeMinEnabled;
+  q('.ff-sip-extreme-sub')?.classList.toggle('ff-off', !config.extremeMinEnabled);
+  const extremeInput = q<HTMLInputElement>('.ff-sip-extreme-input');
+  if (extremeInput) extremeInput.disabled = !config.extremeMinEnabled;
+  const cplx = q<HTMLInputElement>('.ff-sip-cplx-toggle');
+  if (cplx) cplx.checked = config.complicationMode === 'avoidBlocked';
+  const scoutHelp = q('.ff-sip-scout-help');
+  if (scoutHelp) scoutHelp.innerHTML = scoutingHelp();
+  const minHelp = q('.ff-sip-min-help');
+  if (minHelp) minHelp.innerHTML = minCardHelp();
+  const extremeHelpEl = q('.ff-sip-extreme-help');
+  if (extremeHelpEl) extremeHelpEl.innerHTML = extremeHelp();
 }
 
 function renderAnalytics(): void {
@@ -350,23 +522,33 @@ async function refreshAnalytics(): Promise<void> {
   renderAnalytics();
 }
 
-function setTab(tab: 'auto' | 'analytics'): void {
+function setTab(tab: Tab): void {
   activeTab = tab;
-  panelEl?.classList.toggle('ff-sip-tab-analytics', tab === 'analytics');
-  panelEl?.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) => b.classList.toggle('ff-sip-tab-active', b.dataset.tab === tab));
+  if (!panelEl) return;
+  panelEl.classList.remove('ff-sip-on-overview', 'ff-sip-on-settings', 'ff-sip-on-analytics');
+  panelEl.classList.add(`ff-sip-on-${tab}`);
+  panelEl.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) => {
+    const active = b.dataset.tab === tab;
+    b.classList.toggle('ff-sip-tab-active', active);
+    b.setAttribute('aria-selected', String(active));
+  });
   if (tab === 'analytics') {
     renderAnalytics();
     void refreshAnalytics();
   }
+  if (tab === 'settings') syncSettings();
 }
 
 function renderAll(): void {
   if (!panelEl) return;
-  renderToggle();
-  const statusEl = panelEl.querySelector('.ff-sip-status');
-  if (statusEl) statusEl.innerHTML = renderStatus();
-  const badgeLabelEl = panelEl.querySelector('.ff-sip-badge-label');
-  if (badgeLabelEl) badgeLabelEl.textContent = badgeLabel();
+  const live = panelEl.querySelector('.ff-sip-overview-live');
+  if (live) live.innerHTML = renderOverview();
+  syncOverviewControls();
+  syncSettings();
+  const label = panelEl.querySelector('.ff-sip-badge-label');
+  if (label) label.textContent = badgeLabel();
+  const dot = panelEl.querySelector('.ff-sip-badge .ff-sip-badge-dot');
+  if (dot) dot.className = `ff-sip-badge-dot ${status?.pausedReason ? 'ff-warn' : config?.enabled ? 'ff-on' : ''}`;
 }
 
 async function refresh(): Promise<void> {
@@ -403,7 +585,7 @@ async function runNow(): Promise<void> {
     status = (await chrome.runtime.sendMessage({ type: 'street-intel-auto-run-requested' })) as StreetIntelAutoStatus | null;
   } catch (err) {
     console.error(LOG_PREFIX, 'street intel status panel run-now failed', err);
-    runError = 'Could not reach the background service. Try again in a moment.';
+    runError = 'Could not reach the extension in the background. Try again in a moment.';
   } finally {
     running = false;
     await refreshNextAlarm();
@@ -417,7 +599,7 @@ function setExpanded(next: boolean): void {
   if (expanded) {
     refresh();
     void refreshAnalytics();
-    // Ticks the "Next Check" countdown live while the panel is open — a
+    // Ticks the "next check" countdown live while the panel is open — a
     // plain re-render off already-fetched state, no network/game call, so a
     // 1s cadence costs nothing. Matches the popup's own countdown cadence.
     // The alarm itself is re-read every 5s, since some checks reschedule
@@ -437,118 +619,111 @@ function setExpanded(next: boolean): void {
   }
 }
 
+let savedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flashSaved(): void {
+  const el = panelEl?.querySelector('.ff-sip-saved');
+  if (!el) return;
+  el.classList.add('ff-show');
+  if (savedTimer) clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => el.classList.remove('ff-show'), 1400);
+}
+
 function buildPanel(): HTMLDivElement {
   const el = document.createElement('div');
   el.id = CONTAINER_ID;
+  el.className = `ff-sip-on-${activeTab}`;
   el.innerHTML = `
-    <button class="ff-sip-badge" type="button">
+    <button class="ff-sip-badge" type="button" aria-label="Open Street Intel panel">
       ${brandBadgeHtml('Street Intel')}
+      <span class="ff-sip-badge-dot"></span>
       <span class="ff-sip-badge-label">Loading…</span>
     </button>
-    <div class="ff-sip-panel">
+    <div class="ff-sip-panel" role="dialog" aria-label="Street Intel">
       <div class="ff-sip-head">
         ${brandBadgeHtml('Street Intel')}
-        <button class="ff-sip-close" type="button" title="Collapse">✕</button>
+        <button class="ff-sip-close" type="button" title="Collapse" aria-label="Collapse">${CLOSE_ICON}</button>
       </div>
-      <div class="ff-sip-tabs">
-        <button class="ff-sip-tab ff-sip-tab-active" type="button" data-tab="auto">Auto</button>
-        <button class="ff-sip-tab" type="button" data-tab="analytics">Analytics</button>
+      <div class="ff-sip-tabs" role="tablist">
+        <button class="ff-sip-tab ff-sip-tab-active" type="button" role="tab" data-tab="overview">Overview</button>
+        <button class="ff-sip-tab" type="button" role="tab" data-tab="settings">Settings</button>
+        <button class="ff-sip-tab" type="button" role="tab" data-tab="analytics">Analytics</button>
       </div>
-      <div class="ff-sip-pane-analytics"></div>
-      <div class="ff-sip-pane-auto">
-      <label class="ff-sip-toggle-row">
-        <div class="ff-sip-toggle-row__text">
-          <div class="ff-sip-toggle-row__title">Auto-Attempt</div>
-          <div class="ff-sip-toggle-row__status ff-sip-auto-status">Loading…</div>
+      <div class="ff-sip-body">
+        <div class="ff-sip-pane ff-sip-pane-overview">
+          <label class="ff-sip-master">
+            <div class="ff-sip-master-text">
+              <div class="ff-sip-master-title">Auto-Attempt</div>
+              <div class="ff-sip-state"><span class="ff-sip-badge-dot"></span><span>Loading…</span></div>
+            </div>
+            <input class="ff-sip-switch ff-sip-auto-toggle" type="checkbox" aria-label="Auto-Attempt">
+          </label>
+          <div class="ff-sip-overview-live"></div>
+          <button class="ff-sip-run" type="button">Run one check now</button>
+          <div class="ff-sip-run-hint"></div>
         </div>
-        <input class="ff-sip-auto-toggle ff-sip-toggle" type="checkbox">
-      </label>
-      <button class="ff-sip-run" type="button">Run Now</button>
-      <div class="ff-sip-hint ff-sip-run-hint"></div>
-      <label class="ff-sip-toggle-row">
-        <div class="ff-sip-toggle-row__text">
-          <div class="ff-sip-toggle-row__title">Smart scouting</div>
-          <div class="ff-sip-toggle-row__status ff-sip-scout-status">Loading…</div>
-        </div>
-        <input class="ff-sip-scout-toggle ff-sip-toggle" type="checkbox">
-      </label>
-      <label class="ff-sip-toggle-row">
-        <div class="ff-sip-toggle-row__text">
-          <div class="ff-sip-toggle-row__title">Smart complication choices</div>
-          <div class="ff-sip-toggle-row__status ff-sip-cplx-status">Loading…</div>
-        </div>
-        <input class="ff-sip-cplx-toggle ff-sip-toggle" type="checkbox">
-      </label>
-      <div class="ff-sip-field">
-        <div class="ff-sip-field-row">
-          <span class="ff-sip-field-label">Minimum card value ($)</span>
-          <input class="ff-sip-input ff-sip-min-input" type="text" inputmode="numeric">
-        </div>
-        <div class="ff-sip-hint ff-sip-min-hint"></div>
-      </div>
-      <label class="ff-sip-toggle-row">
-        <div class="ff-sip-toggle-row__text">
-          <div class="ff-sip-toggle-row__title">Extreme cards need more</div>
-          <div class="ff-sip-toggle-row__status ff-sip-extreme-status">Loading…</div>
-        </div>
-        <input class="ff-sip-extreme-toggle ff-sip-toggle" type="checkbox">
-      </label>
-      <div class="ff-sip-field">
-        <div class="ff-sip-field-row">
-          <span class="ff-sip-field-label">Extreme minimum ($)</span>
-          <input class="ff-sip-input ff-sip-extreme-input" type="text" inputmode="numeric">
-        </div>
-        <div class="ff-sip-hint">Under $1M, extreme cards failed ~40% and paid no more per Stamina than high-risk ones.</div>
-      </div>
-      <div class="ff-sip-status"><div class="ff-sip-empty">Loading…</div></div>
+        <div class="ff-sip-pane ff-sip-pane-settings">${settingsMarkup()}</div>
+        <div class="ff-sip-pane ff-sip-pane-analytics"></div>
       </div>
     </div>
   `;
 
   el.querySelector('.ff-sip-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-sip-close')?.addEventListener('click', () => setExpanded(false));
-  el.querySelector('.ff-sip-run')?.addEventListener('click', () => void runNow());
 
   const writeConfig = (patch: Partial<StreetIntelAutoConfig>) => {
     if (!config) return;
     const next = { ...config, ...patch };
     config = next;
+    renderAll();
     storage
       .setStreetIntelAutoConfig(next)
-      .then(() => refresh())
-      .catch((err) => console.error(LOG_PREFIX, 'street intel status panel toggle write failed', err));
+      .then(() => {
+        flashSaved();
+        return refresh();
+      })
+      .catch((err) => console.error(LOG_PREFIX, 'street intel status panel config write failed', err));
   };
 
   const toggle = el.querySelector<HTMLInputElement>('.ff-sip-auto-toggle');
   toggle?.addEventListener('change', () => writeConfig({ enabled: toggle.checked }));
+  el.querySelector('.ff-sip-run')?.addEventListener('click', () => void runNow());
 
-  const scoutToggle = el.querySelector<HTMLInputElement>('.ff-sip-scout-toggle');
-  scoutToggle?.addEventListener('change', () => writeConfig({ scoutMode: scoutToggle.checked ? 'smart' : 'topPayout' }));
+  const settings = el.querySelector('.ff-sip-pane-settings')!;
+  const scoutSelect = settings.querySelector<HTMLSelectElement>('.ff-sip-scout-select');
+  scoutSelect?.addEventListener('change', () => writeConfig({ scoutMode: scoutSelect.value as StreetIntelAutoConfig['scoutMode'] }));
+  const oddsSelect = settings.querySelector<HTMLSelectElement>('.ff-sip-odds-select');
+  oddsSelect?.addEventListener('change', () => writeConfig({ oddsMode: oddsSelect.value as StreetIntelAutoConfig['oddsMode'] }));
 
-  const cplxToggle = el.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
-  cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
+  const pctInput = settings.querySelector<HTMLInputElement>('.ff-sip-pct-input');
+  pctInput?.addEventListener('input', () => {
+    pctInput.value = pctInput.value.replace(/\D/g, '').slice(0, 3);
+  });
+  pctInput?.addEventListener('change', () => {
+    const value = Number(pctInput.value);
+    if (pctInput.value !== '' && Number.isFinite(value)) writeConfig({ minSuccessPct: Math.min(100, Math.max(0, Math.round(value))) });
+  });
 
   // Dollar fields: commas added as you type, committed on change (Enter or
   // leaving the field).
-  const minInput = el.querySelector<HTMLInputElement>('.ff-sip-min-input');
+  const minInput = settings.querySelector<HTMLInputElement>('.ff-sip-min-input');
   minInput?.addEventListener('input', () => reformatDollarInput(minInput));
   minInput?.addEventListener('change', () => {
     const value = parseDollars(minInput.value);
     if (value !== null) writeConfig({ minCardValue: value });
   });
-
-  const extremeToggle = el.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
+  const extremeToggle = settings.querySelector<HTMLInputElement>('.ff-sip-extreme-toggle');
   extremeToggle?.addEventListener('change', () => writeConfig({ extremeMinEnabled: extremeToggle.checked }));
-  const extremeInput = el.querySelector<HTMLInputElement>('.ff-sip-extreme-input');
+  const extremeInput = settings.querySelector<HTMLInputElement>('.ff-sip-extreme-input');
   extremeInput?.addEventListener('input', () => reformatDollarInput(extremeInput));
   extremeInput?.addEventListener('change', () => {
     const value = parseDollars(extremeInput.value);
     if (value !== null) writeConfig({ extremeMinValue: value });
   });
+  const cplxToggle = settings.querySelector<HTMLInputElement>('.ff-sip-cplx-toggle');
+  cplxToggle?.addEventListener('change', () => writeConfig({ complicationMode: cplxToggle.checked ? 'avoidBlocked' : 'reuse' }));
 
-  el.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) =>
-    b.addEventListener('click', () => setTab(b.dataset.tab === 'analytics' ? 'analytics' : 'auto')),
-  );
+  el.querySelectorAll<HTMLButtonElement>('.ff-sip-tab').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab as Tab)));
   el.querySelector('.ff-sip-pane-analytics')?.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const minimum = target.closest<HTMLButtonElement>('.ff-sia-apply');

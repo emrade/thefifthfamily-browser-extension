@@ -17,6 +17,8 @@ import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, ty
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
 import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
+import { bestPredicted, predictCard, type PlayerIntelMods } from '@/shared/streetIntelPredict';
+import { recordAttempt, recordScout, rememberBoard } from './playerMods';
 import { bumpComplicationTypeStats, recordComplicationOutcome } from './complicationTally';
 import type {
   ComplicationChoiceKey,
@@ -29,6 +31,7 @@ import type {
   StreetIntelAutoStatus,
   StreetIntelAutoWaiting,
   StreetIntelModeTally,
+  StreetIntelOddsCheck,
 } from '@/shared/types';
 
 const FEATURE_KEY = 'streetIntel';
@@ -170,6 +173,41 @@ function bumpModeTally(
   return { ...base, [key]: next };
 }
 
+/** Folds one attempt into `StreetIntelOddsCheck`. Counted only when the card
+ *  had a pre-scout prediction for the approach actually used (`predictedPct`),
+ *  so blind and scouted are judged by the same yardstick; the scouted side
+ *  also needs the game's own shown odds (`shownPct`). */
+function bumpOddsCheck(
+  prev: StreetIntelOddsCheck | undefined,
+  blind: boolean,
+  predictedPct: number | null,
+  shownPct: number | null,
+  outcomeBand: string,
+): StreetIntelOddsCheck {
+  const check: StreetIntelOddsCheck = prev ?? {
+    since: Date.now(),
+    blind: { attempts: 0, expected: 0, successes: 0 },
+    scouted: { attempts: 0, expected: 0, successes: 0, shown: 0 },
+  };
+  if (predictedPct === null || (!blind && shownPct === null)) return check;
+  const success = outcomeBand === 'success' || outcomeBand === 'critical_success' ? 1 : 0;
+  if (blind) {
+    return {
+      ...check,
+      blind: { attempts: check.blind.attempts + 1, expected: check.blind.expected + predictedPct / 100, successes: check.blind.successes + success },
+    };
+  }
+  return {
+    ...check,
+    scouted: {
+      attempts: check.scouted.attempts + 1,
+      expected: check.scouted.expected + predictedPct / 100,
+      successes: check.scouted.successes + success,
+      shown: check.scouted.shown + shownPct! / 100,
+    },
+  };
+}
+
 async function pause(message: string): Promise<void> {
   const config = await storage.getStreetIntelAutoConfig();
   await storage.setStreetIntelAutoConfig({ ...config, enabled: false });
@@ -202,7 +240,76 @@ interface ScoutedChoice {
   opportunity: StreetIntelOpportunity;
   approach: string;
   estimatePct: number;
-  pctSource: 'real' | 'computed';
+  pctSource: 'real' | 'computed' | 'predicted';
+}
+
+interface CycleChoice {
+  choice: ScoutedChoice | null;
+  log: ScoutedCandidateLog[];
+  scoutStaminaCharged: number;
+  skipped: number;
+}
+
+/** Every candidate's best approach as predicted before scouting (see
+ *  `@/shared/streetIntelPredict`), by opportunity id — only cards whose odds
+ *  can be predicted exactly are in it. */
+function predictBoard(
+  candidates: StreetIntelOpportunity[],
+  mods: PlayerIntelMods | null,
+  rawStats: PlayerStatsSnapshot | null,
+): Map<number, { key: string; pct: number }> {
+  const out = new Map<number, { key: string; pct: number }>();
+  const stats = rawStats as unknown as Record<string, number> | null;
+  for (const c of candidates) {
+    const best = bestPredicted(predictCard(c, mods, stats));
+    if (best) out.set(c.id, best);
+  }
+  return out;
+}
+
+/**
+ * `scoutMode: 'blind'`: the highest-EV candidate whose *predicted* odds clear
+ * `minSuccessPct`, attempted without a scout. Null when no card can be
+ * predicted or none clears — the cycle then scouts as 'exact'.
+ */
+function pickBlindCandidate(
+  candidates: StreetIntelOpportunity[],
+  predicted: Map<number, { key: string; pct: number }>,
+  minSuccessPct: number,
+  availableStamina: number,
+): CycleChoice | null {
+  let winner: StreetIntelOpportunity | null = null;
+  let winnerEv = -1;
+  for (const c of candidates) {
+    const best = predicted.get(c.id);
+    if (!best || best.pct < minSuccessPct || c.staminaCost > availableStamina) continue;
+    const ev = (best.pct / 100) * rewardMidpoint(c);
+    if (ev > winnerEv) {
+      winner = c;
+      winnerEv = ev;
+    }
+  }
+  if (!winner) return null;
+  const best = predicted.get(winner.id)!;
+  return {
+    choice: { opportunity: winner, approach: best.key, estimatePct: best.pct, pctSource: 'predicted' },
+    log: [
+      {
+        title: winner.title,
+        riskTier: winner.riskTier,
+        legendary: winner.legendary,
+        staminaCost: winner.staminaCost,
+        valueRatio: rewardMidpoint(winner) / winner.staminaCost,
+        approach: best.key,
+        estimatePct: best.pct,
+        pctSource: 'predicted',
+        approaches: [],
+        chosen: true,
+      },
+    ],
+    scoutStaminaCharged: 0,
+    skipped: 0,
+  };
 }
 
 /**
@@ -311,18 +418,23 @@ async function findScoutedCandidate(
   oddsMode: StreetIntelAutoConfig['oddsMode'],
   scoutMode: StreetIntelAutoConfig['scoutMode'],
   rawStats: PlayerStatsSnapshot | null,
-): Promise<{ choice: ScoutedChoice | null; log: ScoutedCandidateLog[]; scoutStaminaCharged: number; skipped: number }> {
+  predicted: Map<number, { key: string; pct: number }>,
+): Promise<CycleChoice> {
   const log: ScoutedCandidateLog[] = [];
   let staminaSpentScouting = 0;
   let scoutStaminaCharged = 0;
   let skipped = 0;
   const cleared: { choice: ScoutedChoice; logIndex: number }[] = [];
 
-  const smart = scoutMode === 'smart' && rawStats !== null;
+  // 'exact' is 'smart' ranked by `predicted` (empty for plain 'smart', so its
+  // behavior is untouched).
+  const smart = (scoutMode === 'smart' || scoutMode === 'exact') && rawStats !== null;
   const statsByName = (rawStats ?? {}) as unknown as Record<string, number>;
   let sharedModsBound = DEFAULT_SHARED_MODS_UPPER_BOUND;
+  // A card whose odds can be predicted exactly is ranked by that prediction;
+  // only the rest fall back to the risk-tier upper bound.
   const evBound = (c: StreetIntelOpportunity) =>
-    (upperBoundEstimate(c.riskTier, c.approaches, statsByName, sharedModsBound) / 100) * rewardMidpoint(c);
+    ((predicted.get(c.id)?.pct ?? upperBoundEstimate(c.riskTier, c.approaches, statsByName, sharedModsBound)) / 100) * rewardMidpoint(c);
   const ordered = smart
     ? [...candidates].sort((a, b) => evBound(b) - evBound(a))
     : [...candidates].sort((a, b) => rewardMidpoint(b) - rewardMidpoint(a));
@@ -332,6 +444,12 @@ async function findScoutedCandidate(
     if (smart) {
       const staminaLeft = availableStamina - staminaSpentScouting;
       if (staminaLeft < candidate.scoutCost + candidate.staminaCost) continue;
+      // Predicted to miss the floor: a scout would only confirm it.
+      const prediction = predicted.get(candidate.id);
+      if (prediction && prediction.pct < minSuccessPct) {
+        skipped += 1;
+        continue;
+      }
       const bestFoundEv = Math.max(
         -1,
         ...cleared
@@ -357,6 +475,7 @@ async function findScoutedCandidate(
     const valueRatio = rewardMidpoint(candidate) / candidate.staminaCost;
     const resp = await postAction('/actions/street_intel.php', { action: 'scout', opportunity_id: candidate.id });
     staminaSpentScouting += candidate.scoutCost;
+    if (resp?.ok === true) recordScout(candidate.id, resp, Date.now());
     if (resp?.ok === true && !resp.cached) scoutStaminaCharged += Number(resp.scout_cost ?? candidate.scoutCost) || 0;
 
     // An ordinary business rejection (e.g. a stamina/cooldown race against our
@@ -635,18 +754,36 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   // fresh stats.php call) is effectively always current. Null just means
   // those modes behave like 'revealed'/'topPayout' for this cycle (see
   // `findScoutedCandidate`'s doc comment).
-  const rawStats = config.oddsMode === 'computed' || config.scoutMode === 'smart' ? await storage.getLatestStats() : null;
+  // Also what pre-scout predictions are made from (with the player's own
+  // Street Intel modifiers, kept current by ./playerMods.ts). Predictions are
+  // always worked out, for `oddsCheck`'s record, but only 'exact' and 'blind'
+  // decide anything with them.
+  const rawStats = await storage.getLatestStats();
+  const playerMods = await storage.getStreetIntelPlayerMods();
+  rememberBoard(panel.opportunities);
+  const predicted = predictBoard(attemptable, playerMods, rawStats);
+  const usesPredictions = config.scoutMode === 'exact' || config.scoutMode === 'blind';
+  // A blind cycle with nothing to go blind on scouts as 'exact'.
+  const scoutMode = config.scoutMode === 'blind' ? 'exact' : config.scoutMode;
   const tallyKey = modeKey(config);
 
   try {
-    const { choice, log, scoutStaminaCharged, skipped } = await findScoutedCandidate(
-      candidates,
-      config.minSuccessPct,
-      status.stamina,
-      config.oddsMode,
-      config.scoutMode,
-      rawStats,
-    );
+    // Blind: no scout at all when a card's odds are already known and clear
+    // the floor. Its own affordability is just the attempt's cost.
+    const blind = config.scoutMode === 'blind'
+      ? pickBlindCandidate(attemptable, predicted, config.minSuccessPct, status.stamina)
+      : null;
+    const { choice, log, scoutStaminaCharged, skipped } =
+      blind ??
+      (await findScoutedCandidate(
+        candidates,
+        config.minSuccessPct,
+        status.stamina,
+        config.oddsMode,
+        scoutMode,
+        config.oddsMode === 'computed' || scoutMode !== 'topPayout' ? rawStats : null,
+        usesPredictions ? predicted : new Map(),
+      ));
     // Read once here so both the "no attempt" paths and the attempt path
     // below can fold this cycle's scouting into the running mode tally.
     const previousStatus = await storage.getStreetIntelAutoStatus();
@@ -671,7 +808,9 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       action: 'attempt',
       opportunity_id: choice.opportunity.id,
       approach: choice.approach,
-      scouted: 1,
+      // The page's own two buttons differ only here: Scout then attempt sends
+      // 1, "Go Blind" sends 0 (every archived attempt, 3,869 of them).
+      scouted: blind ? 0 : 1,
     });
 
     // Two confirmed real ordinary rejections, not shape problems, checked
@@ -706,6 +845,8 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       await pause(`Unexpected response from a Street Intel attempt${attemptResp?.msg ? `: ${attemptResp.msg}` : ''} — the game may have changed something.`);
       return;
     }
+
+    recordAttempt(attemptResp);
 
     let complicationChoice: string | null = null;
     let complicationAvoided: string | null = null;
@@ -806,6 +947,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
         approach: choice.approach,
         scoutedPct: choice.estimatePct,
         pctSource: choice.pctSource,
+        blind: blind !== null,
         outcomeBand: String(attemptResp.outcome_band ?? ''),
         reward: rewardCash,
         jailSeconds: Number(attemptResp.jail_time) || 0,
@@ -831,6 +973,13 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       complicationTypeStats,
       lastCycleSkipped: skipped,
       waiting: null,
+      oddsCheck: bumpOddsCheck(
+        previousStatus?.oddsCheck,
+        blind !== null,
+        predicted.get(choice.opportunity.id)?.key === choice.approach ? predicted.get(choice.opportunity.id)!.pct : null,
+        choice.pctSource === 'real' ? choice.estimatePct : null,
+        String(attemptResp.outcome_band ?? ''),
+      ),
       modeTallies: bumpModeTally(cycleTallies, tallyKey, {
         attempts: 1,
         attemptStamina: choice.opportunity.staminaCost,

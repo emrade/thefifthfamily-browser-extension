@@ -138,7 +138,7 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
       initFightClubReconOverlay();
     }
     if (prefs.streetIntelHighlights) {
-      initStreetIntelHighlights();
+      initStreetIntelHighlights(prefs.streetIntelExactOdds);
     }
     if (prefs.streetIntelStatusPanel) {
       initStreetIntelStatusPanel();

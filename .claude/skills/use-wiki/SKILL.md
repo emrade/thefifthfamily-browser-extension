@@ -146,6 +146,12 @@ Rarity table has a ladder sub-row per item, so it shows twice the item count.
   The approach modifier is **added flat after the multiplier**, and the stat term
   is the player's base trained stat ÷ 5, not gear totals. See
   `docs/street-intel-estimate-calculation.md`.
+- **Street Intel is used by the extension.** The 240-card catalog
+  (`src/shared/data/streetIntelCatalog.json`) and the condition-sentence table
+  come from `verification/street-intel/build_intel_tables.py`, which rebuilds
+  both and re-checks pre-scout predictions against every archived scout. Rerun
+  it whenever `wiki.py diff intel` shows a change or level 132+ cards appear.
+  See `docs/street-intel-estimate-calculation.md` §6a.
 - **Items:** variable-rarity gear "re-cuts itself as you level, always a step
   below the best of its tier. Forge upgrades give half their normal benefit."
 

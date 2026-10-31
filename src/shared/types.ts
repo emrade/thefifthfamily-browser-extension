@@ -935,7 +935,20 @@ export interface StreetIntelAutoConfig {
    *  as the best real EV already found beats every remaining candidate's
    *  bound. Same pick in almost every case, far fewer paid scouts — replayed
    *  against 2026-09-14..10-04 history: scouting 203 -> 64 Stamina/day, net
-   *  +14% (verification/street-intel/simulate_target_selection.py). */
+   *  +14% (verification/street-intel/simulate_target_selection.py).
+   *  'exact': as 'smart', but each card is ranked by its exact pre-scout odds
+   *  (`@/shared/streetIntelPredict` — wiki base, the card's condition
+   *  sentence, the player's modifiers; 99% exact) instead of the risk-tier
+   *  bound, and a card predicted under `minSuccessPct` isn't scouted. A card
+   *  that can't be predicted falls back to the bound. Replayed for October
+   *  (verification/street-intel/simulate_scout_modes.py): $41.32M/day vs
+   *  smart $41.21M, 43.7 vs 45.3 scout Stamina.
+   *  'blind' (test): no scout — attempts the best-EV card whose predicted
+   *  odds clear `minSuccessPct`, sending the game's own Go Blind request
+   *  (`scouted=0`, otherwise identical). When no card can be predicted or
+   *  none clears, that cycle runs as 'exact'. Exists to find out whether a
+   *  blind attempt rolls at the same odds: see
+   *  `StreetIntelAutoStatus.oddsCheck`. */
   scoutMode: StreetIntelScoutMode;
   /** 'reuse' (default): reuse the attempt's own approach, `steel_yourself`
    *  falling back to the best overall fallback win rate — the original
@@ -963,7 +976,7 @@ export interface StreetIntelAutoConfig {
   extremeMinValue: number;
 }
 
-export type StreetIntelScoutMode = 'topPayout' | 'smart';
+export type StreetIntelScoutMode = 'topPayout' | 'smart' | 'exact' | 'blind';
 export type StreetIntelComplicationMode = 'reuse' | 'avoidBlocked';
 
 /** Running totals for one scoutMode+complicationMode combination — what lets
@@ -985,6 +998,27 @@ export interface StreetIntelModeTally {
   complicationWins: number;
 }
 
+/** One side of `StreetIntelOddsCheck`. `expected` is the sum of predicted
+ *  odds (as fractions), so `successes / expected` near 1 means attempts land
+ *  as predicted. */
+export interface StreetIntelOddsCheckBucket {
+  attempts: number;
+  expected: number;
+  successes: number;
+}
+
+/** Whether going blind changes the roll. Every automated attempt whose card
+ *  could be predicted before scouting is counted, blind or scouted, against
+ *  the same prediction — so the two are compared like for like. `shown` sums
+ *  the game's own scouted odds for the scouted side (they run ~4% above real
+ *  results on their own: 1,193 vs 1,247 expected over 1,663 attempts). A
+ *  success is a Success or Critical Success. */
+export interface StreetIntelOddsCheck {
+  since: number;
+  blind: StreetIntelOddsCheckBucket;
+  scouted: StreetIntelOddsCheckBucket & { shown: number };
+}
+
 /** What one automated attempt (+ its complication, if one came up) actually
  *  did — the Street Intel counterpart to `CareerShiftResult`. */
 export interface StreetIntelAttemptResult {
@@ -997,8 +1031,12 @@ export interface StreetIntelAttemptResult {
   /** Whether `scoutedPct` came from the scout's own real `estimate_pct`
    *  ('real') or from the 'computed' odds mode scoring a hidden approach via
    *  the exact formula (see `StreetIntelAutoConfig.oddsMode`). Always 'real'
-   *  when `oddsMode` is 'revealed'. */
-  pctSource: 'real' | 'computed';
+   *  when `oddsMode` is 'revealed'. 'predicted' for a blind attempt: no
+   *  scout, odds from `@/shared/streetIntelPredict`. */
+  pctSource: 'real' | 'computed' | 'predicted';
+  /** True when attempted without scouting (`scoutMode: 'blind'`). Optional for
+   *  attempts recorded before it existed. */
+  blind?: boolean;
   outcomeBand: string;
   reward: number;
   jailSeconds: number;
@@ -1060,7 +1098,7 @@ export interface ScoutedCandidateLog {
   approach: string | null;
   estimatePct: number | null;
   /** Null alongside `approach: null`. See `StreetIntelAttemptResult.pctSource`. */
-  pctSource: 'real' | 'computed' | null;
+  pctSource: 'real' | 'computed' | 'predicted' | null;
   /** Every approach this candidate was actually ranked among — just the
    *  scout's revealed approach(es) under `oddsMode: 'revealed'`, or every
    *  approach on the card (real + computed) under 'computed'. Empty if the
@@ -1165,6 +1203,9 @@ export interface StreetIntelAutoStatus {
   /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
    *  Optional for pre-existing statuses. */
   modeTallies?: Record<string, StreetIntelModeTally>;
+  /** Blind vs scouted, judged by the same pre-scout prediction — see
+   *  `StreetIntelOddsCheck`. Optional for pre-existing statuses. */
+  oddsCheck?: StreetIntelOddsCheck;
   /** Why the last check didn't attempt anything; null after an attempt.
    *  Optional for pre-existing statuses. */
   waiting?: StreetIntelAutoWaiting | null;

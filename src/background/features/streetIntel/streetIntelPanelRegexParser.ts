@@ -40,6 +40,12 @@ export interface StreetIntelOpportunity {
    *  gains `disabled` styling, unlike Career's cooldown state, which replaces
    *  the whole button and loses the data. */
   approaches: StreetIntelApproach[];
+  /** The card's conditions as the board words them — the Scout button's
+   *  `data-modifier` ("Extra guards spotted nearby."), null when the card has
+   *  none. Each sentence always means the same modifiers (see
+   *  `@/shared/streetIntelPredict`), so this is the pre-scout source for what
+   *  a scout's `modifier_intel` would reveal. */
+  modifier: string | null;
 }
 
 /** Minimal decode for the handful of HTML entities the game actually uses
@@ -107,6 +113,8 @@ export function parseStreetIntelOpportunities(responseText: string): StreetIntel
     const expiryMatch = chunk.match(/si-timer[^"]*"[^>]*>\s*<span class="countdown" data-seconds="(\d+)"/);
     const scoutCostMatch = chunk.match(/Scout \((\d+)S\)/);
 
+    const modifierMatch = chunk.match(/data-modifier="([^"]*)"/);
+
     let approaches: StreetIntelApproach[] = [];
     const approachesMatch = chunk.match(/data-approaches="([^"]+)"/);
     if (approachesMatch) {
@@ -139,6 +147,7 @@ export function parseStreetIntelOpportunities(responseText: string): StreetIntel
       scoutCost: scoutCostMatch ? Number(scoutCostMatch[1]) : 1,
       expirySeconds: expiryMatch ? Number(expiryMatch[1]) : null,
       approaches,
+      modifier: modifierMatch ? decodeAttrEntities(modifierMatch[1]) : null,
     });
   }
 

@@ -16,6 +16,7 @@ import {
   runAutoCheckNow as runStreetIntelAutoCheckNow,
 } from './features/streetIntel';
 import { getStreetIntelAnalytics, initStreetIntelAnalytics, observeStreetIntelTraffic } from './features/streetIntel/analytics';
+import { observeStreetIntelPlayerMods } from './features/streetIntel/playerMods';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import { handleAlarm as handleFuryCatcherAlarm, init as initFuryCatcher, runCheckNow as runFuryCatcherCheckNow } from './features/furyCatcher';
@@ -103,6 +104,9 @@ initStreetIntelAuto();
 // before any message can arrive, so the seed lands before live traffic.
 initStreetIntelAnalytics();
 observeRecords(observeStreetIntelTraffic);
+// Keeps the player's Street Intel modifiers current for pre-scout odds — see
+// features/streetIntel/playerMods.ts.
+observeRecords(observeStreetIntelPlayerMods);
 
 // Same idea, for the Crime Alley auto-runner — see
 // features/crimesAuto/index.ts's init.

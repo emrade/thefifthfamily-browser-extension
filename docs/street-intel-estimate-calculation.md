@@ -222,6 +222,35 @@ Because `base_pct` is constant across all approaches on a given card, a single r
 
 **Caveat on the "level" framing**: no per-card numeric level field was ever found in the archived `panel.php` HTML to check the "20-level cycle" claim against — only the categorical `data-risk` tag (`low`/`medium`/`high`/`extreme`) and an unrelated location `Band` (1–9) that doesn't correlate with risk at all. The account's own level also barely moved (82–87) across the whole archive — entirely inside one hypothesized bracket — so this dataset couldn't have observed the claimed mod-20 periodicity even in principle. The risk-tier ranges/means above are independently confirmed against 819 real cards; the specific "Levels 1–7 / 8–13 / ..." numbering is not, and should be treated as unverified. This is also why the shipped code (`pageHighlights.ts`) keys its `base_pct` fallback off risk tier directly, not off any level math.
 
+**Correction (2026-10-31, from the game's wiki):** the game publishes every tip-off at `wiki.php?section=intel` — 240 cards in Bands 1–10, levels 1–200 (read with `verification/wiki/wiki.py`, see the use-wiki skill). That settles this section:
+
+- **The 20-level cycle is confirmed**: levels 1–7 of each cycle are Low, 8–13 Medium, 14–18 High, 19–20 Extreme. The 4 legendary cards per band sit at levels 5 and 10 (High) and 15 and 20 (Extreme).
+- **The ranges above only hold for low-level cards.** `base_pct` falls ~1.5 points per 10 card levels (Low-risk: 58–61 at levels 1–7, 46–49 at 81–87, 40–43 at 121–127, 30–32 at 181–187). Full ranges: Low 30–61, Medium 22–46, High 17–33, Extreme 10–23. The risk-tier means (53.6 / 41.7 / 29.3 / 19.4) overstate a level ≤131 card's base by up to 13.6 points — ~25 points of displayed odds after the multiplier.
+- **The wiki's base equals the scouted `base_pct`** on every one of 149 cards scouted since the 2026-08-21 formula change (9,341 scouts), and its risk, legendary flag and approach bonuses/Auto-Fails match all 150 cards seen on the board.
+- The wiki labels the cost "Nerve"; it's the **Stamina** charged (equal on all 150).
+- Board rewards are the wiki range × the player's own income bonus: ×1.040 in August, ×1.065 from 2026-09-12, ×1.087 from 09-27, ×1.143 from 10-14, ×1.148 from 10-27.
+- XP: the wiki figure is a Success's. Critical ×1.5, Partial ×0.5, Failure ~10%, Disaster 0 (3,707 attempts).
+
+## 6a. Odds Before Scouting (2026-10-31)
+
+Every term of the formula in Section 2 is known before a scout:
+
+| Term | Source before scouting |
+|---|---|
+| `base_pct` | the wiki, by card title (`src/shared/data/streetIntelCatalog.json`) |
+| `env_global`, `env_stat` | the card's **condition sentence** — the Scout button's `data-modifier` (the in-game "Unknown modifier in play. Scout to reveal." shows when it's set). Each of the 39 sentences always means the same `env_global`, and the same `env_stat` per stat (156 sentence×stat pairs, no exceptions) — `src/shared/data/streetIntelConditions.json`. This replaces the "unrecoverable from `modifier_intel` text" finding in Section 8: the magnitude isn't in that text, but the sentence identifies it exactly |
+| `rank` | player-level; always 2 × the Street Intel rank an attempt response reports |
+| `prestige`, `collection`, `recon` | player-level, the same on every card |
+| `mastery` | per category (Robbery, Interception, Exploitation, Leverage, Extortion) |
+| `stat` | the base trained stat ÷ 5 (stats.php), not gear totals |
+| `approach` | the board's `data-approaches` (also in the wiki) |
+
+Replaying every scout since 2026-08-21 in order, predicting each one only from what was known before it, matches **23,141 of 23,374 revealed estimates exactly (99.0%)**; the misses are moments a buff (`temporary`), rank-up or mastery level changed in between. `verification/street-intel/build_intel_tables.py` builds both tables and re-runs this check (it refuses to write below 98%). Rerun it when the wiki changes (`wiki.py diff intel`) or level 132+ cards start appearing.
+
+Shipped (`src/shared/streetIntelPredict.ts`), every existing behavior unchanged unless chosen: player modifiers are kept from every scout and attempt (`background/features/streetIntel/playerMods.ts`, passive). Two new **Scouting** options sit beside Top 2 by payout and Smart (both untouched): **Smart, exact odds** ranks cards by their predicted odds and skips one predicted under the minimum success %; **Go blind (test)** attempts without scouting when the predicted odds clear it, and runs a cycle as Smart, exact odds when nothing can be predicted or clears. The page setting **Street Intel Exact Odds Before Scouting** (off by default) puts the predicted odds on every approach in the game's approach dialog. Replayed for October (`verification/street-intel/simulate_scout_modes.py`, expected net per calendar day): Top 2 $41.17M, Smart $41.21M, Smart exact odds $41.32M, Go blind $42.55M if blind rolls the same. `temporary` is left out of predictions — it can only be read from a scout and may have expired, so a prediction can only come out low.
+
+**Is a blind attempt rolled the same?** The game's two buttons differ only in `scouted=0/1` on `attempt` (3,869 archived attempts, no other field or call). The 23 checkable blind attempts by hand since 08-21 landed 15 successes against 15.9 predicted (scouted: 2,677 against 2,753) — no sign of a penalty, but too few to rule out a small one. Go blind records every automated attempt's predicted odds and result (`StreetIntelAutoStatus.oddsCheck`), blind and scouted against the same prediction; a couple of hundred blind attempts settle it. Separately, scouted attempts land a little under the game's own shown odds: 1,193 successes against 1,247 expected (1,663 attempts).
+
 ---
 
 ## 7. Complication Analysis & Optimal Choice Strategy

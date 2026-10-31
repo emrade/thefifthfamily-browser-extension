@@ -23,6 +23,13 @@ export const PAGE_FEATURE_DEFINITIONS = [
     description: 'Highlights the best-value job, risky-but-lucrative jobs, and the best scout odds on the Street Intel page.',
   },
   {
+    id: 'streetIntelExactOdds',
+    label: 'Street Intel Exact Odds Before Scouting',
+    description:
+      'Needs Street Intel Highlights. In the "Choose your approach" dialog, every approach shows its exact odds before you scout — worked out from the game’s wiki, the card’s conditions and your own bonuses (it matched the game’s number on 99% of past scouts). Off: the estimates only appear after a scout this session, and guess an unscouted card’s base odds from its risk tier.',
+    defaultOn: false,
+  },
+  {
     id: 'streetIntelComplicationHint',
     label: 'Street Intel Complication Hint',
     description:
@@ -115,6 +122,8 @@ export type PageFeatureId = (typeof PAGE_FEATURE_DEFINITIONS)[number]['id'];
 export type PageFeaturePreferences = Record<PageFeatureId, boolean>;
 
 // Enabled by default (player request) — opt-out, not opt-in, same as notifications.
+// The exception is a setting that changes how an existing feature behaves
+// (`defaultOn: false`): that stays on today's behavior until switched on.
 export const DEFAULT_PAGE_FEATURE_PREFERENCES: PageFeaturePreferences = Object.fromEntries(
-  PAGE_FEATURE_DEFINITIONS.map((def) => [def.id, true]),
+  PAGE_FEATURE_DEFINITIONS.map((def) => [def.id, 'defaultOn' in def ? def.defaultOn : true]),
 ) as PageFeaturePreferences;

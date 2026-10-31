@@ -230,8 +230,12 @@ def parse_panel_cards(panel_html: str) -> dict:
                 approaches = json.loads(html.unescape(ap_m.group(1)))
             except json.JSONDecodeError:
                 pass
+        # The card's conditions as a sentence ("Extra guards spotted nearby.");
+        # absent when the card has none. See build_intel_tables.py.
+        mod_m = re.search(r'data-modifier="([^"]*)"', chunk)
         cards[int(id_m.group(1))] = {
             "title": html.unescape(title_m.group(1).strip()) if title_m else None,
+            "modifier": html.unescape(mod_m.group(1)) if mod_m else None,
             "risk": risk,
             "legendary": "legendary" in cls,
             "reward_min": lo,

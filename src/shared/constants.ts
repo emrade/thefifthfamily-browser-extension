@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
   STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
   STREET_INTEL_COMPLICATION_TALLY: 'ff_street_intel_complication_tally',
   STREET_INTEL_ANALYTICS_SEEDED: 'ff_street_intel_analytics_seeded',
+  STREET_INTEL_PLAYER_MODS: 'ff_street_intel_player_mods',
   REAL_ESTATE_ADVISOR_PREFERENCES: 'ff_real_estate_advisor_preferences',
   STOCK_MARKET_BACKFILL_DONE: 'ff_stock_market_backfill_done',
   STOCK_MARKET_POLL_STATUS: 'ff_stock_market_poll_status',
