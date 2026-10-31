@@ -20,6 +20,12 @@ the % CHANCE is a good cut-off for *regular* opponents (it was compared
 including bosses), `threat_ratio` *is* a strength signal (it sets the
 bounty), and non–Iron River bosses can lose (boss "Beatable" is now 1.3+).
 
+**2026-10-30 patch:** the card's % CHANCE is now the game's own
+24-fight simulation (not the CP curve below), and the player's in-fight
+numbers jumped with max HP unchanged; the advisor now restarts your numbers
+on such a jump. See
+[Arena changes, season of 2026-10-27](game-changes/2026-10-30-arena-win-chance-and-stats.md).
+
 ---
 
 ## TL;DR

@@ -63,6 +63,12 @@ tracks card HP (Combat Power minus the four stats), which the advisor doesn't
 use yet. Run: 691 fights, 685 scored; regular ≥ 1.2 won 315/315, boss ≥ 1.3
 won 59/60.
 
+Extended 2026-10-31: the player's profile restarts from the last 5 fights
+when they move off the earlier median by more than 8% (base) or 4%
+(reduction) with max HP unchanged, as `foldFight` now does. Fires on
+2026-10-07 13:49 and 10-30 11:10 only. See
+[docs/game-changes/2026-10-30-arena-win-chance-and-stats.md](../../docs/game-changes/2026-10-30-arena-win-chance-and-stats.md).
+
 `investigate_combat.py` and `investigate_mechanics.py` are that
 investigation's own scripts; see its report for how to run them.
 

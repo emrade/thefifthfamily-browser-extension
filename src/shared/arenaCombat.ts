@@ -518,20 +518,48 @@ export function sampleFromAttack(resp: unknown): ArenaFightSample | null {
   };
 }
 
+/** A jump in the player's own numbers with max HP unchanged (2026-10-07 and
+ *  10-30 mid-season, see docs/game-changes/2026-10-30-arena-win-chance-and-stats.md): when the
+ *  median of the last `ARENA_SHIFT_RECENT` fights is off the median of the
+ *  ones before by more than these fractions, the older fights are dropped.
+ *  Reduction is steady fight to fight (±1%), base damage noisy (±8%). Over
+ *  the 1,089 archived fights this fires on those two jumps and nothing else. */
+export const ARENA_SHIFT_RECENT = 5;
+export const ARENA_SHIFT_MIN_OLDER = 5;
+export const ARENA_SHIFT_BASE = 0.08;
+export const ARENA_SHIFT_REDUCTION = 0.04;
+
+function shifted(samples: number[], threshold: number): boolean {
+  const older = median(samples.slice(0, -ARENA_SHIFT_RECENT));
+  return Math.abs(median(samples.slice(-ARENA_SHIFT_RECENT)) / older - 1) > threshold;
+}
+
 /** Folds one fight into the profile. A preview estimate, or a profile from
  *  a different max HP (a new season's loadout), is replaced outright;
  *  otherwise the fight is added to the season's samples and base damage and
- *  reduction are their medians (what verify_combat_rule.py scores with). */
+ *  reduction are their medians (what verify_combat_rule.py scores with).
+ *  If the latest fights show the numbers have moved (see
+ *  `ARENA_SHIFT_RECENT`), only those fights are kept. */
 export function foldFight(prev: ArenaMyProfile | null, sample: ArenaFightSample): ArenaMyProfile {
   const sameSeason = prev !== null && prev.source === 'fights' && prev.maxHp === sample.maxHp;
-  const baseSamples = [...(sameSeason ? prev.baseSamples ?? [] : []), sample.baseDamage].slice(-ARENA_PROFILE_MAX_SAMPLES);
-  const reductionSamples = [...(sameSeason ? prev.reductionSamples ?? [] : []), sample.reduction].slice(-ARENA_PROFILE_MAX_SAMPLES);
+  let baseSamples = [...(sameSeason ? prev.baseSamples ?? [] : []), sample.baseDamage].slice(-ARENA_PROFILE_MAX_SAMPLES);
+  let reductionSamples = [...(sameSeason ? prev.reductionSamples ?? [] : []), sample.reduction].slice(-ARENA_PROFILE_MAX_SAMPLES);
+  let fightCount = (sameSeason ? prev.fightCount : 0) + 1;
+  if (
+    baseSamples.length >= ARENA_SHIFT_RECENT + ARENA_SHIFT_MIN_OLDER &&
+    baseSamples.length === reductionSamples.length &&
+    (shifted(baseSamples, ARENA_SHIFT_BASE) || shifted(reductionSamples, ARENA_SHIFT_REDUCTION))
+  ) {
+    baseSamples = baseSamples.slice(-ARENA_SHIFT_RECENT);
+    reductionSamples = reductionSamples.slice(-ARENA_SHIFT_RECENT);
+    fightCount = ARENA_SHIFT_RECENT;
+  }
   return {
     source: 'fights',
     maxHp: sample.maxHp,
     baseDamage: median(baseSamples),
     reduction: median(reductionSamples),
-    fightCount: (sameSeason ? prev.fightCount : 0) + 1,
+    fightCount,
     baseSamples,
     reductionSamples,
     lockedStats: prev && prev.maxHp === sample.maxHp ? prev.lockedStats : null,

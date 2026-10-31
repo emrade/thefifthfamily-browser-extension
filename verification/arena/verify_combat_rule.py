@@ -192,6 +192,7 @@ def mean_pos(xs):
 
 
 PROFILE_MAX_SAMPLES = 250  # ARENA_PROFILE_MAX_SAMPLES in src/shared/arenaCombat.ts
+SHIFT_RECENT, SHIFT_MIN_OLDER, SHIFT_BASE, SHIFT_REDUCTION = 5, 5, 0.08, 0.04  # ARENA_SHIFT_* there
 
 
 class Profile:
@@ -212,6 +213,13 @@ class Profile:
             self.hp, self.base, self.red = hp, [], []
         self.base = (self.base + [base])[-PROFILE_MAX_SAMPLES:]
         self.red = (self.red + [red])[-PROFILE_MAX_SAMPLES:]
+        # Mid-season jump with max HP unchanged: keep only the latest fights
+        # (ARENA_SHIFT_* in src/shared/arenaCombat.ts).
+        n = SHIFT_RECENT
+        if len(self.base) >= n + SHIFT_MIN_OLDER:
+            moved = lambda xs, t: abs(statistics.median(xs[-n:]) / statistics.median(xs[:-n]) - 1) > t
+            if moved(self.base, SHIFT_BASE) or moved(self.red, SHIFT_REDUCTION):
+                self.base, self.red = self.base[-n:], self.red[-n:]
 
 
 def build_fights(rows):
