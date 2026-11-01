@@ -9,6 +9,36 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.54.0] - 2026-11-01
+
+### Added
+- Forge Advisor (page setting, on by default): a line under each item on
+  the Forge page with what the card leaves out — the cash to actually land
+  its next rank once failed attempts are counted (a failure takes the cash
+  and keeps the item; the line shows the average tries), the cash per stat
+  point that rank adds, and the expected total to reach +8 and +10. The
+  next rank's cost, chance and stat gains come from the card, every rank's
+  odds from the page's own Tempering Odds table. Costs for +7 and up are
+  the game wiki's (10/15/20/30× the rank-1 cost) and marked as such — no
+  capture has priced those ranks yet, and the wiki's +9/+10 odds (15%, 10%)
+  are wrong against the game's page (12%, 5%). +9 → +10 alone averages
+  ~600× the rank-1 cost, about twice everything from +0 to +9.
+
+### Fixed
+- Street Intel panel: the redesign had renamed settings that already
+  existed. Back to their original names, the same as the popup: Odds source
+  (Revealed only (safe, default) / Computed (includes hidden approaches),
+  with the popup's explanation), Smart complication choices, Minimum
+  scouted success %, Run Now, Minimum card value ($), Extreme minimum ($).
+
+### Docs
+- `docs/forge-mechanics.md`: full odds from the game's page, the wiki's
+  costs for +7–+10, expected cost to +10, and the Forge Advisor.
+- `docs/street-intel-estimate-calculation.md`: what a card's conditions are
+  worth (~$30k/day in the October replay) and the complication-risk hint
+  ("Higher" cards get ~50% more complications but cost about the same —
+  $0.5M apart over ~2½ months), so neither is acted on.
+
 ## [0.53.0] - 2026-11-01
 
 ### Added
