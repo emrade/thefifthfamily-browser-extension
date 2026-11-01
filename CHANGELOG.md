@@ -9,6 +9,58 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.53.0] - 2026-11-01
+
+### Added
+- Street Intel: a card's exact odds before scouting. The game's wiki lists
+  all 240 tip-offs, and its base success equalled the scouted value on
+  every one of 9,341 scouted cards; each card's conditions are on the board
+  as a sentence ("Extra guards spotted nearby."), and each of the 39
+  sentences always means the same modifiers. With your own bonuses (kept
+  from every scout and attempt), the odds work out before scouting — 99.0%
+  exact against 23,374 past scouts.
+- Street Intel Scouting is now one choice — Top 2 by payout, Smart (both
+  unchanged), and two new options: **Smart, exact odds** (ranks cards by
+  their real odds and doesn't scout one predicted under your minimum
+  success %) and **Go blind (test)** (attempts without scouting when a
+  card's odds clear your minimum, exactly as the game's Go Blind button
+  does; falls back to Smart, exact odds when nothing can be worked out).
+  Go blind is a test of whether blind attempts land as often as scouted
+  ones — every attempt's predicted odds and result are recorded, and the
+  comparison shows once there are blind attempts. October replay: Top 2
+  $41.17M/day, Smart $41.21M, Smart exact odds $41.32M, Go blind $42.55M
+  if blind rolls the same. Your saved setting carries over.
+- Page setting "Street Intel Exact Odds Before Scouting" (off by default):
+  the approach dialog shows every approach's exact odds before you scout,
+  including "Unknown modifier in play" cards.
+- Arena Mastery: the Arena panel has tabs — Advisor (as before) and
+  Mastery. Mastery reads your progress from the game's Ticket Exchange
+  (open it once) and keeps up with every boss win: bonus earned per family,
+  each tier's count, the bosses still needed with draw % and tickets, and
+  the closest bonuses first.
+- Page setting "Arena Needed for Mastery" (on by default): the Fight
+  Advisor's Boss line says when the page's boss is one you still need,
+  e.g. "Needed for Mastery: the last Common left for +1% DEF, permanent."
+
+### Changed
+- Street Intel panel redesigned into Overview (Auto-Attempt and its live
+  status, today's numbers, last attempt, Run now), Settings (every setting
+  with a plain explanation, controls aligned; adds minimum success % and
+  odds source) and Analytics.
+
+### Docs
+- `docs/street-intel-estimate-calculation.md` §6 corrections from the wiki
+  (20-level risk cycle confirmed, base success falls with card level, the
+  wiki's "Nerve" cost is Stamina, reward = wiki range × your bonus, XP by
+  outcome) and §6a (odds before scouting); `docs/street-intel-plan.md`
+  explains each scouting decision and the panel redesign;
+  `docs/arena-combat-mechanics.md` covers Arena Mastery.
+- The `/use-wiki` skill and `verification/wiki/wiki.py` read the game's
+  public wiki (and in-game-only pages from the archive);
+  `build_intel_tables.py`, `build_arena_roster.py` and
+  `simulate_scout_modes.py` rebuild the bundled tables and replay the
+  scouting options.
+
 ## [0.52.3] - 2026-10-31
 
 ### Fixed
