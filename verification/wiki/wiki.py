@@ -455,10 +455,17 @@ def cmd_fetch(args):
     names = list(sections_of(download("index"))) if args.all else args.sections
     if not names:
         raise SystemExit("name sections, or --all")
+    failed = []
     for i, s in enumerate(names):
         if i:
             time.sleep(1)
-        fetch(s, force=args.force)
+        try:
+            fetch(s, force=args.force)
+        except SystemExit as err:  # one in-game-only or unreachable section shouldn't stop the rest
+            print(err, file=sys.stderr)
+            failed.append(s)
+    if failed:
+        raise SystemExit(f"not fetched: {', '.join(failed)}")
 
 
 def cmd_text(args):
