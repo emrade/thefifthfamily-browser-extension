@@ -126,10 +126,57 @@ time this was checked: level 103, 77,838/287,038 XP into that level alone, so a
 rarity-band crossing (next at level 120) wasn't imminent — favoring fixed gear for
 near-term value. Re-check this call if levelling speed changes materially.
 
+## Ranks 7–10 and the full odds (2026-11-01)
+
+**Odds, from the game's own Forge page** (its "Tempering Odds" table, identical in
+every capture from 2026-10-13 to 10-31): +1 95%, +2 90%, +3 80%, +4 70%, +5 55%,
++6 40%, **+7 30%, +8 20%, +9 12%, +10 5%**. Gold on success: 1/1/1/2/2/3/5/8/12/20
+(55 in all to +10). Its stated rule: "On Failure — You lose the cash. Your item
+stays safe."
+
+**Costs, from the game's wiki** (`wiki.php?section=forge`, read with
+`verification/wiki/wiki.py`): each rank's cash is a share of the item's base forge
+value — 10/15/20/30/50/75/100/150/200/300% — i.e. **10×, 15×, 20×, 30×** the rank-1
+cost for +7…+10, continuing exactly the 1–6 multipliers measured above. The wiki
+also gives each rank's total stat bonus: +10/+20/+30/+42/+56/+72/+90/+110/+130/+150%
+(+56% at +5 matches the game's cards).
+
+**The wiki's +9 and +10 odds are wrong** (15% and 10% there; 12% and 5% on the game's
+page), so its 7–10 costs are useful but unconfirmed — no capture has priced a rank
+above +6 (the account's +8/+9 gear was forged outside the archive; the only
+`forge_v2.php` attempts recorded are the 2026-09-18 session). The Forge Advisor
+(below) marks them as the wiki's.
+
+Expected cost per rank (× rank-1 cost), with the page's odds:
+
+| Rank | Expected for this rank | Cumulative from +0 |
+|---|---|---|
+| →+7 | 33.3x | 70.7x |
+| →+8 | 75.0x | 145.7x |
+| →+9 | 166.7x | 312.3x |
+| →+10 | 600.0x | 912.3x |
+
++9→+10 alone averages 600× the rank-1 cost (20 tries at 30× each) — about twice
+everything from +0 to +9 combined.
+
+## Forge Advisor (in-page, 2026-11-01)
+
+`src/content/features/forge/forgeAdvisor.ts` (page setting "Forge Advisor", on by
+default; maths in `src/shared/forge.ts`). One line under each item on the Forge
+page: the expected cash to land its next rank (cost ÷ chance, with the average
+tries), the cash per stat point that rank adds (the card's own per-stat gains), and
+the expected total to +8 and +10. Everything is read from the page where the page
+has it — the next rank's cost, chance and gains from the card, every rank's chance
+from the page's Tempering Odds table — so a game change to the odds is picked up
+without a code change. Costs past the next rank use the multiplier ladder above
+(+7 and up marked as the wiki's). Read-only. Checked on the 2026-10-13 Forge page:
+all 143 items annotated, every card's tries matching the page's odds for its next
+rank.
+
 ## Open questions for a future check
 
-- Ranks 7–10: cost multiplier and success% curve, from a session that actually
-  reaches them.
+- Ranks 7–10 cash cost: the wiki's 10×/15×/20×/30× of rank 1, unconfirmed until a
+  capture shows a +7…+10 button (the card shows the next rank's real price).
 - Whether `idempotency_key` (a fresh UUID per attempt, `fg-<inventory_id>-<n>-<uuid>`)
   is purely a duplicate-submission guard or does anything else — never seen reused
   across attempts in this data, so not investigated further.

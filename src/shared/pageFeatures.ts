@@ -92,6 +92,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A small icon at the top-right of the page (on 28 pages so far) showing only the achievement lines relevant to that page — current tier, progress to the next one, and a Claim button the moment a line is ready. Click it to open.',
   },
   {
+    id: 'forgeAdvisor',
+    label: 'Forge Advisor',
+    description:
+      'On the Forge page, adds a line under each item: what landing its next rank really costs once failed attempts are counted (a failure takes the cash and keeps the item), the cash per stat point that rank adds, and the expected total to reach +8 and +10.',
+  },
+  {
     id: 'arenaOverlay',
     label: 'Arena Reminder Panel',
     description:

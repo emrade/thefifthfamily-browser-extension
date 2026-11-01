@@ -24,6 +24,7 @@ import { initGarageOverlay } from './features/garage/overlay';
 import { initAchievementChip } from './shared/achievementChip';
 import { ACHIEVEMENT_PAGE_SCOPES } from '@/shared/achievementPageMap';
 import { initArenaOverlay } from './features/arena/overlay';
+import { initForgeAdvisor } from './features/forge/forgeAdvisor';
 import { handleCapturedRequest as handleArenaFightAdvisor, initArenaFightAdvisor } from './features/arena/fightAdvisor';
 import { handleCapturedRequest as handleArenaMastery } from './features/arena/mastery';
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
@@ -177,6 +178,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.achievementChip) {
       initAchievementChip(ACHIEVEMENT_PAGE_SCOPES);
+    }
+    if (prefs.forgeAdvisor) {
+      initForgeAdvisor();
     }
     if (prefs.arenaOverlay) {
       initArenaOverlay();
