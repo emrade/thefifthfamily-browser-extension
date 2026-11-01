@@ -537,14 +537,17 @@ now three tabs:
   earnings side by side, the last attempt (result in color, reward, card and
   risk, approach and odds — scouted, computed or worked out blind —
   complication outcome), the Go blind test figures when that mode is on, and
-  "Run one check now" last as a secondary action. The collapsed badge gains a
+  Run Now last as a secondary action. The collapsed badge gains a
   status dot (green running, amber stopped).
 - **Settings — how it decides.** Grouped as Scouting (method, minimum
   success %), Which cards (minimum card value, extreme rule and amount),
   Complications and Odds. Every setting has its control on the right at one
   size (a `$` or `%` inside the field) and a plain explanation under it;
-  the extreme amount greys out while its rule is off. Minimum success % and
-  the odds source are new to the panel — "every setting explained" was the
+  the extreme amount greys out while its rule is off. Every setting keeps its
+  existing name and options, the same as in the popup (2026-11-01: a first
+  version renamed some — Odds source, Smart complication choices, Run Now —
+  and was put back). Minimum scouted success % and Odds source are new to
+  the panel — "every setting explained" was the
   ask, and both shape which card gets attempted.
 - **Analytics** — unchanged.
 

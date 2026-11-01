@@ -196,6 +196,9 @@ const PANEL_CSS = `
 .ff-sip-setting-sub.ff-off { opacity: 0.45; }
 
 .ff-sip-control { position: relative; flex: 0 0 158px; }
+/* A control whose options don't fit 158px (Odds source) takes its own line. */
+.ff-sip-setting-row.ff-sip-stack { flex-direction: column; align-items: stretch; gap: 8px; }
+.ff-sip-setting-row.ff-sip-stack .ff-sip-control { flex: 1 1 auto; }
 #${CONTAINER_ID} .ff-sip-control select,
 #${CONTAINER_ID} .ff-sip-control input {
   display: block !important; width: 100% !important; height: 30px !important; margin: 0 !important;
@@ -370,10 +373,10 @@ function syncOverviewControls(): void {
   const run = panelEl.querySelector<HTMLButtonElement>('.ff-sip-run');
   if (run) {
     run.disabled = running;
-    run.textContent = running ? 'Running…' : 'Run one check now';
+    run.textContent = running ? 'Running…' : 'Run Now';
   }
   const hint = panelEl.querySelector('.ff-sip-run-hint');
-  if (hint) hint.textContent = runError ?? 'Works even with Auto-Attempt off — handy after bailing out early or refilling Stamina.';
+  if (hint) hint.textContent = runError ?? 'Runs one check right now, even with Auto-Attempt off. Handy after bailing out early or refilling Stamina.';
 }
 
 function scoutingHelp(): string {
@@ -411,7 +414,7 @@ function settingsMarkup(): string {
       </div>
       <div class="ff-sip-setting">
         <div class="ff-sip-setting-row">
-          <span class="ff-sip-setting-label">Minimum success</span>
+          <span class="ff-sip-setting-label">Minimum scouted success %</span>
           <div class="ff-sip-control ff-suffix"><input class="ff-sip-pct-input" type="text" inputmode="numeric" aria-label="Minimum success percent"><span class="ff-sip-affix">%</span></div>
         </div>
         <div class="ff-sip-setting-help">A card is only attempted if its best approach's odds are at least this — otherwise it's skipped and no attempt is spent, whatever its risk tier.</div>
@@ -422,7 +425,7 @@ function settingsMarkup(): string {
       <div class="ff-sip-group-title">Which cards</div>
       <div class="ff-sip-setting">
         <div class="ff-sip-setting-row">
-          <span class="ff-sip-setting-label">Minimum card value</span>
+          <span class="ff-sip-setting-label">Minimum card value ($)</span>
           <div class="ff-sip-control ff-prefix"><span class="ff-sip-affix">$</span><input class="ff-sip-min-input" type="text" inputmode="numeric" aria-label="Minimum card value"></div>
         </div>
         <div class="ff-sip-setting-help ff-sip-min-help"></div>
@@ -433,7 +436,7 @@ function settingsMarkup(): string {
           <input class="ff-sip-switch ff-sip-extreme-toggle" type="checkbox">
         </label>
         <div class="ff-sip-setting-sub ff-sip-extreme-sub">
-          <span class="ff-sip-setting-label">Extreme minimum</span>
+          <span class="ff-sip-setting-label">Extreme minimum ($)</span>
           <div class="ff-sip-control ff-prefix"><span class="ff-sip-affix">$</span><input class="ff-sip-extreme-input" type="text" inputmode="numeric" aria-label="Extreme card minimum"></div>
         </div>
         <div class="ff-sip-setting-help ff-sip-extreme-help"></div>
@@ -444,7 +447,7 @@ function settingsMarkup(): string {
       <div class="ff-sip-group-title">Complications</div>
       <div class="ff-sip-setting">
         <label class="ff-sip-setting-row" style="cursor:pointer">
-          <span class="ff-sip-setting-label">Avoid losing choices</span>
+          <span class="ff-sip-setting-label">Smart complication choices</span>
           <input class="ff-sip-switch ff-sip-cplx-toggle" type="checkbox">
         </label>
         <div class="ff-sip-setting-help">When a complication comes up, the attempt's own approach is reused (Steel Yourself, which has no complication match, falls back to the best win rate). <b>On:</b> unless that choice has never won in this exact scenario — then the best remaining choice for it is used instead. Choices that never won lost every time (0 of 91) and cost 86% of all complication losses.</div>
@@ -454,16 +457,16 @@ function settingsMarkup(): string {
     <div class="ff-sip-group">
       <div class="ff-sip-group-title">Odds</div>
       <div class="ff-sip-setting">
-        <div class="ff-sip-setting-row">
-          <span class="ff-sip-setting-label">After scouting, rank</span>
+        <div class="ff-sip-setting-row ff-sip-stack">
+          <span class="ff-sip-setting-label">Odds source</span>
           <div class="ff-sip-control">
             <select class="ff-sip-odds-select" aria-label="Odds source">
-              <option value="revealed">Revealed only</option>
-              <option value="computed">All approaches</option>
+              <option value="revealed">Revealed only (safe, default)</option>
+              <option value="computed">Computed (includes hidden approaches)</option>
             </select>
           </div>
         </div>
-        <div class="ff-sip-setting-help"><b>Revealed only</b> (the original): only the approach the scout revealed is considered, so a card whose revealed approach misses the minimum is skipped even if another approach would clear it. <b>All approaches:</b> the card's other approaches are worked out from the same scout too (worst case a few points off) and can be picked.</div>
+        <div class="ff-sip-setting-help">"Revealed only" ranks and attempts strictly the approach(es) the scout gave real numbers for — a card whose only revealed approach misses the floor above just gets skipped, even if a hidden approach might have been great. "Computed" also scores every other (hidden) approach on the same card using the exact formula from that same scout's real base odds — worst case ~3 points off, and it can win the ranking and get attempted directly.</div>
       </div>
     </div>
 
@@ -659,7 +662,7 @@ function buildPanel(): HTMLDivElement {
             <input class="ff-sip-switch ff-sip-auto-toggle" type="checkbox" aria-label="Auto-Attempt">
           </label>
           <div class="ff-sip-overview-live"></div>
-          <button class="ff-sip-run" type="button">Run one check now</button>
+          <button class="ff-sip-run" type="button">Run Now</button>
           <div class="ff-sip-run-hint"></div>
         </div>
         <div class="ff-sip-pane ff-sip-pane-settings">${settingsMarkup()}</div>

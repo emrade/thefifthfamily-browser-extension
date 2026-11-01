@@ -249,6 +249,18 @@ Replaying every scout since 2026-08-21 in order, predicting each one only from w
 
 Shipped (`src/shared/streetIntelPredict.ts`), every existing behavior unchanged unless chosen: player modifiers are kept from every scout and attempt (`background/features/streetIntel/playerMods.ts`, passive). Two new **Scouting** options sit beside Top 2 by payout and Smart (both untouched): **Smart, exact odds** ranks cards by their predicted odds and skips one predicted under the minimum success %; **Go blind (test)** attempts without scouting when the predicted odds clear it, and runs a cycle as Smart, exact odds when nothing can be predicted or clears. The page setting **Street Intel Exact Odds Before Scouting** (off by default) puts the predicted odds on every approach in the game's approach dialog. Replayed for October (`verification/street-intel/simulate_scout_modes.py`, expected net per calendar day): Top 2 $41.17M, Smart $41.21M, Smart exact odds $41.32M, Go blind $42.55M if blind rolls the same. `temporary` is left out of predictions — it can only be read from a scout and may have expired, so a prediction can only come out low. Why each option exists and how they were decided: `docs/street-intel-plan.md` → "Exact odds, Go blind and the Scouting choice".
 
+**What the conditions are worth (2026-11-01).** Replaying the same window with each card's conditions ignored (`env_global`/`env_stat` set to 0, everything else unchanged): Smart, exact odds $41.44M/day against $41.47M with them, Go blind $42.66M against $42.69M — about $30k a day. Conditions move a card's odds a few points, and with a $800k card minimum and a 50% floor very few decisions sit near enough the line to flip. The exact-odds options are worth having for the wiki base odds and for skipping scouts, not for the conditions.
+
+**The complication-risk hint is real but not worth acting on.** Each sentence's `modifier_intel` also says "Lower" or "Higher complication risk" (stored in `streetIntelConditions.json` as `complication`; nothing reads it). Every attempt since 2026-08-21, by the card's hint:
+
+| Card says | Attempts | Complication | Complications lost | Cash lost |
+|---|---|---|---|---|
+| Higher risk | 1,051 | 24.4% | 53 | $11.6M |
+| Lower risk | 1,155 | 15.8% | 50 | $11.1M |
+| No conditions | 1,441 | 19.0% | 74 | $15.3M |
+
+Higher-risk cards do get ~50% more complications, but they cost about the same — $0.5M apart over ~2½ months (~$11k per attempt either way, against cards worth $800k+), since most extra complications are won. Steering away from them would give up good cards to save almost nothing, so it isn't used.
+
 **Is a blind attempt rolled the same?** The game's two buttons differ only in `scouted=0/1` on `attempt` (3,869 archived attempts, no other field or call). The 23 checkable blind attempts by hand since 08-21 landed 15 successes against 15.9 predicted (scouted: 2,677 against 2,753) — no sign of a penalty, but too few to rule out a small one. Go blind records every automated attempt's predicted odds and result (`StreetIntelAutoStatus.oddsCheck`), blind and scouted against the same prediction; a couple of hundred blind attempts settle it. Separately, scouted attempts land a little under the game's own shown odds: 1,193 successes against 1,247 expected (1,663 attempts).
 
 ---
