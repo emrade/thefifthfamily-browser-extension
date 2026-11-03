@@ -9,6 +9,55 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.55.0] - 2026-11-03
+
+### Added
+- Automation Queue (Settings → Background Automations, **off by default**):
+  background automations take turns instead of acting at the same moment,
+  which a single player in one tab can't do. Each runs its whole cycle,
+  then a different one waits a random 3–8 s, as if switching pages.
+  - Order: strict arrival order, no priorities.
+  - Garage, Inventory and achievement-claim jobs keep their turn between
+    steps, and other automations wait until 15 s after the last one.
+  - A scheduled stock price check skips while the queue is busy. Run Now /
+    Check Now / Sync Now buttons wait their turn.
+  - Safety limits: a run holding the queue over 15 min is treated as
+    finished, and one that has waited 15 min goes ahead.
+  - Off = every automation runs exactly as before. The switch takes effect
+    on the next check, with no reload.
+  - Measured first across every archive: after attributing bank calls to
+    the feature that sent them, about 25 automation runs a day overlapped
+    (Pet Courier + Street Intel the most).
+- Automation Dashboard: a full page in its own tab, opened from the popup's
+  Home or the chip.
+  - Shows the queue switch; what's running, waiting and coming up (each
+    automation's next check, with a countdown); today's queue stats; and the
+    last 60 turns.
+  - Opening it again switches to the open tab, without needing a new
+    browser permission.
+- Automation Up Next Chip (page setting, off by default): a small button at
+  the top-right of every game page showing when the next automation check
+  is due (gold while one is running). Tap it for the full list, the queue
+  switch and a link to the dashboard.
+- Settings: changing an in-game page setting now shows a "Page settings
+  changed" banner with a **Reload now** button, since those settings take
+  effect on reload.
+
+### Removed
+- Fury Catcher (the Halloween boss auto-catcher), with its popup screen,
+  game-page panel, page setting and notification setting. Its saved
+  settings and timer are cleared on the next start.
+
+### Docs
+- `docs/proposals/`: new home for designs and investigations awaiting a
+  decision.
+  - `automation-clash-queue.md`: the overlap measurements and the queue's
+    design.
+  - `page-features-live-toggle.md`: turning page settings on and off
+    without a reload. Shelved in favour of the reload banner.
+  - `arena-advisor-post-patch-review.md`: Arena advisor vs the game's own %
+    after the Oct 30 patch; on hold for more fights.
+
 ## [0.54.0] - 2026-11-01
 
 ### Added
