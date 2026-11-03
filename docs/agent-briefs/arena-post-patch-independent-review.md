@@ -133,7 +133,7 @@ caveats and how to query the archives safely and efficiently.
 
 ## Deliverable
 
-One new file: **`docs/agent-briefs/arena-post-patch-independent-review-findings.md`**,
+One new file: **`docs/agent-briefs/arena-post-patch-independent-review-findings-N.md`** (numbered, so several reviews don't overwrite each other),
 containing:
 - a short summary of your conclusions (what decides fights; best
   predictor; what the extension should do);

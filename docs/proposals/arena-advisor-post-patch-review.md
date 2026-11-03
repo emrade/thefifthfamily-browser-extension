@@ -1,8 +1,26 @@
 # Arena Fight Advisor: review after the Oct 30 patch
 
-Status (2026-11-03): **reviewed with 116 post-patch fights, mechanics
-re-derived (see arena-combat-mechanics.md "Additions from the 2026-11-03
-review"); options 1–6 to the player, nothing changed yet.** See "Review 2026-11-03" below.
+Status (2026-11-03): **built, four opt-in Arena page settings, all off by
+default** (not yet released):
+- **Arena Game % Safety Gate:** regular opponents are Beatable only at game
+  90%+ (else Coin-flip), and Avoid under 60%. The badge shows "game N%"
+  whenever the gate changed the verdict.
+- **Arena Game % on Badges:** "game N%" on every badge.
+- **Arena Bank-or-Fight Hint:** with a pot, a "Bank first" line names
+  opponents whose win chance (the game's %) is below pot ÷ (pot + bounty).
+- **Arena Opponent Memory:** shows the record against each opponent and how
+  the last fight ended, and scores them with their real armour from that
+  fight instead of card DEF.
+  - Code: `src/shared/arenaOpponentMemory.ts`.
+  - Recorded from every regular fight, whatever the setting.
+  - Seeded once from the last 14 days of the request archive
+    (`background/features/arena/opponentMemoryBackfill.ts`).
+  - Tested on the archived fights: NehNehPok goes from Beatable 1.38 to
+    Coin-flip 0.99 on a rematch.
+
+Code: `judge()` in `content/features/arena/fightAdvisor.ts`. With all four
+off it is exactly `verdictFor`. The track record still scores the advisor's
+own verdict, never the gated one.
 
 Earlier status (2026-11-01): **gathering data, nothing changed.** The player paused
 any advisor changes until there's enough post-patch data. Don't blend the
@@ -90,6 +108,54 @@ card)**
   That makes a possible option 5: remember each opponent's real armour from
   past fights and use it instead of card DEF.
 
+**Corrections after the independent review (same day)**, both verified:
+- **Armory doesn't raise damage** (see `docs/arena-combat-mechanics.md`).
+- **NehNehPok was not "mostly floor against floor".** 13 of their 32 landed
+  hits broke through the player's armour, because base is rolled per hit
+  around its average. Those did 59% of their damage. The advisor compares
+  average base with armour, so it misses these high rolls.
+- Their full analysis and comparison:
+  `docs/agent-briefs/arena-post-patch-independent-review-findings-1.md`.
+
+**Three reviews compared (2026-11-03)**
+- This review, plus two independent ones from the same brief
+  (`docs/agent-briefs/arena-post-patch-independent-review.md`).
+- Review 1: `docs/agent-briefs/arena-post-patch-independent-review-findings-1.md`.
+  This is a reconstruction: review 2 overwrote the original at the shared
+  path.
+- Review 2: `docs/agent-briefs/arena-post-patch-independent-review-findings-2.md`.
+- **All three agree:**
+  - the game's % has been the best predictor since the patch (first review:
+    AUC 0.992; second: Brier 0.034, ≥ 90% won 79/79);
+  - the advisor is clearly worse (AUC ~0.90, Brier 0.074);
+  - all three "Beatable" losses were NehNehPok;
+  - the advisor misses hidden armour (~1.1× DEF), per-hit base rolls (±16%)
+    that break through, crits, first strikes and HP above the level
+    formula;
+  - armory doesn't raise damage;
+  - 60% of fights are rematches.
+- **First review only:**
+  - only 2 of 26 losses cost pot (30 + 70, both NehNehPok); the rest were
+    long shots taken with an empty pot;
+  - a bank-or-fight rule: fight only if p > pot ÷ (pot + bounty);
+  - Combat Power alone ranks fights at AUC 0.979;
+  - it recommended badging by the game's %, keeping the kill-race as an
+    explanation.
+- **Second review only:**
+  - **116/116 fights paired**, using the `av2_view=arena` and
+    `arena_lb=full` page variants (verified; this review's 96 missed them);
+  - **pre-patch the advisor was far better than the game's %** (Brier 0.032
+    against 0.139). Worth keeping the advisor in case the game changes
+    again;
+  - the wiki's first-strike formula, (fast AGI − slow AGI) ÷ slow AGI × 30,
+    capped at 30 (verified, fits the logs);
+  - **game's % ≥ 90%: 79/79 won; 60–89%: 11/14; under 60%: 2/25** (its
+    summary's "0/23" is a slip; the table and this data show 2 wins).
+  - It recommended a safety gate: no Beatable under 90%, Avoid under 60%.
+- **Correction to this review:** all the post-patch numbers above used 96
+  paired fights. The other 20 were missed only because of the page
+  variants.
+
 **Options for the player** (nothing built; each would be its own Arena
 page setting, default off):
 1. **Armour margin:** score opponents as if their armour were card DEF ×
@@ -105,7 +171,7 @@ page setting, default off):
 4. Leave it as it is.
 6. **Simulate rematches exactly:** store each opponent's numbers from
    their last fight log (armour, base, dodge, block, crit chance and
-   multiplier, armory, first-strike chance, HP), then run the fight
+   multiplier, first-strike chance, HP), then run the fight
    simulation (see "Additions from the 2026-11-03 review" in
    `docs/arena-combat-mechanics.md`). It matched the game's % to a median
    of 1 point using such numbers. It covers 60% of fights (rematches).
@@ -121,7 +187,8 @@ page setting, default off):
    - your first-strike chance = 48.8 − 0.0438·AGI % (0–30); theirs =
      0.0149·AGI − 11.9 % (0–30);
    - their floor ≈ 6.1% of their base; their crit multiplier ≈ 1.38;
-     armory assumed 1.035 (unknown from the card).
+     armory assumed 1.035 (unknown from the card). *Correction: armory
+     doesn't change damage, so this term overstated opponents by ~3.5%.*
 
    Tested on the 96 fights with a card:
    - median 1 point from the game's % (90th percentile 29, worst 69);

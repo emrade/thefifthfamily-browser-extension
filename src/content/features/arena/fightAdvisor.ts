@@ -27,6 +27,7 @@ import {
 import type { ArenaBand, ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { MASTERY_TIER_LABEL, neededForMastery, type ArenaMasteryState } from '@/shared/arenaMastery';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
+import { memoryText, rememberFight, type ArenaOpponentMemory, type ArenaOpponentRecord } from '@/shared/arenaOpponentMemory';
 
 /**
  * The Arena fight advisor: badges every live opponent and the boss
@@ -124,6 +125,9 @@ const CSS = `
 #${BANNER_ID} .ff-arv-note { color: #8b8578; font-size: 0.68rem; margin-top: 6px; }
 #${BANNER_ID} .ff-arv-warn { color: #f87171; font-weight: 700; }
 #${BANNER_ID} .ff-arv-mastery { color: #e8c766; font-weight: 700; }
+.${BADGE_CLASS}.ff-arv-has-mem { flex-wrap: wrap; row-gap: 5px; }
+.${BADGE_CLASS} .ff-arv-mem { flex-basis: 100%; color: #a8a098; font-weight: 600; letter-spacing: 0.2px; line-height: 1.3; }
+.${BADGE_CLASS} .ff-arv-mem.ff-arv-mem-lost { color: #f8a5a5; }
 `;
 
 /** How long a result that went against its verdict stays in the banner. */
@@ -145,6 +149,30 @@ const shownVerdicts = new Map<string, { verdict: ArenaVerdict; band: ArenaBand }
 let bossQuote: { name: string; pct: number } | null = null;
 let enabled = false;
 let paintQueued = false;
+
+/** The four opt-in Arena page settings from the 2026-11-03 review
+ *  (docs/proposals/arena-advisor-post-patch-review.md). All off by default;
+ *  with all four off, verdicts, badges and the plan are exactly as before. */
+export interface ArenaAdvisorOptions {
+  /** "Arena Game % Safety Gate": regular opponents are Beatable only at
+   *  game 90%+ (else Coin-flip) and Avoid under 60%. */
+  gamePctGate: boolean;
+  /** "Arena Game % on Badges". */
+  showGamePct: boolean;
+  /** "Arena Bank-or-Fight Hint". */
+  bankOrFight: boolean;
+  /** "Arena Opponent Memory": record line, and real armour in the score. */
+  opponentMemory: boolean;
+}
+const NO_OPTIONS: ArenaAdvisorOptions = { gamePctGate: false, showGamePct: false, bankOrFight: false, opponentMemory: false };
+let options: ArenaAdvisorOptions = NO_OPTIONS;
+/** Post-patch record by the game's quoted % (116 fights, Oct 30 – Nov 3):
+ *  90%+ won 79/79; 60–89% won 11/14; under 60% won 2/25. */
+const GATE_BEATABLE_FROM = 90;
+const GATE_AVOID_BELOW = 60;
+/** Recorded from every regular fight whatever the settings (data only);
+ *  only shown and used when `opponentMemory` is on. */
+let memory: ArenaOpponentMemory | null = null;
 /** Detail behind each strip and attack-order chip, for the hover card and
  *  the click-through modal (fightDetails.ts). */
 const details = new WeakMap<Element, FightDetail>();
@@ -209,6 +237,12 @@ export function handleCapturedRequest(req: CapturedRequest): void {
 
     if (action === 'attack') {
       await scoreFight(data);
+      if (memory === null) memory = await storage.getArenaOpponentMemory();
+      const remembered = rememberFight(memory, data, Date.now());
+      if (remembered !== memory) {
+        memory = remembered;
+        await storage.setArenaOpponentMemory(remembered);
+      }
       const sample = sampleFromAttack(data);
       if (!sample) {
         recordParseFailure(FEATURE_KEY);
@@ -311,16 +345,55 @@ function verdictDetail(v: ArenaVerdict, p: number): string {
   return v.kind === 'coinflip' && p < LIKELY_AT ? `${leanText(p)} · ${score}` : score;
 }
 
-function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void {
+interface Judged {
+  /** What the badge shows: `raw`, after the safety gate if it's on. */
+  v: ArenaVerdict;
+  /** The advisor's own verdict (with remembered armour if that's on). What
+   *  the track record scores, so the gate never skews the band record. */
+  raw: ArenaVerdict;
+  /** Remembered fights against this opponent, when memory is on. */
+  rec: ArenaOpponentRecord | null;
+  /** The armour scored with, when it came from memory rather than the card. */
+  armourFromMemory: number | null;
+  gated: boolean;
+}
+
+/** The verdict for one card, with the opt-in settings applied. With all of
+ *  them off this is exactly `verdictFor(card, profile)`. */
+function judge(c: CardOnPage, me: ArenaMyProfile): Judged {
+  const rec = options.opponentMemory && !c.card.isBoss ? memory?.[c.card.name] ?? null : null;
+  const armourFromMemory = rec?.armour ?? null;
+  const raw = verdictFor(armourFromMemory !== null ? { ...c.card, defence: armourFromMemory } : c.card, me);
+  let v = raw;
+  const q = c.card.quotedPct;
+  if (options.gamePctGate && !c.card.isBoss && q !== null) {
+    if (q < GATE_AVOID_BELOW && raw.kind !== 'avoid') v = { ...raw, kind: 'avoid', leansWin: false };
+    else if (q < GATE_BEATABLE_FROM && raw.kind === 'beatable') v = { ...raw, kind: 'coinflip' };
+  }
+  return { v, raw, rec, armourFromMemory, gated: v !== raw };
+}
+
+function paintBadge(c: CardOnPage, j: Judged, order: number | null): void {
   const meta = c.el.querySelector('.ar-opp-meta');
   if (!meta || !profile) return;
+  const { v } = j;
   const p = winChance(c.card, v, trackRecord?.bands);
+  const q = c.card.quotedPct;
+  // The game's % shows when asked for, and always when the gate changed the
+  // verdict, so the reason for the change is on the badge.
+  const gameNote = q !== null && (options.showGamePct || j.gated) ? ` · game ${q}%` : '';
+  const memNote = j.rec
+    ? `<span class="ff-arv-mem${j.rec.lastWon ? '' : ' ff-arv-mem-lost'}">${escapeHtml(memoryText(j.rec))}${
+        j.armourFromMemory !== null ? ` · armour ${fmt(j.armourFromMemory)} (card DEF ${fmt(c.card.defence)})` : ''
+      }</span>`
+    : '';
   const inner =
     (order !== null ? `<span class="ff-arv-order">${order}</span>` : '') +
     `<span class="ff-arv-verdict">${verdictWord(v, p)}</span>` +
-    `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v, p)}</span>`;
+    `<span class="ff-arv-detail">~${Math.round(p * 100)}% · ${verdictDetail(v, p)}${gameNote}</span>` +
+    memNote;
   const sig = `${v.kind}|${inner}|${v.score}|${c.card.quotedPct}`;
-  shownVerdicts.set(c.card.name, { verdict: v, band: bandFor(c.card, v) });
+  shownVerdicts.set(c.card.name, { verdict: j.raw, band: bandFor(c.card, j.raw) });
   const detail: FightDetail = { card: c.card, familyLabel: c.familyLabel, verdict: v, order, profile, record: trackRecord, winChance: p, bounty: c.bounty };
   const existing = c.el.querySelector<HTMLElement>(`.${BADGE_CLASS}`);
   if (existing?.dataset.sig === sig && existing.nextElementSibling === meta) {
@@ -332,7 +405,7 @@ function paintBadge(c: CardOnPage, v: ArenaVerdict, order: number | null): void 
   // Its own full-width strip just above the bounty/chance row, so it never
   // competes with the game's own tags for space.
   const strip = document.createElement('div');
-  strip.className = `${BADGE_CLASS} ff-arv-${v.kind}`;
+  strip.className = `${BADGE_CLASS} ff-arv-${v.kind}${memNote ? ' ff-arv-has-mem' : ''}`;
   strip.dataset.sig = sig;
   strip.setAttribute('role', 'button');
   strip.tabIndex = 0;
@@ -414,9 +487,9 @@ function paint(): void {
 
   const scored = regulars
     .filter((c) => c.live)
-    .map((c): PotFight<{ c: CardOnPage; v: ArenaVerdict }> => {
-      const v = verdictFor(c.card, profile!);
-      return { item: { c, v }, p: winChance(c.card, v, trackRecord?.bands), bounty: c.bounty ?? 0 };
+    .map((c): PotFight<{ c: CardOnPage; v: ArenaVerdict; j: Judged }> => {
+      const j = judge(c, profile!);
+      return { item: { c, v: j.v, j }, p: winChance(c.card, j.v, trackRecord?.bands), bounty: c.bounty ?? 0 };
     });
   // Riskiest first: lowest win chance, then lowest score. Not score alone:
   // a 0.95 quoted 50%+ (~73%) is safer than a 1.05 quoted under 50% (~55%).
@@ -424,9 +497,10 @@ function paint(): void {
   const live = ordered.map((f) => f.item);
 
   for (const c of cards.filter((x) => !x.live)) c.el.querySelector(`.${BADGE_CLASS}`)?.remove();
-  live.forEach(({ c, v }, i) => paintBadge(c, v, i + 1));
-  const bossVerdict = boss?.live ? verdictFor(boss.card, profile) : null;
-  if (boss && bossVerdict) paintBadge(boss, bossVerdict, null);
+  live.forEach(({ c, j }, i) => paintBadge(c, j, i + 1));
+  const bossJudged = boss?.live ? judge(boss, profile) : null;
+  const bossVerdict = bossJudged?.v ?? null;
+  if (boss && bossJudged) paintBadge(boss, bossJudged, null);
 
   // --- the plan line -------------------------------------------------------
   const pot = readPot();
@@ -449,6 +523,31 @@ function paint(): void {
         pot > 0 ? `<b>${fmt(pot)}</b> in the pot now. ` : ''
       }Expect to bank <b>~${fmt(expected)}</b> from ${live.length === 1 ? 'this fight' : `these ${live.length} fights`} (${fmt(best)} if you win them all), before the boss.</span></div>`,
     );
+
+    // "Arena Bank-or-Fight Hint": fighting beats banking only when the win
+    // chance clears pot ÷ (pot + bounty). Uses the game's % (the most
+    // reliable since the Oct 30 patch); the advisor's own chance only when
+    // a card has none.
+    if (options.bankOrFight && pot > 0) {
+      const notWorth = live
+        .map(({ c, v }) => {
+          const bounty = c.bounty ?? 0;
+          const fromGame = c.card.quotedPct !== null;
+          const chance = fromGame ? c.card.quotedPct! / 100 : winChance(c.card, v, trackRecord?.bands);
+          return { c, bounty, chance, fromGame };
+        })
+        .filter((x) => x.chance < pot / (pot + x.bounty));
+      if (notWorth.length > 0) {
+        const names = notWorth
+          .map((x) => `<b>${escapeHtml(x.c.card.name)}</b> (${x.fromGame ? 'game' : '~'}${Math.round(x.chance * 100)}% for +${x.bounty})`)
+          .join(', ');
+        lines.push(
+          `<div class="ff-arv-line"><span class="ff-arv-label ff-arv-warn">Bank first</span><span class="ff-arv-text">Your pot of <b>${fmt(pot)}</b> is worth more than the chance of winning ${names}. Bank before fighting ${
+            notWorth.length === 1 ? 'them' : 'these'
+          }, so a loss costs nothing.</span></div>`,
+        );
+      }
+    }
   }
 
   // Fresh lineups (four regulars, none fought, every bounty readable) feed
@@ -606,8 +705,16 @@ function wireDetailEvents(): void {
   });
 }
 
-export function initArenaFightAdvisor(withMasteryTag = false): void {
+export function initArenaFightAdvisor(withMasteryTag = false, opts: ArenaAdvisorOptions = NO_OPTIONS): void {
   enabled = true;
+  options = opts;
+  storage
+    .getArenaOpponentMemory()
+    .then((m) => {
+      memory = m;
+      schedulePaint();
+    })
+    .catch((err) => console.error(LOG_PREFIX, 'arena opponent memory read failed', err));
   masteryTag = withMasteryTag;
   if (masteryTag) {
     storage
@@ -646,6 +753,10 @@ export function initArenaFightAdvisor(withMasteryTag = false): void {
     }
     if (STORAGE_KEYS.ARENA_LINEUP_POINTS in changes) {
       lineupRecord = (changes[STORAGE_KEYS.ARENA_LINEUP_POINTS].newValue as ArenaLineupPoints | undefined) ?? null;
+      schedulePaint();
+    }
+    if (STORAGE_KEYS.ARENA_OPPONENT_MEMORY in changes) {
+      memory = (changes[STORAGE_KEYS.ARENA_OPPONENT_MEMORY].newValue as ArenaOpponentMemory | undefined) ?? {};
       schedulePaint();
     }
     if (STORAGE_KEYS.ARENA_TRACK_RECORD in changes) {

@@ -158,10 +158,13 @@ values appear before and after 2026-10-30.
   expected value has a median of 0.944, both before (2,183 hits) and after
   (1,171) the patch, with only ~1.4% spread within a fight. Step 2 above
   (no factor) overstates every hit by ~5%.
-- **Opponents' `armory_mult` boosts their damage.** It's 1.00 on every one
-  of the player's swings. Opponents carry 1.00–1.07, most often 1.06, on
-  ~60% of swings. Their per-swing damage rises with it: ratio to a model
-  without it 0.95 at ×1.00, ~1.00 at ×1.06.
+- ~~Opponents' `armory_mult` boosts their damage.~~ **Corrected the same
+  day: it doesn't.** Opponents' plain hits ÷ max(floor, base − armour) have
+  the same median at every armory value: 0.944 at ×1.00 (325 hits), 0.944
+  at ×1.06 (180), 0.946 at ×1.07 (44). The first claim came from comparing
+  whole-swing averages, which mixed in other differences between opponents.
+  Caught by the independent review
+  (`docs/agent-briefs/arena-post-patch-independent-review-findings-1.md`).
 - **Roll order re-confirmed:** dodge → block → crit, each roll < chance:
   2,062 of 2,084 post-patch swings (the rest look like roll = chance).
 - **First strikes:** a "pre-counter snap shot" (`pre_attacker` /
@@ -175,7 +178,9 @@ values appear before and after 2026-10-30.
     `killRaceScore` ignores it entirely.
 - **A whole-fight simulation reproduces the game's %.** Run with each
   fight's logged parameters (both sides' bases, floors, armour, dodge,
-  block, crit chance and multiplier, armory, first-strike chances, max HP),
+  block, crit chance and multiplier, first-strike chances, max HP; it also
+  applied armory, which turned out wrong, see above, so it slightly
+  overstated opponents),
   over 116 post-patch fights:
   - it lands a median of **1 point** from the game's quoted % (90th
     percentile 10, worst 22);

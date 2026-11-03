@@ -189,7 +189,12 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
       initArenaOverlay();
     }
     if (prefs.arenaFightAdvisor) {
-      initArenaFightAdvisor(prefs.arenaMasteryTag);
+      initArenaFightAdvisor(prefs.arenaMasteryTag, {
+        gamePctGate: prefs.arenaGamePctGate,
+        showGamePct: prefs.arenaShowGamePct,
+        bankOrFight: prefs.arenaBankOrFight,
+        opponentMemory: prefs.arenaOpponentMemory,
+      });
     }
   });
 }

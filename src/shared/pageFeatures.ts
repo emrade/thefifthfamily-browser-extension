@@ -116,6 +116,33 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Needs the Arena Fight Advisor. When the page’s boss is one you still need to clear its family’s current Mastery tier, the advisor’s Boss line says so — e.g. “Needed for Mastery: 1 of 1 left for +1% DEF”. Mastery is read from the Ticket Exchange (open it once to start).',
   },
   {
+    id: 'arenaGamePctGate',
+    label: 'Arena Game % Safety Gate',
+    description:
+      'Needs the Arena Fight Advisor. Checks each regular opponent’s verdict against the game’s own % CHANCE: Beatable only when the game says 90% or more (otherwise it shows Coin-flip), and Avoid when it says under 60%. Since the Oct 30 patch the game’s % has been the most reliable number: 90%+ won 79 of 79, under 60% won 2 of 25.',
+    defaultOn: false,
+  },
+  {
+    id: 'arenaShowGamePct',
+    label: 'Arena Game % on Badges',
+    description: 'Needs the Arena Fight Advisor. Adds the game’s own % CHANCE to each advisor badge (“game 15%”), so you can see at a glance when the two disagree.',
+    defaultOn: false,
+  },
+  {
+    id: 'arenaBankOrFight',
+    label: 'Arena Bank-or-Fight Hint',
+    description:
+      'Needs the Arena Fight Advisor. While a pot is building, the advisor’s plan names any opponent not worth risking it on — when the win chance (the game’s %) is below pot ÷ (pot + bounty) — so you can bank first and fight them with nothing at risk.',
+    defaultOn: false,
+  },
+  {
+    id: 'arenaOpponentMemory',
+    label: 'Arena Opponent Memory',
+    description:
+      'Needs the Arena Fight Advisor. Remembers every opponent you’ve fought (seeded from the last 14 days of your fight history): shows your record against them and how the last fight ended, and scores them with their real armour from that fight instead of the card’s DEF, which gear makes up to 1.7× higher.',
+    defaultOn: false,
+  },
+  {
     id: 'automationUpNextChip',
     label: 'Automation Up Next Chip',
     description:

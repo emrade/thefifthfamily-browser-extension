@@ -44,6 +44,7 @@ import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from '.
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
 import type { PlayerIntelMods } from './streetIntelPredict';
 import type { ArenaMasteryState } from './arenaMastery';
+import type { ArenaOpponentMemory } from './arenaOpponentMemory';
 
 // No job selected yet — the popup's job picker is what actually populates
 // careerId/careerName/energyCost/otEnergyCost, from a live CareerCatalogEntry,
@@ -328,6 +329,9 @@ export const storage = {
 
   getArenaLineupPoints: () => get<ArenaLineupPoints | null>(STORAGE_KEYS.ARENA_LINEUP_POINTS, null),
   setArenaLineupPoints: (v: ArenaLineupPoints) => set(STORAGE_KEYS.ARENA_LINEUP_POINTS, v),
+
+  getArenaOpponentMemory: () => get<ArenaOpponentMemory>(STORAGE_KEYS.ARENA_OPPONENT_MEMORY, {}),
+  setArenaOpponentMemory: (v: ArenaOpponentMemory) => set(STORAGE_KEYS.ARENA_OPPONENT_MEMORY, v),
 
   // Same merge-with-defaults/simple-nullable split as the Crimes Auto pair.
   getAutomationQueueConfig: async (): Promise<AutomationQueueConfig> => {

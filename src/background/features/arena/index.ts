@@ -4,6 +4,7 @@ import { storage } from '@/shared/storage';
 import type { ArenaWatchStatus } from '@/shared/types';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { handleNotificationClick, scheduleNextCheck } from './watcher';
+import { backfillOpponentMemory } from './opponentMemoryBackfill';
 
 export { handleAlarm } from './watcher';
 
@@ -48,6 +49,7 @@ export function init(): void {
     handleNotificationClick(id).catch((err) => console.error(LOG_PREFIX, 'arena reminder click failed', err));
   });
   ensureScheduled().catch((err) => console.error(LOG_PREFIX, 'arena ensureScheduled failed', err));
+  backfillOpponentMemory().catch((err) => console.error(LOG_PREFIX, 'arena opponent memory backfill failed', err));
 }
 
 /** Arms the reminder the first time the player is seen on Arena, rather

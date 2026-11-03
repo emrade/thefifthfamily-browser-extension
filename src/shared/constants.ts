@@ -34,6 +34,8 @@ export const STORAGE_KEYS = {
   ARENA_MASTERY: 'ff_arena_mastery',
   ARENA_TRACK_RECORD: 'ff_arena_track_record',
   ARENA_LINEUP_POINTS: 'ff_arena_lineup_points',
+  ARENA_OPPONENT_MEMORY: 'ff_arena_opponent_memory',
+  ARENA_OPPONENT_MEMORY_SEEDED: 'ff_arena_opponent_memory_seeded',
   REAL_ESTATE_VAULTS: 'ff_real_estate_vaults',
   QUICK_SELL_PRICE_BOOK: 'ff_quick_sell_price_book',
   INVENTORY_AUTO_SELL_CRITERIA: 'ff_inventory_auto_sell_criteria',
