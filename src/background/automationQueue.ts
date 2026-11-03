@@ -7,7 +7,7 @@ import type { AutomationQueueFeature, AutomationQueueLogEntry } from '@/shared/t
  * One-at-a-time queue across the background automations, so two of them never
  * act on the game at the same moment — something a single player in one tab
  * can't do. Design, measurements and the player's decisions:
- * docs/proposals/automation-clash-queue.md.
+ * docs/automation-queue.md.
  *
  * **Off by default, and off means today's behaviour exactly.** `runQueued`
  * calls straight through to the feature's own run, with no waiting, no gap

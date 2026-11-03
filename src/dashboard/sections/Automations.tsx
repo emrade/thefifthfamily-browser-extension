@@ -9,7 +9,7 @@ import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationSchedul
 /**
  * Dashboard → Automations: what the background automations are doing and,
  * with the Automation Queue on, how it spaced them out. Read-only apart from
- * the queue's own switch. See docs/proposals/automation-clash-queue.md.
+ * the queue's own switch. See docs/automation-queue.md.
  */
 
 const SCHEDULE_REFRESH_MS = 2_000;

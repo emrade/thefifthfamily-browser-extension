@@ -13,7 +13,7 @@ import type { AutomationScheduleItem, AutomationScheduleSnapshot } from '@/share
  *
  * It exists so the player can plan their own clicks around the automations
  * (the player chose this over automations holding off while they click), see
- * docs/proposals/automation-clash-queue.md. Read-only apart from the queue
+ * docs/automation-queue.md. Read-only apart from the queue
  * switch: it sends nothing to the game.
  *
  * Placed top-right, under the achievement chip's spot, so it stays clear of

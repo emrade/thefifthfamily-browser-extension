@@ -1,11 +1,30 @@
-# Background automations acting at the same time
+# Automation Queue: background automations taking turns
 
-Status (2026-11-03): **queue, chip and dashboard built, not yet released.** Off by
-default. See "Decisions" and "Refined check" below.
+Status: **shipped.** The Automation Queue, the "Up next" chip and the
+Automations view shipped in **0.55.0** (2026-11-03). In **0.56.0** the
+dashboard became the extension's main page ("Dashboard", with Automations
+as one section). Both the queue and the chip are off by default.
+(Moved out of `docs/proposals/` once shipped.)
+
+Where things are now:
+- **Queue switch:** "Automation Queue", in Dashboard → Settings →
+  Background Automations; also on Dashboard → Automations and in the chip.
+- **Chip setting:** "Automation Up Next Chip", in Dashboard → Settings →
+  In-Game Page Features.
+- **Dashboard:** `src/dashboard/main.tsx` (menu and sections),
+  `src/dashboard/sections/Automations.tsx` (this feature's view). Opened via
+  `dashboard-open-requested` with an optional section, e.g.
+  `automations`.
+
+**Still to do:** once the queue has been on for a while, check an archive
+export to confirm cross-feature overlaps dropped. Use the method in
+"Refined check" below; expect ~0, apart from "forced" turns.
+
+The build notes below are kept as written at the time.
 
 - Code: `src/background/automationQueue.ts` (`runQueued`, `skipIfQueueBusy`).
-- Setting: "Automation Queue" under Background Automations in the popup's
-  Settings (`AutomationQueueSettings.tsx`), stored as
+- Setting: "Automation Queue" under Background Automations in Settings
+  (now on the Dashboard) (`AutomationQueueSettings.tsx`), stored as
   `ff_automation_queue_config`.
 - Log: the last 300 turns, in `ff_automation_queue_log`, for the dashboard.
 - Wrapped entry points:

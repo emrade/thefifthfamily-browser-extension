@@ -722,7 +722,7 @@ export interface CrimesAutoStatus {
 }
 
 /** One-at-a-time queue across background automations — see
- *  `background/automationQueue.ts` and docs/proposals/automation-clash-queue.md.
+ *  `background/automationQueue.ts` and docs/automation-queue.md.
  *  Off = every automation runs exactly as before the queue existed. */
 export interface AutomationQueueConfig {
   enabled: boolean;
