@@ -116,6 +116,13 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Needs the Arena Fight Advisor. When the page’s boss is one you still need to clear its family’s current Mastery tier, the advisor’s Boss line says so — e.g. “Needed for Mastery: 1 of 1 left for +1% DEF”. Mastery is read from the Ticket Exchange (open it once to start).',
   },
   {
+    id: 'automationUpNextChip',
+    label: 'Automation Up Next Chip',
+    description:
+      'A small button at the top-right of every game page showing when the next background automation check is due (gold while one is running). Tap it to see each automation in order, switch the Automation Queue on or off, or open the Automation Dashboard.',
+    defaultOn: false,
+  },
+  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:

@@ -6,6 +6,8 @@ export default defineConfig({
     webExtension({
       manifest: 'manifest.json',
       watchFilePaths: ['package.json', 'manifest.json'],
+      // Extension pages not named in the manifest (opened with tabs.create).
+      additionalInputs: ['src/dashboard/index.html'],
     }),
   ],
   build: {

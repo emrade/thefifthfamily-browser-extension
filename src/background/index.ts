@@ -73,6 +73,7 @@ import { upsertRoster, getRoster } from '@/shared/petRoster';
 import { storage } from '@/shared/storage';
 import { runQueued } from './automationQueue';
 import { removeLegacyFuryCatcher } from './legacyCleanup';
+import { getAutomationSchedule, openAutomationDashboard } from './automationSchedule';
 
 /** Player-started jobs arrive one step per message: keep the automation
  *  queue theirs between steps (see automationQueue.ts). */
@@ -200,6 +201,14 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Sent by the in-page Street Intel status overlay — see that message type's
   // own doc in messaging.ts for why this is the one piece it can't read
   // straight out of `chrome.storage` itself.
+  if (msg.type === 'automation-schedule-requested') {
+    return getAutomationSchedule();
+  }
+
+  if (msg.type === 'automation-dashboard-open-requested') {
+    return openAutomationDashboard();
+  }
+
   if (msg.type === 'street-intel-next-check-requested') {
     return chrome.alarms.get(ALARM_NAMES.STREET_INTEL_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
   }

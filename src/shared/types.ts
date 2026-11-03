@@ -740,6 +740,23 @@ export type AutomationQueueFeature =
   | 'inventory'
   | 'achievements';
 
+export interface AutomationScheduleItem {
+  feature: AutomationQueueFeature;
+  /** running = mid-run now; waiting = queued behind another; scheduled =
+   *  next check at `nextAt`; off = its own switch is off. */
+  state: 'running' | 'waiting' | 'scheduled' | 'off';
+  nextAt: number | null;
+}
+
+/** What the dashboard and the "Up next" chip show — built in the background
+ *  (alarms + the queue's in-memory state), see automationSchedule.ts. */
+export interface AutomationScheduleSnapshot {
+  now: number;
+  queueEnabled: boolean;
+  holder: { feature: AutomationQueueFeature; startedAt: number } | null;
+  items: AutomationScheduleItem[];
+}
+
 /** One turn through the queue, kept for the dashboard. `outcome`:
  *  'ok' / 'error' = the feature's own run finished or threw;
  *  'forced-wait' = waited the maximum and went ahead anyway;

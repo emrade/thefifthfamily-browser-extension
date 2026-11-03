@@ -137,6 +137,38 @@ function release(id: number, feature: AutomationQueueFeature, linger: boolean): 
   freeAt = Date.now() + (linger ? LINGER_MS : randomGap());
 }
 
+/** Which automations are mid-run right now, queue on or off — read-only
+ *  bookkeeping for the dashboard and the "Up next" chip. It never delays or
+ *  changes a run. */
+const running = new Map<AutomationQueueFeature, number>();
+
+async function tracked<T>(feature: AutomationQueueFeature, fn: () => Promise<T>): Promise<T> {
+  running.set(feature, (running.get(feature) ?? 0) + 1);
+  try {
+    return await fn();
+  } finally {
+    const n = (running.get(feature) ?? 1) - 1;
+    if (n > 0) running.set(feature, n);
+    else running.delete(feature);
+  }
+}
+
+export interface AutomationQueueState {
+  enabled: boolean;
+  holder: { feature: AutomationQueueFeature; startedAt: number } | null;
+  waiting: AutomationQueueFeature[];
+  running: AutomationQueueFeature[];
+}
+
+export async function getQueueState(): Promise<AutomationQueueState> {
+  return {
+    enabled: await isEnabled(),
+    holder: holder ? { feature: holder.feature, startedAt: holder.startedAt } : null,
+    waiting: waiters.map((w) => w.feature),
+    running: [...running.keys()],
+  };
+}
+
 let logWrite: Promise<void> = Promise.resolve();
 
 function appendLog(entry: AutomationQueueLogEntry): void {
@@ -155,16 +187,16 @@ function appendLog(entry: AutomationQueueLogEntry): void {
  * player-started jobs sent one step per message.
  */
 export async function runQueued<T>(feature: AutomationQueueFeature, fn: () => Promise<T>, options: { linger?: boolean } = {}): Promise<T> {
-  if (enabledCache === false || !(await isEnabled())) return fn();
+  if (enabledCache === false || !(await isEnabled())) return tracked(feature, fn);
 
   const queuedAt = Date.now();
   const got = await acquire(feature, queuedAt);
-  if (got.id === null && !got.forced) return fn(); // switched off while waiting
+  if (got.id === null && !got.forced) return tracked(feature, fn); // switched off while waiting
 
   const startedAt = Date.now();
   let outcome: AutomationQueueLogEntry['outcome'] = got.forced ? 'forced-wait' : 'ok';
   try {
-    return await fn();
+    return await tracked(feature, fn);
   } catch (err) {
     if (!got.forced) outcome = 'error';
     throw err;

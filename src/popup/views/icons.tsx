@@ -118,6 +118,17 @@ export function MaskIcon() {
   );
 }
 
+/** Gauge — the Automation Dashboard. */
+export function GaugeIcon() {
+  return (
+    <svg {...commonProps}>
+      <path d="M4 16a8 8 0 1 1 16 0" />
+      <path d="M12 16l4-5" />
+      <circle cx="12" cy="16" r="1" />
+    </svg>
+  );
+}
+
 export function BuildingIcon() {
   return (
     <svg {...commonProps}>

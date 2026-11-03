@@ -3,9 +3,10 @@ import { LiveStats } from './LiveStats';
 import { ReloadGameTabsRow, UpdateBanner } from './GameTabs';
 import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
+import type { ExtensionMessage } from '@/shared/messaging';
 import { storage } from '@/shared/storage';
 import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, RealEstateAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, BuildingIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
+import { ArchiveIcon, BriefcaseIcon, BuildingIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, GaugeIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
   onOpenFightClub: () => void;
@@ -97,9 +98,7 @@ export function Home(props: HomeProps) {
 
   const crimesAutoStatus = crimesAutoConfig?.enabled ? 'Running' : 'Off';
 
-
   const realEstateAutoStatus = realEstateAutoConfig?.enabled ? `Collects after ${realEstateAutoConfig.intervalHours}h without one` : 'Off';
-
 
   // Only broken features are listed. A healthy extension shows nothing here — this
   // is meant to be invisible until the day the game changes underneath it, which
@@ -146,6 +145,15 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__text">
           <div class="ff-nav-row__title">HTTP Archive</div>
           <div class="ff-nav-row__status">Raw request capture and exports</div>
+        </div>
+        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      </button>
+
+      <button class="ff-nav-row" onClick={() => void chrome.runtime.sendMessage({ type: 'automation-dashboard-open-requested' } satisfies ExtensionMessage)}>
+        <div class="ff-nav-row__icon"><GaugeIcon /></div>
+        <div class="ff-nav-row__text">
+          <div class="ff-nav-row__title">Automation Dashboard</div>
+          <div class="ff-nav-row__status">What's running and what's next, in its own tab</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

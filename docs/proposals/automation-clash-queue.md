@@ -1,6 +1,6 @@
 # Background automations acting at the same time
 
-Status (2026-11-03): **step 2 (the queue) built, not yet released.** Off by
+Status (2026-11-03): **queue, chip and dashboard built, not yet released.** Off by
 default. See "Decisions" and "Refined check" below.
 
 - Code: `src/background/automationQueue.ts` (`runQueued`, `skipIfQueueBusy`).
@@ -20,7 +20,23 @@ default. See "Decisions" and "Refined check" below.
   on = one at a time with a 3–8 s gap; a Garage job's steps run back to
   back while another automation waits until 15 s after the last step;
   turning it off mid-wait releases every waiter at once.
-- Next: try it live, then step 3 (the chip). The question to settle
+- **Steps 3 and 4 built in the same version** (no reason to wait for data:
+  they fill in once the queue runs):
+  - Shared data: `src/background/automationSchedule.ts`, which builds a
+    snapshot from each automation's own switch and alarm plus the queue's
+    in-memory state. Message `automation-schedule-requested`. Also
+    `automation-dashboard-open-requested`, for the chip.
+  - The queue also records which automations are mid-run, queue on or off.
+    That's read-only bookkeeping that never delays a run.
+  - Dashboard: `src/dashboard/` (index.html, main.tsx, dashboard.css), a full
+    page in its own tab, opened from the popup's Home ("Automation
+    Dashboard") or the chip. Registered in `vite.config.ts`
+    `additionalInputs`. Shows the queue switch, now and coming up, today's
+    queue stats, and recent activity (last 60 turns).
+  - "Up next" chip: `src/content/shared/upNextChip.ts`, page setting
+    "Automation Up Next Chip", default off. Sits top-right under the
+    achievement chip's spot.
+- Next: try it all live. The question to settle
 first: how often do two different background automations act at the same
 moment? A real player in one tab can't do that unless they play from two
 devices, so it's a pattern the game's developers could notice.
