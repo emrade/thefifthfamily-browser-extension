@@ -149,6 +149,46 @@ minimum-damage. Whoever has the higher base damage relative to the other
 side's HP wins. That's why STR (base damage) and level (HP) decide nearly
 everything.
 
+### Additions from the 2026-11-03 review (fight logs, Oct 20 – Nov 3)
+
+Checked against every logged hit. None of these is a patch change: the same
+values appear before and after 2026-10-30.
+- **Every hit is cut ~5%.** Damage ≈ **0.95 ×** max(floor, base − armour),
+  rounded (mostly down), then × crit or × 0.2 block. Logged damage ÷ that
+  expected value has a median of 0.944, both before (2,183 hits) and after
+  (1,171) the patch, with only ~1.4% spread within a fight. Step 2 above
+  (no factor) overstates every hit by ~5%.
+- **Opponents' `armory_mult` boosts their damage.** It's 1.00 on every one
+  of the player's swings. Opponents carry 1.00–1.07, most often 1.06, on
+  ~60% of swings. Their per-swing damage rises with it: ratio to a model
+  without it 0.95 at ×1.00, ~1.00 at ×1.06.
+- **Roll order re-confirmed:** dodge → block → crit, each roll < chance:
+  2,062 of 2,084 post-patch swings (the rest look like roll = chance).
+- **First strikes:** a "pre-counter snap shot" (`pre_attacker` /
+  `pre_defender` in the round), at ~0.52× base against ~0.5× armour. The
+  logged chance matched the counts (65 expected / 72 seen for the player,
+  53 / 59 for opponents). It goes to whoever is faster:
+  - the player's chance is up to 30% against opponents with AGI under
+    ~1,100, falling to 0 near AGI 1,120;
+  - the opponent's chance rises above that: AGI 1,402 → 10%, 1,877 → 22%.
+  - It decided Mr_Wednesday 2026-11-02 (30%), and the advisor's
+    `killRaceScore` ignores it entirely.
+- **A whole-fight simulation reproduces the game's %.** Run with each
+  fight's logged parameters (both sides' bases, floors, armour, dodge,
+  block, crit chance and multiplier, armory, first-strike chances, max HP),
+  over 116 post-patch fights:
+  - it lands a median of **1 point** from the game's quoted % (90th
+    percentile 10, worst 22);
+  - it rated 80 fights 90%+, all won, and 17 fights under 30%, all lost.
+  - So the game's % is very likely its own simulation with the opponent's
+    true (gear-included) numbers, which the card doesn't show.
+  - Scratch script: `sim.py` (`simulate4`) in the 2026-11-03 session
+    scratchpad.
+- **An opponent's numbers are fixed between fights** (they change only
+  with gear or a patch), and **60% of post-patch fights were rematches**
+  (70 of 116). For those, the previous fight's log gives every parameter
+  exactly.
+
 ### Card stats → combat numbers
 
 | Card | Combat value | Regular | Boss |
