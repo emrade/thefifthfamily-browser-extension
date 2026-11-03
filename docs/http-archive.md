@@ -163,6 +163,18 @@ Two things qualify that number:
   stretching the window to ~2.3 days. Page traffic and every `POST` are always
   kept; what's lost is only the timestamp of a repeated read. Every careers/crimes body also exceeds the 512 KB body cap
   (`REQUEST_LOG_MAX_BODY_BYTES`), so no archived copy of either is complete.
+
+  **Near repeats (since 0.58.0).** Measured 2026-11-03, the Smuggling, Crimes and
+  Careers pages were still ~60% of the history, mostly the automations' reads
+  differing only in numbers (timers, counters, cash). `nearRepeatIntervalFor` in
+  `policy.ts` drops a background `GET` of one of those pages when its body matches
+  the newest stored row for that page once numbers are ignored
+  (`numberlessText` in `nearRepeat.ts`), unless 1 min (Smuggling) or 1 h (Crimes,
+  Careers) has passed since that row. Any change beyond numbers is kept. The Crimes
+  page embeds its crime-button script base64-encoded (`eval(atob('…'))`), which
+  re-encodes entirely when one number inside changes; it is decoded before
+  comparing, so a change to the script itself still counts. Page traffic and
+  `POST`s are untouched.
 - **The shape index is never swept.** It is a few KB, and it is most valuable exactly
   when it outlives the bodies that produced it. Knowing an endpoint changed two months
   ago costs nothing and is the whole question the index exists to answer.
@@ -223,7 +235,10 @@ python3 scripts/merge-archives.py "~/Downloads/tff archives" --delete-sources  #
 
 By default it also drops **repeat reads** with the same rule the extension now applies
 at capture (`skipsIdenticalRepeat`): a background `GET` whose status and body match the
-newest kept row for its endpoint. `--keep-repeats` keeps them. It also collapses rows
+newest kept row for its endpoint. `--keep-repeats` keeps them. With
+`--thin-near-repeats` it also applies the near-repeat rule above to the history,
+and its verify step checks that every thinned row has a stored numbers-only twin;
+test it with `--out` on a scratch folder before letting it replace `merged/`. It also collapses rows
 recorded twice for one request — page panel loads captured twice with the same
 millisecond and URL, seen in October exports.
 

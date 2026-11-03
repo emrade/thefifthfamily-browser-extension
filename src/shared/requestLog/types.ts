@@ -65,6 +65,11 @@ export interface RequestLogEntry {
    *  byte-identical repeat — see `skipsIdenticalRepeat`. Absent on rows written
    *  before 2026-10-09, which simply never match. */
   contentHash?: string;
+  /** SHA-256 of status + `numberlessText` of the stored response, only on
+   *  endpoints with a `nearRepeatIntervalFor`. Lets a background read that
+   *  differs only in numbers be skipped. Absent on older rows, which never
+   *  match. Not exported. */
+  numberlessHash?: string;
 }
 
 /** Per-token bookkeeping inside an endpoint's vocabulary. `count` against the

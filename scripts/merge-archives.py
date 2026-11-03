@@ -48,6 +48,7 @@ newest export wins (newer extension versions may add fields).
 from __future__ import annotations
 
 import argparse
+import base64
 import gzip
 import hashlib
 import json
@@ -96,14 +97,31 @@ NEAR_REPEAT_INTERVAL_MS = {
     "GET /api/panel.php?type=crimes": HOUR_MS,
     "GET /api/panel.php?type=careers": HOUR_MS,
 }
-DIGITS_RE = re.compile(r"\d+")
+# Same rule as `numberlessText` in src/shared/requestLog/nearRepeat.ts; keep
+# the two in step. ASCII digits only, as in JS (Python's \d matches more).
+DIGITS_RE = re.compile(r"[0-9]+")
+# The Crimes page's crime-button script is embedded base64-encoded
+# (`eval(atob('…'))`); one digit changing inside re-encodes the whole block.
+# Decoded, it's compared like the rest of the page.
+ATOB_RE = re.compile(r"(atob\(\\?')([A-Za-z0-9+/=]{100,})")
+
+
+def _decode_atob(m: re.Match) -> str:
+    try:
+        return m.group(1) + base64.b64decode(m.group(2), validate=True).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return m.group(0)
+
+
+def numberless_text(body: str) -> str:
+    return DIGITS_RE.sub("", ATOB_RE.sub(_decode_atob, body))
 
 
 def numberless_hash(row: dict) -> bytes:
-    """Status and stored body with every run of digits removed: two reads
-    that differ only in counters, cash or timers hash the same."""
+    """Status and stored body with numbers ignored (`numberless_text`): two
+    reads that differ only in counters, cash or timers hash the same."""
     status = row.get("status")
-    text = f"{'' if status is None else status}\n{DIGITS_RE.sub('', row.get('responseBody') or '')}"
+    text = f"{'' if status is None else status}\n{numberless_text(row.get('responseBody') or '')}"
     return hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
 
 

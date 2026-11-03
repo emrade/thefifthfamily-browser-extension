@@ -3,7 +3,8 @@ import { LOG_PREFIX } from '@/shared/log';
 import { REQUEST_LOG_MAX_BODY_BYTES } from '@/shared/constants';
 import { byteLength, compressText, BODY_ENCODING } from './compress';
 import { endpointKey, fingerprintResponse } from './fingerprint';
-import { isExcluded, skipsIdenticalRepeat, throttleIntervalFor } from './policy';
+import { isExcluded, nearRepeatIntervalFor, skipsIdenticalRepeat, throttleIntervalFor } from './policy';
+import { numberlessText } from './nearRepeat';
 import { redactBody, redactUrl } from './redact';
 import { addToStats } from './stats';
 import { foldObservation } from './profile';
@@ -74,6 +75,11 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
   // for an oversized response to register as its own shape than for it to be
   // silently indistinguishable from the complete one.
   const contentHash = await sha256Hex(`${input.status ?? ''}\n${responseText}`);
+  // Hashed on every origin, page reads included, so a background read right
+  // after the player opened the page compares against what they saw.
+  const nearInterval = nearRepeatIntervalFor(endpoint);
+  const numberlessHash =
+    nearInterval != null ? await sha256Hex(`${input.status ?? ''}\n${numberlessText(responseText)}`) : undefined;
   if (skipsIdenticalRepeat(input.method, input.origin)) {
     // Newest row for this endpoint, from any origin — if the page itself just
     // loaded the identical panel, a background re-read of it adds nothing either.
@@ -82,6 +88,16 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
     // archive, which never sees it.
     const latest = await db.requestLog.where('[endpoint+timestamp]').between([endpoint, -Infinity], [endpoint, Infinity]).last();
     if (latest?.contentHash === contentHash) return;
+    // Same page once numbers are ignored, and the newest stored copy is recent
+    // enough: skip (policy.ts `nearRepeatIntervalFor`).
+    if (
+      nearInterval != null &&
+      latest?.numberlessHash !== undefined &&
+      latest.numberlessHash === numberlessHash &&
+      input.timestamp - latest.timestamp < nearInterval
+    ) {
+      return;
+    }
   }
 
   const { hash, tokens } = fingerprintResponse(responseText);
@@ -110,6 +126,7 @@ export async function recordRequest(input: RecordRequestInput): Promise<void> {
     truncated,
     shapeHash: hash,
     contentHash,
+    numberlessHash,
   });
 
   await addToStats(rawSize, storedSize, input.timestamp);

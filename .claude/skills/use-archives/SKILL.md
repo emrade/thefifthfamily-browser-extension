@@ -66,6 +66,11 @@ Gzipped NDJSON. **Line 1 is a header**, every other line one request:
   background `GET`s identical to the previous stored response for that endpoint, so
   background polling *frequency* isn't measurable from them. Page traffic and all
   `POST`s are complete.
+- **Near repeats are thinned** on the Smuggling, Crimes and Careers pages (extension
+  since 0.58.0; merged files whose header has `nearRepeatsThinned`): a background read
+  differing from the previous stored one only in numbers is dropped for up to 1 min
+  (Smuggling) or 1 h (Crimes, Careers). Expect at least one stored copy per interval,
+  not one per read, so per-read timers or counters between kept copies are gone.
 - **512 KB body cap.** `truncated:true` bodies are cut short — every careers and
   crimes panel is, so no archived copy of either page is complete.
 - **Raw (unmerged) exports overlap each other** and can contain page rows recorded

@@ -89,6 +89,34 @@ export function skipsIdenticalRepeat(method: string, origin: RequestLogOrigin): 
   return origin === 'background' && method.toUpperCase() === 'GET';
 }
 
+/**
+ * Pages whose background re-reads are also dropped when they only differ in
+ * numbers from the newest stored row (`numberlessText` in nearRepeat.ts), and
+ * how long such a read may be dropped for: once this long has passed since
+ * the newest stored row, the next read is kept regardless, so the archive
+ * still holds a regular sample.
+ *
+ * Measured 2026-11-03: these three pages were ~60% of the history on disk,
+ * mostly the automations' own reads every few seconds. Smuggling keeps at
+ * least one a minute; Crimes and Careers one an hour, since no analysis reads
+ * their stored pages. Any change beyond
+ * numbers is always kept. Exact endpoint keys, as `endpointKey()` builds them.
+ *
+ * scripts/merge-archives.py (`NEAR_REPEAT_INTERVAL_MS`) applies the same rule
+ * to the history on disk; keep the two in step.
+ */
+const NEAR_REPEAT_PATHS: Record<string, number> = {
+  'GET /api/panel.php?type=smuggling': 60_000,
+  'GET /api/panel.php?type=crimes': 3_600_000,
+  'GET /api/panel.php?type=careers': 3_600_000,
+};
+
+/** How long a numbers-only repeat of this endpoint is dropped for, or null
+ *  when the endpoint isn't thinned this way. */
+export function nearRepeatIntervalFor(endpoint: string): number | null {
+  return NEAR_REPEAT_PATHS[endpoint] ?? null;
+}
+
 /** Exposed so the retention sweep can drop rows for endpoints excluded after they
  *  were archived — otherwise a policy change would take a full retention window to
  *  take effect. */
