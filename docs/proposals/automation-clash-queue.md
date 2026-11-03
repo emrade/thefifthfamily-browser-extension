@@ -1,6 +1,7 @@
 # Background automations acting at the same time
 
-Status (2026-11-01): **measured, nothing built.** The question to settle
+Status (2026-11-03): **design agreed, nothing built** (see "Decisions"
+below). Next step: the bank attribution check. The question to settle
 first: how often do two different background automations act at the same
 moment? A real player in one tab can't do that unless they play from two
 devices, so it's a pattern the game's developers could notice.
@@ -72,17 +73,92 @@ automated requests can be told apart from the player's.
 - After releasing the lock, wait a short, human-like gap (a few seconds,
   randomised) before the next feature's cycle starts, as if the player
   switched pages.
-- Optionally hold automation back while the player is actively clicking
-  (a `page` POST in the last few seconds), to cover the 296
-  automation-vs-player overlaps.
+- ~~Optionally hold automation back while the player is actively
+  clicking.~~ Rejected 2026-11-03: see Decisions.
 - This sits *above* each feature's existing `cycleInFlight`/`activeRun`
   guard (see CLAUDE.md), which stays as it is. That guard stops a feature
   overlapping *itself*; the queue stops features overlapping *each other*.
 - Behind its own setting, **default off**, so nothing changes until the player
   turns it on (see the memories `feedback_auto_features_off_by_default` and
   `feedback_keep_existing_behavior_toggle_new`).
-- Open questions for the player, to answer before coding:
-  - Should one feature be able to jump the queue (e.g. a time-limited
-    courier)?
-  - How long a gap between features?
-  - Should automation wait while the player is clicking?
+## Decisions (2026-11-03)
+
+The player's answers to the open questions:
+
+- **Pet Courier goes first in line**, ahead of every other waiting
+  automation.
+- **Gap between automations:** a random 3–8 s after one releases the queue,
+  before the next starts.
+- **Things the player starts themselves wait their turn:** Garage bulk jobs,
+  Inventory bulk sell, and the Run Now / Check Now buttons.
+- **No holding off while the player is clicking.** The player can be
+  clicking for over an hour, and automation must not stall for that long.
+  The 296 automation-vs-player overlaps are covered by the "Up next" chip
+  below, so the player can plan around what's coming.
+- **An off switch that restores today's behaviour exactly.** This is the
+  queue's own setting, default off. When off, the lock does nothing and every
+  automation runs as it does now. The background reads the setting on each
+  cycle, so turning it off takes effect at once, with no reload.
+  - Where: the popup's Settings, the dashboard page, and the chip's expanded
+    view.
+  - Why: if the queue doesn't work out, the player can turn it off and keep
+    playing as before while an alternative is worked out.
+
+### Issues to design around (from the 2026-11-03 code review)
+
+- Every background action already goes through `postAction`
+  (`src/background/gameAction.ts`), and every automation already has its own
+  `cycleInFlight` / `activeRun` guard. The lock wraps each automation's
+  guarded run function (~10 places), and nothing inside a feature changes.
+  Rough size: 150–300 lines.
+- **Firefox unloads the background script after ~30 s idle.** An automation
+  that waits for the lock can lose its turn. Some only schedule their next
+  check at the end of a cycle, so a lost turn could stop that feature
+  silently. Fix: an automation that finds the lock busy reschedules its own
+  alarm a short time later instead of waiting in memory. Test this
+  carefully.
+- **Maximum hold time** on the lock, as a backstop. Every request already
+  has a time limit, so a stuck request can't hold it forever.
+- **Long Pet Courier runs** can hold the lock for minutes. That's acceptable:
+  other features start late, not wrong.
+- **Worst case:** an automation runs late or skips a turn, visible in its
+  panel and on the dashboard. It can't cause wrong actions or spent
+  resources, and the off switch restores today's behaviour.
+
+### "Up next" chip (on the game page)
+
+- A floating button like the achievement chip, collapsed by default.
+  - Collapsed: an icon plus the time until the next automation check
+    ("⏱ 2m"); gold while one is running.
+  - Expanded: each automation in time order: "running now", "in 2m",
+    "paused", "off". Plus the queue's on/off switch and a link to the
+    dashboard.
+- Times come from each automation's own alarm, read in the background.
+  Label them "next check", not "next action": a check can find nothing to do
+  (e.g. no Street Intel card worth taking).
+- Its own page setting, default off.
+
+### Dashboard (a full extension page in its own tab)
+
+- **Not the popup or the sidebar.** The popup closes too easily, and the
+  sidebar shrinks the game page. A new extension page opens in its own
+  browser tab, from the popup's Home and from the chip.
+- Shows:
+  - **Now:** which automation holds the queue, and which are waiting.
+  - **Coming up:** a timeline of each automation's next check.
+  - **Recent activity:** the last few dozen runs, with time, feature and
+    result (acted / nothing to do / paused / skipped / waited N s).
+  - **Queue stats:** how many times today the queue made something wait,
+    and for how long.
+  - The queue's on/off switch.
+
+### Order of work
+
+1. **Bank attribution check (archive only).** Work out which feature sends
+   each bank call, and recount the real cross-feature overlaps (see "Refine
+   before building").
+2. **The queue,** with the decisions above, plus a log of what it did, for
+   the dashboard. Behind its own setting, default off.
+3. **The "Up next" chip.**
+4. **The dashboard page,** built once the queue has logged a day or two of
+   real data.
