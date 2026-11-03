@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.59.0] - 2026-11-03
+
+### Added
+- **Dashboard → Arena now opens with an "Arena settings" card** holding
+  every Arena switch: the seven Arena page features (Reminder Panel, Fight
+  Advisor, Needed for Mastery, Game % Safety Gate, Game % on Badges,
+  Bank-or-Fight Hint, Opponent Memory) and the Arena Page Reminder
+  notification. They stay in Settings too. Both show the same stored values
+  and update each other live, so a toggle on one page no longer saves an
+  out-of-date copy over a change made on the other.
+
+### Fixed
+- **Safety Gate suggestions only suggest percentages you've actually
+  fought at.** With no fights quoted at 85–89%, it suggested "Beatable from
+  85%" from the same 79 fights that back 90%, labelling an untested range
+  Beatable. It now suggests the lowest % you've actually won at (90%), and
+  Avoid just above the highest % it covers. When no fights fall in between,
+  the card says so ("No fights quoted between 85% and 89% yet") instead of
+  guessing.
+
 ## [0.58.0] - 2026-11-03
 
 ### Added
