@@ -99,15 +99,22 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
       <div class="db-subh">Suggestions</div>
       <ul class="db-plain">
         <li>
-          {s.beatable ? (
+          {s.beatable && s.beatableFits ? (
+            <>
+              Your Beatable from <b>{config.beatableFrom}%</b> fits your fights: won all {s.current.beatable.fights} at {config.beatableFrom}% or more.
+              Nothing to change.
+              {s.beatableUntested && (
+                <div class="db-muted">
+                  No fights quoted {gapText(s.beatableUntested)} yet: any cut-off in that range counts the same fights.
+                </div>
+              )}
+            </>
+          ) : s.beatable ? (
             <>
               Beatable from <b>{s.beatable.cutoff}%</b>: won all {s.beatable.fights} fights at {s.beatable.cutoff}% or more.{' '}
-              {s.beatable.cutoff !== config.beatableFrom && (
-                <button class="db-btn" onClick={() => save({ beatableFrom: s.beatable!.cutoff })}>
-                  Apply
-                </button>
-              )}
-              {s.beatable.cutoff === config.beatableFrom && <span class="db-muted">(current)</span>}
+              <button class="db-btn" onClick={() => save({ beatableFrom: s.beatable!.cutoff })}>
+                Apply
+              </button>
               {s.beatableUntested && (
                 <div class="db-muted">
                   No fights quoted {gapText(s.beatableUntested)} yet, so the data can't say whether a lower cut-off is safe.
@@ -123,15 +130,22 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
           )}
         </li>
         <li>
-          {s.avoid ? (
+          {s.avoid && s.avoidFits ? (
+            <>
+              Your Avoid below <b>{config.avoidBelow}%</b> fits your fights: won {s.current.avoid.wins} of {s.current.avoid.fights} below it. Nothing to
+              change.
+              {s.avoidUntested && (
+                <div class="db-muted">
+                  No fights quoted {gapText(s.avoidUntested)} yet: any cut-off in that range counts the same fights.
+                </div>
+              )}
+            </>
+          ) : s.avoid ? (
             <>
               Avoid below <b>{s.avoid.cutoff}%</b>: won {s.avoid.wins} of {s.avoid.fights} below it.{' '}
-              {s.avoid.cutoff !== config.avoidBelow && (
-                <button class="db-btn" onClick={() => save({ avoidBelow: s.avoid!.cutoff })}>
-                  Apply
-                </button>
-              )}
-              {s.avoid.cutoff === config.avoidBelow && <span class="db-muted">(current)</span>}
+              <button class="db-btn" onClick={() => save({ avoidBelow: s.avoid!.cutoff })}>
+                Apply
+              </button>
               {s.avoidUntested && (
                 <div class="db-muted">
                   No fights quoted {gapText(s.avoidUntested)} yet, so the data can't say whether to avoid those too.

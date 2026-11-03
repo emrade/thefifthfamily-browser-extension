@@ -90,6 +90,12 @@ export interface ArenaGateSuggestion {
   /** Game % from `avoid` up to the next fight above it that no fight was
    *  quoted at. */
   avoidUntested: ArenaGateGap | null;
+  /** The current Beatable cut-off counts exactly the suggestion's fights
+   *  (it sits in the same untested range), so applying would change
+   *  nothing the data can speak to. */
+  beatableFits: boolean;
+  /** The same for the current Avoid cut-off. */
+  avoidFits: boolean;
   /** The record of the current cut-offs, for the player to judge them. */
   current: { beatable: ArenaGateBand; avoid: ArenaGateBand };
   /** Losses at or above the current Beatable cut-off: a sign the game's %
@@ -136,13 +142,18 @@ export function suggestGate(record: ArenaQuotedFight[], config: ArenaGateConfig)
     avoid = null;
     avoidUntested = null;
   }
+  const current = { beatable: band(fights, config.beatableFrom, true), avoid: band(fights, config.avoidBelow, false) };
+  // Bands at or above (or below) a cut-off are nested, so the same count
+  // means the same fights.
   return {
     fights: fights.length,
     beatable,
     beatableUntested,
     avoid,
     avoidUntested,
-    current: { beatable: band(fights, config.beatableFrom, true), avoid: band(fights, config.avoidBelow, false) },
+    beatableFits: beatable !== null && current.beatable.fights === beatable.fights,
+    avoidFits: avoid !== null && current.avoid.fights === avoid.fights,
+    current,
     lossesAboveBeatable: fights.filter((f) => !f.won && f.quoted >= config.beatableFrom),
   };
 }
