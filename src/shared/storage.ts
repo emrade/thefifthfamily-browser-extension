@@ -337,6 +337,9 @@ export const storage = {
   getArenaGateConfig: async (): Promise<ArenaGateConfig> => ({ ...DEFAULT_ARENA_GATE_CONFIG, ...(await get<Partial<ArenaGateConfig>>(STORAGE_KEYS.ARENA_GATE_CONFIG, {})) }),
   setArenaGateConfig: (v: ArenaGateConfig) => set(STORAGE_KEYS.ARENA_GATE_CONFIG, v),
 
+  getArenaSeasonStart: () => get<number | null>(STORAGE_KEYS.ARENA_SEASON_START, null),
+  setArenaSeasonStart: (v: number) => set(STORAGE_KEYS.ARENA_SEASON_START, v),
+
   getArenaQuoteRecord: () => get<ArenaQuotedFight[]>(STORAGE_KEYS.ARENA_QUOTE_RECORD, []),
   setArenaQuoteRecord: (v: ArenaQuotedFight[]) => set(STORAGE_KEYS.ARENA_QUOTE_RECORD, v),
 

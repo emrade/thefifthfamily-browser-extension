@@ -1,5 +1,6 @@
 import { addQuotedFights, type ArenaQuotedFight } from '@/shared/arenaGate';
 import { mergeMemory, rememberFight, type ArenaOpponentMemory } from '@/shared/arenaOpponentMemory';
+import { seasonStartFromLabels } from '@/shared/arenaSeason';
 import { storage } from '@/shared/storage';
 
 /**
@@ -67,8 +68,9 @@ async function* lines(file: File): AsyncGenerator<string> {
   if (buf) yield buf;
 }
 
-function readQuotes(html: string): Map<string, number> {
+function readPage(html: string, seenAt: number): { quoted: Map<string, number>; seasonStart: number | null } {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  const seasonStart = seasonStartFromLabels([...doc.querySelectorAll('#ar-season-select option')].map((o) => o.textContent ?? ''), seenAt);
   const out = new Map<string, number>();
   for (const el of doc.querySelectorAll('.ar-opp')) {
     if (el.classList.contains('ar-opp-boss')) continue;
@@ -76,7 +78,7 @@ function readQuotes(html: string): Map<string, number> {
     const pct = Number((el.querySelector('.ar-opp-winpct')?.textContent ?? '').replace(/[^\d.]/g, ''));
     if (name && el.querySelector('.ar-opp-winpct') && Number.isFinite(pct)) out.set(name, pct);
   }
-  return out;
+  return { quoted: out, seasonStart };
 }
 
 export async function importArenaExports(files: File[], onProgress: (p: ArenaImportProgress) => void): Promise<ArenaImportResult> {
@@ -84,6 +86,7 @@ export async function importArenaExports(files: File[], onProgress: (p: ArenaImp
   const fights: { at: number; name: string; won: boolean }[] = [];
   const snapshots: Snapshot[] = [];
   const seenFights = new Set<number>();
+  let latestSeasonStart: number | null = null;
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -116,8 +119,9 @@ export async function importArenaExports(files: File[], onProgress: (p: ArenaImp
         } else {
           const html = JSON.parse(row.responseBody)?.html;
           if (typeof html !== 'string' || !html.includes('ar-opp')) continue;
-          const quoted = readQuotes(html);
-          if (quoted.size > 0) snapshots.push({ at: row.timestamp, quoted });
+          const page = readPage(html, row.timestamp);
+          if (page.quoted.size > 0) snapshots.push({ at: row.timestamp, quoted: page.quoted });
+          if (page.seasonStart !== null && (latestSeasonStart === null || page.seasonStart > latestSeasonStart)) latestSeasonStart = page.seasonStart;
         }
       } catch {
         // A truncated or unreadable row is skipped; the rest still count.
@@ -145,6 +149,9 @@ export async function importArenaExports(files: File[], onProgress: (p: ArenaImp
   const memAfter = mergeMemory(memBefore, imported);
   const quoteAfter = addQuotedFights(quoteBefore, quotedFights);
   await Promise.all([storage.setArenaOpponentMemory(memAfter), storage.setArenaQuoteRecord(quoteAfter)]);
+  // The newest season list in the exports, when it's newer than what's stored.
+  const storedSeason = await storage.getArenaSeasonStart();
+  if (latestSeasonStart !== null && (storedSeason === null || latestSeasonStart > storedSeason)) await storage.setArenaSeasonStart(latestSeasonStart);
   return {
     fightsRead: fights.length,
     opponentsBefore: Object.keys(memBefore).length,

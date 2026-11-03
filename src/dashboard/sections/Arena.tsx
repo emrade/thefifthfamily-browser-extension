@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { ARENA_GATE_MIN_FIGHTS, DEFAULT_ARENA_GATE_CONFIG, suggestGate, type ArenaGateBand, type ArenaGateConfig, type ArenaQuotedFight } from '@/shared/arenaGate';
 import { memoryText, type ArenaOpponentMemory } from '@/shared/arenaOpponentMemory';
+import { currentSeasonStart } from '@/shared/arenaSeason';
 import type { PageFeaturePreferences } from '@/shared/pageFeatures';
 import { NumberInput } from '../../popup/views/NumberInput';
 import { importArenaExports, type ArenaImportProgress, type ArenaImportResult } from '../arenaImport';
@@ -139,7 +140,7 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
   );
 }
 
-function MemoryCard({ memory, prefs }: { memory: ArenaOpponentMemory; prefs: PageFeaturePreferences | null }) {
+function MemoryCard({ memory, prefs, seasonStart }: { memory: ArenaOpponentMemory; prefs: PageFeaturePreferences | null; seasonStart: number | null }) {
   const all = Object.values(memory);
   const toughest = all
     .filter((r) => r.history.some((f) => !f.won))
@@ -158,7 +159,7 @@ function MemoryCard({ memory, prefs }: { memory: ArenaOpponentMemory; prefs: Pag
           <ul class="db-plain">
             {toughest.map((r) => (
               <li key={r.name}>
-                <b>{r.name}</b>: {memoryText(r)}
+                <b>{r.name}</b>: {memoryText(r, currentSeasonStart(seasonStart))}
                 {r.armour !== null ? ` · armour ${r.armour.toLocaleString('en-US')}` : ''}
               </li>
             ))}
@@ -233,10 +234,12 @@ export function ArenaSection() {
   const record = useStored<ArenaQuotedFight[]>(STORAGE_KEYS.ARENA_QUOTE_RECORD, storage.getArenaQuoteRecord, []);
   const memory = useStored<ArenaOpponentMemory>(STORAGE_KEYS.ARENA_OPPONENT_MEMORY, storage.getArenaOpponentMemory, {});
   const prefs = useStored<PageFeaturePreferences | null>(STORAGE_KEYS.PAGE_FEATURE_PREFERENCES, storage.getPageFeaturePreferences, null);
+  // The current season's start, read from the Arena page's season list.
+  const seasonStart = useStored<number | null>(STORAGE_KEYS.ARENA_SEASON_START, storage.getArenaSeasonStart, null);
   return (
     <div class="db-grid">
       <GateCard config={config} record={record} prefs={prefs} />
-      <MemoryCard memory={memory} prefs={prefs} />
+      <MemoryCard memory={memory} prefs={prefs} seasonStart={seasonStart} />
       <ImportCard />
     </div>
   );

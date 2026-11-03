@@ -27,6 +27,10 @@ export interface ArenaOpponentFight {
    *  stores, so a fight seen live and again in an import counts once. */
   at: number;
   won: boolean;
+  /** The player's max HP in that fight (`att_max_hp`); kept for analysis.
+   *  Seasons are told apart by date (shared/arenaSeason.ts), not by this:
+   *  HP only changes when the player's stats do. */
+  myHp?: number;
 }
 
 export interface ArenaOpponentRecord {
@@ -69,7 +73,11 @@ function capOpponents(m: ArenaOpponentMemory): ArenaOpponentMemory {
 
 function mergeHistory(a: ArenaOpponentFight[], b: ArenaOpponentFight[]): ArenaOpponentFight[] {
   const byAt = new Map<number, ArenaOpponentFight>();
-  for (const f of [...a, ...b]) byAt.set(f.at, f);
+  // The same fight from two sources: keep whichever knows the player's HP.
+  for (const f of [...a, ...b]) {
+    const seen = byAt.get(f.at);
+    if (!seen || (seen.myHp === undefined && f.myHp !== undefined)) byAt.set(f.at, f);
+  }
   return [...byAt.values()].sort((x, y) => x.at - y.at).slice(-ARENA_OPPONENT_HISTORY_MAX);
 }
 
@@ -86,6 +94,7 @@ export function rememberFight(prev: ArenaOpponentMemory, resp: unknown, at: numb
     def_max_hp?: unknown;
     attacker_hp_left?: unknown;
     defender_hp_left?: unknown;
+    att_max_hp?: unknown;
     rounds?: unknown;
   };
   if (r?.ok !== true || typeof r.won !== 'boolean' || typeof r.defender !== 'string' || !Array.isArray(r.rounds)) return prev;
@@ -96,7 +105,8 @@ export function rememberFight(prev: ArenaOpponentMemory, resp: unknown, at: numb
     const a = round?.attacker as { reduction?: unknown } | undefined;
     if (a && typeof a.reduction === 'number' && a.reduction > 0) reductions.push(a.reduction);
   }
-  const history = mergeHistory(old?.history ?? [], [{ at, won: r.won }]);
+  const fight: ArenaOpponentFight = { at, won: r.won, ...(typeof r.att_max_hp === 'number' ? { myHp: r.att_max_hp } : {}) };
+  const history = mergeHistory(old?.history ?? [], [fight]);
   const isLatest = !old || at > old.lastAt;
   const record: ArenaOpponentRecord = isLatest
     ? {
@@ -141,11 +151,35 @@ export function normaliseMemory(m: ArenaOpponentMemory | null | undefined): Aren
   return out;
 }
 
-/** "2–4 vs them · they finished on 148 HP". */
-export function memoryText(rec: ArenaOpponentRecord): string {
-  const fights = rec.history.length;
-  const wins = rec.history.filter((f) => f.won).length;
-  const record = fights <= 1 ? (rec.lastWon ? 'Won last time' : 'Lost last time') : `${wins}–${fights - wins} vs them`;
+const tally = (fs: ArenaOpponentFight[]) => {
+  const wins = fs.filter((f) => f.won).length;
+  return `${wins}–${fs.length - wins}`;
+};
+
+/**
+ * The record line, e.g. "0–3 this season (2–4 all-time) · they finished on
+ * 148 HP".
+ *
+ * Fights from `seasonStart` on (the game's own season boundary,
+ * shared/arenaSeason.ts) count as this season. An earlier season's results
+ * came from different stats on both sides, so they're shown apart rather
+ * than mixed in. Without a season start, the plain all-time record is shown.
+ */
+export function memoryText(rec: ArenaOpponentRecord, seasonStart: number | null = null): string {
+  const all = rec.history;
+  const known = seasonStart !== null;
+  const season = known ? all.filter((f) => f.at >= seasonStart) : all;
+  let record: string;
+  if (!known || season.length === all.length) {
+    record = all.length <= 1 ? (rec.lastWon ? 'Won last time' : 'Lost last time') : `${tally(all)} vs them`;
+  } else if (season.length === 0) {
+    record = `Not fought this season (${tally(all)} all-time)`;
+  } else {
+    record = `${tally(season)} this season (${tally(all)} all-time)`;
+  }
   if (rec.lastHpLeft === null) return record;
-  return rec.lastWon ? `${record} · you finished on ${rec.lastHpLeft} HP` : `${record} · they finished on ${rec.lastHpLeft} HP`;
+  // The last fight's ending, labelled when it was in an earlier season.
+  const lastIsOld = known && rec.lastAt < seasonStart;
+  const when = lastIsOld ? 'last time (earlier season), ' : '';
+  return rec.lastWon ? `${record} · ${when}you finished on ${rec.lastHpLeft} HP` : `${record} · ${when}they finished on ${rec.lastHpLeft} HP`;
 }

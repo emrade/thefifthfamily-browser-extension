@@ -29,6 +29,7 @@ import { MASTERY_TIER_LABEL, neededForMastery, type ArenaMasteryState } from '@/
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
 import { memoryText, normaliseMemory, rememberFight, type ArenaOpponentMemory, type ArenaOpponentRecord } from '@/shared/arenaOpponentMemory';
 import { addQuotedFights, DEFAULT_ARENA_GATE_CONFIG, type ArenaGateConfig } from '@/shared/arenaGate';
+import { currentSeasonStart, seasonStartFromLabels } from '@/shared/arenaSeason';
 
 /**
  * The Arena fight advisor: badges every live opponent and the boss
@@ -173,6 +174,19 @@ let gate: ArenaGateConfig = DEFAULT_ARENA_GATE_CONFIG;
 /** The game's % last shown on each regular card, by name, so a fight can be
  *  recorded with the % the player saw before attacking. */
 const quotedSeen = new Map<string, number>();
+/** When the current Arena season started, from the page's own season list
+ *  (shared/arenaSeason.ts); splits Opponent Memory's record line. */
+let seasonStart: number | null = null;
+
+/** Reads the season list on the page and stores the season start when it's
+ *  new, so the Dashboard and other tabs get it too. */
+function noteSeasonStart(): void {
+  const labels = [...document.querySelectorAll('#ar-season-select option')].map((o) => o.textContent ?? '');
+  const start = seasonStartFromLabels(labels, Date.now());
+  if (start === null || start === seasonStart) return;
+  seasonStart = start;
+  storage.setArenaSeasonStart(start).catch((err) => console.error(LOG_PREFIX, 'arena season start save failed', err));
+}
 /** Recorded from every regular fight whatever the settings (data only);
  *  only shown and used when `opponentMemory` is on. */
 let memory: ArenaOpponentMemory | null = null;
@@ -394,7 +408,7 @@ function paintBadge(c: CardOnPage, j: Judged, order: number | null): void {
   // verdict, so the reason for the change is on the badge.
   const gameNote = q !== null && (options.showGamePct || j.gated) ? ` · game ${q}%` : '';
   const memNote = j.rec
-    ? `<span class="ff-arv-mem${j.rec.lastWon ? '' : ' ff-arv-mem-lost'}">${escapeHtml(memoryText(j.rec))}${
+    ? `<span class="ff-arv-mem${j.rec.lastWon ? '' : ' ff-arv-mem-lost'}">${escapeHtml(memoryText(j.rec, currentSeasonStart(seasonStart)))}${
         j.armourFromMemory !== null ? ` · armour ${fmt(j.armourFromMemory)} (card DEF ${fmt(c.card.defence)})` : ''
       }</span>`
     : '';
@@ -494,6 +508,7 @@ function paint(): void {
 
   const cards = [...root.querySelectorAll<HTMLElement>('.ar-opp')].map(readCard).filter((c): c is CardOnPage => c !== null);
   const regulars = cards.filter((c) => !c.card.isBoss);
+  noteSeasonStart();
   for (const c of regulars) if (c.card.quotedPct !== null) quotedSeen.set(c.card.name, c.card.quotedPct);
   const boss = cards.find((c) => c.card.isBoss) ?? null;
 
@@ -727,6 +742,13 @@ export function initArenaFightAdvisor(withMasteryTag = false, opts: ArenaAdvisor
       schedulePaint();
     })
     .catch((err) => console.error(LOG_PREFIX, 'arena opponent memory read failed', err));
+  storage
+    .getArenaSeasonStart()
+    .then((s) => {
+      if (seasonStart === null) seasonStart = s;
+      schedulePaint();
+    })
+    .catch((err) => console.error(LOG_PREFIX, 'arena season start read failed', err));
   storage
     .getArenaGateConfig()
     .then((g) => {
