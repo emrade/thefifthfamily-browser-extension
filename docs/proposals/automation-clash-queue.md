@@ -1,7 +1,26 @@
 # Background automations acting at the same time
 
-Status (2026-11-03): **design agreed, refined check done, nothing built.**
-See "Decisions" and "Refined check" below. Next step: build the queue (step 2). The question to settle
+Status (2026-11-03): **step 2 (the queue) built, not yet released.** Off by
+default. See "Decisions" and "Refined check" below.
+
+- Code: `src/background/automationQueue.ts` (`runQueued`, `skipIfQueueBusy`).
+- Setting: "Automation Queue" under Background Automations in the popup's
+  Settings (`AutomationQueueSettings.tsx`), stored as
+  `ff_automation_queue_config`.
+- Log: the last 300 turns, in `ff_automation_queue_log`, for the dashboard.
+- Wrapped entry points:
+  - Street Intel, Crimes Auto, Career Auto and Real Estate auto-collect,
+    inside each one's `cycleInFlight` guard.
+  - Pet Courier, inside `runExclusive`.
+  - Stock price checks: the alarm uses skip-if-busy, Sync Now waits.
+  - Street Racing's Run button.
+  - Garage, Inventory and achievement-claim messages, with the 15 s linger.
+- Fury Catcher was left out: it's being removed from the extension.
+- Simulated with mocked browser APIs (scratch test): off = all run at once;
+  on = one at a time with a 3–8 s gap; a Garage job's steps run back to
+  back while another automation waits until 15 s after the last step;
+  turning it off mid-wait releases every waiter at once.
+- Next: try it live, then step 3 (the chip). The question to settle
 first: how often do two different background automations act at the same
 moment? A real player in one tab can't do that unless they play from two
 devices, so it's a pattern the game's developers could notice.
@@ -136,8 +155,11 @@ rather than waiting.
 
 The player's answers to the open questions:
 
-- **Pet Courier goes first in line**, ahead of every other waiting
-  automation.
+- **No priority: strict arrival order.** Pet Courier was first proposed to
+  go first, because destinations rotate hourly. Dropped 2026-11-03: in
+  27,736 Smuggling page readings (Oct 1 – Nov 2) a destination was never
+  closed. The only blocker was "no idle pets". So a short wait costs a
+  returning pet seconds, not a missed window.
 - **Gap between automations:** a random 3–8 s after one releases the queue,
   before the next starts.
 - **Things the player starts themselves wait their turn:** Garage bulk jobs,
@@ -163,15 +185,42 @@ The player's answers to the open questions:
   guarded run function (~10 places), and nothing inside a feature changes.
   Rough size: 150–300 lines.
 - **Firefox unloads the background script after ~30 s idle.** An automation
-  that waits for the lock can lose its turn. Some only schedule their next
-  check at the end of a cycle, so a lost turn could stop that feature
-  silently. Fix: an automation that finds the lock busy reschedules its own
-  alarm a short time later instead of waiting in memory. Test this
-  carefully.
-- **Maximum hold time** on the lock, as a backstop. Every request already
-  has a time limit, so a stuck request can't hold it forever.
-- **Long Pet Courier runs** can hold the lock for minutes. That's acceptable:
-  other features start late, not wrong.
+  that waits for the lock can lose its turn, and some only schedule their
+  next check at the end of a cycle, so a lost turn could stop that feature
+  silently.
+  - Built approach (revised from "reschedule instead of waiting"): waiters
+    wait in memory. Rescheduling would have meant changing each feature's
+    own scheduling code, which is the riskier change.
+  - A waiter only ever waits while another automation is actively sending
+    requests (which keeps the script alive, as long runs already do today),
+    or during the ≤ 8 s gap / ≤ 15 s linger after one. That's always under
+    the 30 s idle limit.
+  - Each wait step also touches `chrome.storage.session`, so the script
+    isn't idle while anything is waiting.
+  - Test this specifically: a feature whose turn comes after a long Pet
+    Courier run must still run, and still schedule its next check.
+- **Maximum hold and wait: 15 min each**, as backstops. Measured run lengths
+  (Oct 2026): Pet Courier median 5 s, 99th percentile 221 s, longest 380 s;
+  Street Intel longest 101 s; Crimes longest 117 s; Racing up to ~10 min.
+  - A holder older than 15 min is treated as gone.
+  - A waiter that has waited 15 min goes ahead anyway.
+  - Both are logged as "forced". Going ahead is today's behaviour, so it's
+    the safe fallback rather than losing the turn.
+- **Long runs** (Pet Courier, Racing) can hold the lock for minutes. That's
+  acceptable: other features start late, not wrong.
+- **Player-started jobs are a series of separate messages** (Garage
+  buy/strip/sell, Inventory quote/sell/lock/price, achievement claims). So
+  the lock **lingers 15 s** for that feature after each step: its next step
+  goes straight in, and other features wait until the job has been idle for
+  15 s.
+- **Stock price checks:** an alarm-driven check skips if the queue is busy,
+  and catches the next one. The overlay's "Sync Now" waits its turn.
+- **Not in the queue:** read-only checks that send no game actions (Arena
+  reminder watcher, Real Estate vault reminder, Pet Courier's destination
+  reading). Pet Courier's rare stuck-shipment `v2_cancel` in its watcher
+  also stays outside.
+- The lock sits *inside* each feature's existing guard, so a duplicate
+  trigger is still skipped by the guard and never queues twice.
 - **Worst case:** an automation runs late or skips a turn, visible in its
   panel and on the dashboard. It can't cause wrong actions or spent
   resources, and the off switch restores today's behaviour.

@@ -15,6 +15,7 @@ import { hoursSinceCollected } from '@/shared/realEstateVaults';
 import { SystemicActionError, blockedRecheckAt, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
 import { handleMessage as handleVaultMessage, readLiveVaults } from './vaultReminder';
 import type { RealEstateAutoConfig, RealEstateAutoRun, RealEstateAutoStatus, RealEstateAutoTally, RealEstateVaultState } from '@/shared/types';
+import { runQueued } from '../../automationQueue';
 
 /**
  * Real Estate Auto-Collect: a safety net for the days the player doesn't get
@@ -118,7 +119,7 @@ export async function runCycle(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runCycleOnce(force);
+    await runQueued('real-estate-auto', () => runCycleOnce(force));
     if (force && !(await storage.getRealEstateAutoConfig()).enabled) {
       await chrome.alarms.clear(ALARM_NAMES.REAL_ESTATE_AUTO);
       const status = await storage.getRealEstateAutoStatus();

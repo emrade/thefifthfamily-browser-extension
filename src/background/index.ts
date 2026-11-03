@@ -19,7 +19,6 @@ import { getStreetIntelAnalytics, initStreetIntelAnalytics, observeStreetIntelTr
 import { observeStreetIntelPlayerMods } from './features/streetIntel/playerMods';
 import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
-import { handleAlarm as handleFuryCatcherAlarm, init as initFuryCatcher, runCheckNow as runFuryCatcherCheckNow } from './features/furyCatcher';
 import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
 import {
   buyVehicle as buyGarageVehicle,
@@ -72,6 +71,12 @@ import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retentio
 import { setCsrfToken } from './csrfToken';
 import { upsertRoster, getRoster } from '@/shared/petRoster';
 import { storage } from '@/shared/storage';
+import { runQueued } from './automationQueue';
+import { removeLegacyFuryCatcher } from './legacyCleanup';
+
+/** Player-started jobs arrive one step per message: keep the automation
+ *  queue theirs between steps (see automationQueue.ts). */
+const LINGER = { linger: true } as const;
 import type { CourierStatus } from '@/shared/types';
 
 // Each feature reacts to whichever message types it cares about and no-ops on the
@@ -112,9 +117,9 @@ observeRecords(observeStreetIntelPlayerMods);
 // features/crimesAuto/index.ts's init.
 initCrimesAuto();
 
-// Same idea, for the Halloween Fury Catcher — see
-// features/furyCatcher/index.ts's init.
-initFuryCatcher();
+// The Halloween Fury Catcher was removed (2026-11-03): clear what it left
+// behind in a long-installed profile.
+removeLegacyFuryCatcher().catch((err) => console.error(LOG_PREFIX, 'removeLegacyFuryCatcher failed', err));
 
 // Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
 // init.
@@ -219,7 +224,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // freshly-observed CSRF token) immediately rather than waiting out however
   // much of the 30-minute cycle is left.
   if (msg.type === 'stock-tracker-poll-requested') {
-    return pollStockMarketNow().then(() => getStockTrackerStatus());
+    return runQueued('stock-market', pollStockMarketNow).then(() => getStockTrackerStatus());
   }
 
   // Triggered by the overlay's "Resume Tracking" button — see
@@ -262,11 +267,6 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return runCrimesAutoCheckNow();
   }
 
-  // Sent by the Fury Catcher's popup tab and in-page overlay "Check Now".
-  if (msg.type === 'fury-catcher-check-requested') {
-    return runFuryCatcherCheckNow();
-  }
-
   // Sent by the Real Estate Auto-Collect popup tab's "Check Now".
   if (msg.type === 'real-estate-auto-check-requested') {
     return runRealEstateAutoCheckNow();
@@ -282,7 +282,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // can_race -> (sampled minigame delay) -> attempt_race sequence has run,
   // so this is a genuinely slow (~20-27s) call, not an instant one.
   if (msg.type === 'street-race-run-requested') {
-    return runStreetRace(msg.raceId, msg.raceName, sender.tab?.id, msg.oddsPct);
+    return runQueued('street-racing', () => runStreetRace(msg.raceId, msg.raceName, sender.tab?.id, msg.oddsPct));
   }
 
   // Sent by the in-page Garage & Dealership overlay on mount/refresh — see
@@ -307,17 +307,17 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // One-purchase-per-message, called in a loop by the Bulk Buy tab's own
   // confirmed batch — same shape as 'street-race-run-requested'.
   if (msg.type === 'garage-buy-requested') {
-    return buyGarageVehicle(msg.modelId);
+    return runQueued('garage', () => buyGarageVehicle(msg.modelId), LINGER);
   }
 
   // Same per-item shape, for the Strip Parts tab's confirmed batch.
   if (msg.type === 'garage-strip-requested') {
-    return stripGarageVehicle(msg.carId);
+    return runQueued('garage', () => stripGarageVehicle(msg.carId), LINGER);
   }
 
   // Same per-item shape, for the Delete Bodies tab's confirmed batch.
   if (msg.type === 'garage-sell-body-requested') {
-    return sellGarageBody(msg.carId);
+    return runQueued('garage', () => sellGarageBody(msg.carId), LINGER);
   }
 
   // Sent by the Fit Parts tab immediately before planning an auto-fit — see
@@ -329,31 +329,31 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // One-fit-per-message, called in a loop by the Fit Parts tab's own
   // confirmed plan.
   if (msg.type === 'garage-install-requested') {
-    return installGaragePart(msg.carId, msg.partId);
+    return runQueued('garage', () => installGaragePart(msg.carId, msg.partId), LINGER);
   }
 
   // Same per-item shape, for a plan step that needs a free native-parts
   // install instead of a paid `install`.
   if (msg.type === 'garage-migrate-requested') {
-    return migrateGarageVehicle(msg.carId);
+    return runQueued('garage', () => migrateGarageVehicle(msg.carId), LINGER);
   }
 
   // One call per message, in the Inventory Auto-Sell panel's confirmed
   // batch loop — see features/inventory.
   if (msg.type === 'inventory-bulk-quote-requested') {
-    return bulkQuoteInventory(msg.invIds, sender.tab?.id);
+    return runQueued('inventory', () => bulkQuoteInventory(msg.invIds, sender.tab?.id), LINGER);
   }
 
   if (msg.type === 'inventory-bulk-sell-requested') {
-    return bulkSellInventory(msg.invIds, msg.expect, sender.tab?.id);
+    return runQueued('inventory', () => bulkSellInventory(msg.invIds, msg.expect, sender.tab?.id), LINGER);
   }
 
   if (msg.type === 'inventory-lock-item-requested') {
-    return lockInventoryItem(msg.invId, sender.tab?.id);
+    return runQueued('inventory', () => lockInventoryItem(msg.invId, sender.tab?.id), LINGER);
   }
 
   if (msg.type === 'inventory-price-item-requested') {
-    return priceInventoryItem(msg.invId, msg.expectedName, sender.tab?.id);
+    return runQueued('inventory', () => priceInventoryItem(msg.invId, msg.expectedName, sender.tab?.id), LINGER);
   }
 
   if (msg.type === 'inventory-batch-finished') {
@@ -369,7 +369,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
 
   // Sent from the chip's modal's Claim button.
   if (msg.type === 'achievements-claim-line-requested') {
-    return claimAchievementLine(msg.lineId);
+    return runQueued('achievements', () => claimAchievementLine(msg.lineId), LINGER);
   }
 
   // Sent by the in-page Arena panel for the reminder's last-seen state.
@@ -416,7 +416,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleCourierReturnAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCourierReturnAlarm failed', err));
   handleCrimesAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCrimesAutoAlarm failed', err));
   handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
-  handleFuryCatcherAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleFuryCatcherAlarm failed', err));
   handleRealEstateVaultAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateVaultAlarm failed', err));
   handleRealEstateAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateAutoAlarm failed', err));
 });

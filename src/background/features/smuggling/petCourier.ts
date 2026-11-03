@@ -8,6 +8,7 @@ import { SystemicActionError, depositCashOnHand, holdCashOnHand, postAction } fr
 import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
 import type { BlackMarketItem, CourierActiveRun, CourierProgressEvent, CourierRunSummary, FleetEntry, LaunchPet, SmugglingV2Snapshot } from '@/shared/types';
 import { formatCourierMoney } from '@/shared/courierDisplay';
+import { runQueued } from '../../automationQueue';
 
 /**
  * Set for the duration of one run, to the tab that asked for it — see
@@ -446,7 +447,8 @@ async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promi
   // Set before the run starts: its first step is noted synchronously.
   const startedAt = Date.now();
   activeRunInfo = { kind, startedAt, step: 'starting', stepStartedAt: startedAt };
-  const run = (async () => {
+  // The whole run is one turn in the automation queue (a no-op when that's off).
+  const run = runQueued('pet-courier', async () => {
     progressTabId = tabId;
     emitProgress({ kind: 'started' });
     // Other features' deposits wait until the cash this run puts on hand
@@ -458,7 +460,7 @@ async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promi
     await storage.setLastCourierRun(summary).catch((err) => console.error(LOG_PREFIX, 'setLastCourierRun failed', err));
     emitProgress({ kind: 'finished' });
     return summary;
-  })();
+  });
 
   activeRun = run;
   try {

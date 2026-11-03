@@ -37,11 +37,11 @@ export const STORAGE_KEYS = {
   REAL_ESTATE_VAULTS: 'ff_real_estate_vaults',
   QUICK_SELL_PRICE_BOOK: 'ff_quick_sell_price_book',
   INVENTORY_AUTO_SELL_CRITERIA: 'ff_inventory_auto_sell_criteria',
-  FURY_CATCHER_CONFIG: 'ff_fury_catcher_config',
-  FURY_CATCHER_STATUS: 'ff_fury_catcher_status',
   REAL_ESTATE_AUTO_CONFIG: 'ff_real_estate_auto_config',
   REAL_ESTATE_AUTO_STATUS: 'ff_real_estate_auto_status',
   STALE_GAME_TABS: 'ff_stale_game_tabs',
+  AUTOMATION_QUEUE_CONFIG: 'ff_automation_queue_config',
+  AUTOMATION_QUEUE_LOG: 'ff_automation_queue_log',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack
@@ -50,6 +50,12 @@ export const STORAGE_KEYS = {
 // profile.
 export const LEGACY_ARENA_AUTO_STORAGE_KEYS = ['ff_arena_auto_config', 'ff_arena_auto_status'] as const;
 export const LEGACY_ARENA_AUTO_ALARM = 'ff-arena-auto';
+
+// Left behind by the removed Halloween Fury Catcher (removed 2026-11-03).
+// Cleared once on background startup, same as Arena Auto's above.
+export const LEGACY_FURY_CATCHER_STORAGE_KEYS = ['ff_fury_catcher_config', 'ff_fury_catcher_status'] as const;
+export const LEGACY_FURY_CATCHER_ALARM = 'ff-fury-catcher';
+export const LEGACY_FURY_CATCHER_PREF_KEYS = { page: 'furyCatcherPanel', notification: 'furyCatcherStopped', health: 'furyCatcher' } as const;
 
 export const ALARM_NAMES = {
   TRAVEL_ARRIVAL: 'ff-travel-arrival',
@@ -62,7 +68,6 @@ export const ALARM_NAMES = {
   SMUGGLING_COURIER_RETURN: 'ff-smuggling-courier-return',
   CRIMES_AUTO: 'ff-crimes-auto',
   ARENA_WATCH: 'ff-arena-watch',
-  FURY_CATCHER: 'ff-fury-catcher',
   REAL_ESTATE_VAULT: 'ff-real-estate-vault',
   REAL_ESTATE_AUTO: 'ff-real-estate-auto',
 } as const;
@@ -339,38 +344,6 @@ export const CRIMES_AUTO_RETRY_DELAY_MS = 2_500;
 // automation from the popup shouldn't wait out the full fallback interval
 // above before its first check.
 export const CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
-
-// --- Halloween Fury Catcher ---------------------------------------------------
-//
-// From the 2026-10-09 → 10-11 archives (202 real `boss_chase` calls): a chase
-// costs 5 Energy caught or not, and puts that Fury on a 120s per-player
-// cooldown (`wait`). The player chased ready Furies about 1s apart.
-
-export const FURY_CHASE_ENERGY = 5;
-
-/** Random gap between two chases in one cycle, on top of postAction's own
- *  600ms pacing — a little slower than the player's own ~1s. */
-export const FURY_CHASE_GAP_MS: [number, number] = [1_500, 4_000];
-
-/** Gap between `quick_list` and `use` when drinking, and between a drink and
- *  the chase it paid for — the player's own were 1–10s. */
-export const FURY_DRINK_GAP_MS: [number, number] = [900, 2_500];
-
-/** Added after a Fury's cooldown or the boss's respawn before checking again,
- *  so the catcher isn't on the exact second every time. */
-export const FURY_WAKE_JITTER_MS: [number, number] = [2_000, 9_000];
-
-/** Plain re-poll when nothing gives an exact time to wait for. */
-export const FURY_CATCHER_FALLBACK_INTERVAL_MS = 60_000;
-
-export const FURY_CATCHER_IMMEDIATE_CHECK_DELAY_MS = 3_000;
-
-/** One Energy Drink (+10) is two chases. Picked over Adrenaline Shot/Energy
- *  Booster by the player — it's the one they hold most of. */
-export const FURY_DRINK_ITEM_NAME = 'Energy Drink';
-
-export const FURY_CATCHER_DEFAULT_ENERGY_FLOOR = 25;
-export const FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP = 7;
 
 // --- Street Racing overlay ----------------------------------------------------
 //

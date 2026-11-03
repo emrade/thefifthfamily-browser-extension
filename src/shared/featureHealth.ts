@@ -21,7 +21,6 @@ export const FEATURE_LABELS: Record<string, string> = {
   careerAuto: 'Career Auto',
   crimesAuto: 'Crimes Auto',
   arena: 'Arena',
-  furyCatcher: 'Fury Catcher',
   realEstate: 'Real Estate',
   realEstateAuto: 'Real Estate Auto-Collect',
 };

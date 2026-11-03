@@ -140,7 +140,7 @@ From a scan of each file on 2026-11-01: observers / intervals / DOM listeners
 | arenaOverlay | `content/features/arena/overlay.ts` | 424 | 1 | 2 | 4 | 1 |
 | courierPanel | `content/features/smuggling/courierPanel.ts` | 660 | 1 | 2 | 7 | 1 |
 | careerAutoPanel | `content/features/careerAuto/panel.ts` | 651 | 1 | 2 | 6 | 1 |
-| furyCatcherPanel | `content/features/halloween/furyCatcherPanel.ts` | 380 | 1 | 2 | 5 | 1 |
+| ~~furyCatcherPanel~~ (Fury Catcher removed 2026-11-03) | — | | | | | |
 | streetIntelHighlights (+ streetIntelExactOdds) | `content/features/streetIntel/pageHighlights.ts` | 569 | 1 | 0 | 0 | 0 |
 | streetIntelComplicationHint | `content/features/streetIntel/complicationHint.ts` | 229 | 1 | 0 | 0 | 1 |
 | arenaFightAdvisor (+ arenaMasteryTag) | `content/features/arena/fightAdvisor.ts` | 656 | 1 | 0 | 5 | 1 |
@@ -167,7 +167,7 @@ Rough size: 600–1,000 lines touched, mostly the same pattern repeated.
 ## Order of work
 
 1. The controller, plus the floating panels (Street Intel, Arena, Pet Courier,
-   Career Auto, Fury Catcher). They're self-contained and the most noticeable.
+   Career Auto). They're self-contained and the most noticeable.
 2. The features that mark up the game's own elements: Street Intel highlights
    and complication hint, Arena advisor, Real Estate, Inventory (both), Forge,
    Fight Club (both), Menagerie, Stock Market, Racing, Garage, and the

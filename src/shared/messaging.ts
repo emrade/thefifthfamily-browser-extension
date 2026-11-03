@@ -152,11 +152,6 @@ export type ExtensionMessage =
   // alarm fires — this lets the player force the recheck immediately instead
   // of it going unnoticed until the original wait elapses anyway.
   | { type: 'crimes-check-requested' }
-  // Sent from the Fury Catcher's popup tab and in-page overlay "Check Now" —
-  // runs a cycle right now, even when it's off (a no-op if one is already running)
-  // and returns the fresh `FuryCatcherStatus`. For an energy refill done by
-  // hand that the scheduled wait didn't account for.
-  | { type: 'fury-catcher-check-requested' }
   // Sent from the Real Estate Auto-Collect popup tab's "Check Now": runs a
   // check right now, even when it's off (collects only if it's due), and returns the fresh
   // `RealEstateAutoStatus`.

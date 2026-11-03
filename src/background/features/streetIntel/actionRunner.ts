@@ -33,6 +33,7 @@ import type {
   StreetIntelModeTally,
   StreetIntelOddsCheck,
 } from '@/shared/types';
+import { runQueued } from '../../automationQueue';
 
 const FEATURE_KEY = 'streetIntel';
 
@@ -681,7 +682,7 @@ export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce(force);
+    await runQueued('street-intel', () => runIfEligibleOnce(force));
     if (force && !(await storage.getStreetIntelAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.STREET_INTEL_AUTO);
   } finally {
     cycleInFlight = false;

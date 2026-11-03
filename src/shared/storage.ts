@@ -1,4 +1,6 @@
 import type {
+  AutomationQueueConfig,
+  AutomationQueueLogEntry,
   StaleGameTabs,
   StreetIntelAnalyticsSeedState,
   RealEstateVaultState,
@@ -15,10 +17,8 @@ import type {
   CrimesAutoConfig,
   CrimesAutoStatus,
   FightClubFilterPrefs,
-  FuryCatcherConfig,
   RealEstateAutoConfig,
   RealEstateAutoStatus,
-  FuryCatcherStatus,
   FightClubHeroStats,
   InventoryAutoSellCriteria,
   QuickSellPriceBook,
@@ -33,8 +33,6 @@ import type {
 } from './types';
 import {
   CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
-  FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
-  FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
   REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
   STORAGE_KEYS,
   STREET_INTEL_AUTO_DEFAULT_EXTREME_MIN_VALUE,
@@ -102,11 +100,9 @@ const DEFAULT_CRIMES_AUTO_CONFIG: CrimesAutoConfig = {
   enabled: false,
 };
 
-// Off by default, same convention as every other auto feature.
-const DEFAULT_FURY_CATCHER_CONFIG: FuryCatcherConfig = {
+// Off by default: with it off, automations run exactly as they always have.
+const DEFAULT_AUTOMATION_QUEUE_CONFIG: AutomationQueueConfig = {
   enabled: false,
-  energyFloor: FURY_CATCHER_DEFAULT_ENERGY_FLOOR,
-  dailyDrinkCap: FURY_CATCHER_DEFAULT_DAILY_DRINK_CAP,
 };
 
 // Off by default, same convention as every other auto feature.
@@ -334,14 +330,14 @@ export const storage = {
   setArenaLineupPoints: (v: ArenaLineupPoints) => set(STORAGE_KEYS.ARENA_LINEUP_POINTS, v),
 
   // Same merge-with-defaults/simple-nullable split as the Crimes Auto pair.
-  getFuryCatcherConfig: async (): Promise<FuryCatcherConfig> => {
-    const stored = await get<Partial<FuryCatcherConfig>>(STORAGE_KEYS.FURY_CATCHER_CONFIG, {});
-    return { ...DEFAULT_FURY_CATCHER_CONFIG, ...stored };
+  getAutomationQueueConfig: async (): Promise<AutomationQueueConfig> => {
+    const stored = await get<Partial<AutomationQueueConfig>>(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG, {});
+    return { ...DEFAULT_AUTOMATION_QUEUE_CONFIG, ...stored };
   },
-  setFuryCatcherConfig: (v: FuryCatcherConfig) => set(STORAGE_KEYS.FURY_CATCHER_CONFIG, v),
+  setAutomationQueueConfig: (v: AutomationQueueConfig) => set(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG, v),
 
-  getFuryCatcherStatus: () => get<FuryCatcherStatus | null>(STORAGE_KEYS.FURY_CATCHER_STATUS, null),
-  setFuryCatcherStatus: (v: FuryCatcherStatus) => set(STORAGE_KEYS.FURY_CATCHER_STATUS, v),
+  getAutomationQueueLog: () => get<AutomationQueueLogEntry[]>(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, []),
+  setAutomationQueueLog: (v: AutomationQueueLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, v),
 
   getRealEstateAutoConfig: async (): Promise<RealEstateAutoConfig> => {
     const stored = await get<Partial<RealEstateAutoConfig>>(STORAGE_KEYS.REAL_ESTATE_AUTO_CONFIG, {});

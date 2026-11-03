@@ -5,6 +5,7 @@ import { db } from '@/shared/db';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import type { StockPricePoint, StockRumorRecord } from '@/shared/types';
+import { runQueued, skipIfQueueBusy } from '../../automationQueue';
 
 /**
  * Background stock market poller — see docs/stock-market-tracker-plan.md for why
@@ -333,5 +334,8 @@ export async function ensureScheduled(): Promise<void> {
 
 export async function handlePollAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
   if (alarm.name !== ALARM_NAMES.STOCK_MARKET_POLL) return;
-  await pollNow();
+  // A scheduled check skips rather than waits when the automation queue is
+  // busy: the next one is only a period away. (Never skips with the queue off.)
+  if (await skipIfQueueBusy('stock-market')) return;
+  await runQueued('stock-market', pollNow);
 }

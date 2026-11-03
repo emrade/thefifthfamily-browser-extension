@@ -7,6 +7,7 @@ import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, blockedRecheckAt, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { parseCrimesCatalog } from './crimesPanelParser';
 import type { CrimeAttemptResult, CrimesAutoConfig, CrimesAutoStatus } from '@/shared/types';
+import { runQueued } from '../../automationQueue';
 
 const FEATURE_KEY = 'crimesAuto';
 
@@ -203,7 +204,7 @@ export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce(force);
+    await runQueued('crimes-auto', () => runIfEligibleOnce(force));
     if (force && !(await storage.getCrimesAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.CRIMES_AUTO);
   } finally {
     cycleInFlight = false;

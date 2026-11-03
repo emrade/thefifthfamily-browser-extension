@@ -7,6 +7,7 @@ import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { careerRequiredLevel, isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig, CareerAutoWaiting } from '@/shared/types';
+import { runQueued } from '../../automationQueue';
 
 const FEATURE_KEY = 'careerAuto';
 
@@ -160,7 +161,7 @@ export async function runIfEligible(force = false): Promise<void> {
   if (cycleInFlight) return;
   cycleInFlight = true;
   try {
-    await runIfEligibleOnce(force);
+    await runQueued('career-auto', () => runIfEligibleOnce(force));
     if (force && !(await storage.getCareerAutoConfig()).enabled) await chrome.alarms.clear(ALARM_NAMES.CAREER_AUTO);
   } finally {
     cycleInFlight = false;

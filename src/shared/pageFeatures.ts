@@ -116,12 +116,6 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Needs the Arena Fight Advisor. When the page’s boss is one you still need to clear its family’s current Mastery tier, the advisor’s Boss line says so — e.g. “Needed for Mastery: 1 of 1 left for +1% DEF”. Mastery is read from the Ticket Exchange (open it once to start).',
   },
   {
-    id: 'furyCatcherPanel',
-    label: 'Fury Catcher Panel',
-    description:
-      'A floating panel on the Halloween event page with everything the popup’s Fury Catcher tab has: the Auto-Catch toggle, Energy floor, daily Energy Drink cap, Check Now, your banked Fury and today’s catches.',
-  },
-  {
     id: 'garageBulkOps',
     label: 'Garage & Dealership Bulk Tools',
     description:

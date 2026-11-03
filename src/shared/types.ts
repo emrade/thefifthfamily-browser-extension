@@ -721,53 +721,38 @@ export interface CrimesAutoStatus {
   pausedAt: number | null;
 }
 
-/** Halloween boss Fury Catcher — see `background/features/furyCatcher`. */
-export interface FuryCatcherConfig {
+/** One-at-a-time queue across background automations — see
+ *  `background/automationQueue.ts` and docs/proposals/automation-clash-queue.md.
+ *  Off = every automation runs exactly as before the queue existed. */
+export interface AutomationQueueConfig {
   enabled: boolean;
-  /** Energy the catcher never spends — kept for the player's other energy
-   *  uses (career shifts, manual play). Chases only spend what's above it. */
-  energyFloor: number;
-  /** Energy Drinks it may use per game day (resets 23:00 UTC). 0 = never. */
-  dailyDrinkCap: number;
 }
 
-export interface FuryChaseResult {
-  timestamp: number;
-  furyId: number;
-  won: boolean;
-  /** A treat found alongside the chase, caught or not (~5% of chases). */
-  treatName: string | null;
-}
+export type AutomationQueueFeature =
+  | 'pet-courier'
+  | 'street-intel'
+  | 'career-auto'
+  | 'crimes-auto'
+  | 'real-estate-auto'
+  | 'stock-market'
+  | 'street-racing'
+  | 'garage'
+  | 'inventory'
+  | 'achievements';
 
-export interface FuryCatcherTally {
-  chases: number;
-  caught: number;
-  drinksUsed: number;
-  treats: number;
-}
-
-/** Background-owned runtime state for the Fury Catcher. */
-export interface FuryCatcherStatus {
-  lastChase: FuryChaseResult | null;
-  /** The player's banked Fury (`my_fury`) as of `bankAt`. */
-  bank: number | null;
-  bankAt: number | null;
-  /** Last boss state seen. `respawnAt` is local epoch ms, converted from the
-   *  server's own `respawn_at`/`now` so a clock skew doesn't shift it. */
-  boss: { number: number; status: 'active' | 'dead'; hp: number; maxHp: number; wave: number; furyCount: number; respawnAt: number | null } | null;
-  /** Game day (`YYYY-MM-DD` of the day that started at 23:00 UTC) `today` counts. */
-  todayKey: string;
-  today: FuryCatcherTally;
-  lifetime: FuryCatcherTally;
-  /** When the alarm is next due — mirrored here so the in-page overlay (no
-   *  `chrome.alarms` access) can show it without a message round trip. */
-  nextCheckAt: number | null;
-  /** Why the last cycle couldn't chase, when it's not an error: waiting on
-   *  energy, drink cap reached, out of drinks, hospital. */
-  note: string | null;
-  pausedReason: 'error' | 'event-over' | null;
-  pausedMessage: string | null;
-  pausedAt: number | null;
+/** One turn through the queue, kept for the dashboard. `outcome`:
+ *  'ok' / 'error' = the feature's own run finished or threw;
+ *  'forced-wait' = waited the maximum and went ahead anyway;
+ *  'skipped' = a stock price check skipped because the queue was busy. */
+export interface AutomationQueueLogEntry {
+  feature: AutomationQueueFeature;
+  queuedAt: number;
+  startedAt: number | null;
+  endedAt: number;
+  waitedMs: number;
+  outcome: 'ok' | 'error' | 'forced-wait' | 'skipped';
+  /** A previous holder was treated as gone after the maximum hold time. */
+  tookOverStale?: AutomationQueueFeature;
 }
 
 /**
