@@ -9,6 +9,19 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.59.1] - 2026-11-03
+
+### Fixed
+- **Safety Gate suggestions no longer offer an Apply that changes
+  nothing.** With no fights quoted between 85% and 91%, it suggested
+  "Beatable from 92%" over a setting of 90%, though both count exactly the
+  same 79 fights. When your setting counts the same fights as the
+  suggestion, the card now says "Your Beatable from 90% fits your fights …
+  Nothing to change", with a note on the untested range. Apply only appears
+  when it would change which fights are counted, e.g. a cut-off low enough
+  to take in a loss, or so high it leaves out fights you won. The same goes
+  for Avoid.
+
 ## [0.59.0] - 2026-11-03
 
 ### Added
