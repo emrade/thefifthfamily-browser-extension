@@ -9,6 +9,28 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.57.1] - 2026-11-03
+
+### Fixed
+- **Arena Opponent Memory's record line no longer mixes seasons.** It read
+  e.g. "2–4 vs them" across all seasons, though earlier seasons were fought
+  with different stats on both sides. It now reads "0–3 this season (2–4
+  all-time)", or "Not fought this season (… all-time)", and labels a last
+  fight from an earlier season.
+  - Seasons come from the game's own season list on the Arena page ("Season
+    27 · Oct 21 – Oct 27"), read whenever the page is open and from imported
+    exports.
+  - Not from your HP, which only changes when your stats do.
+  - Not from a fixed 7-day step either: the game's schedule isn't regular
+    (there's no Season 20). Until the page is seen after a new season, it
+    steps forward a week at a time.
+  - Dashboard → Arena's opponent list uses the same wording.
+
+### Docs
+- `CLAUDE.md`: a "Before calling anything done" checklist, and a new
+  `pre-ship-check` skill that the release process now runs before every
+  version bump.
+
 ## [0.57.0] - 2026-11-03
 
 ### Added
