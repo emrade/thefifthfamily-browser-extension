@@ -9,6 +9,58 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.57.0] - 2026-11-03
+
+### Added
+- Four Arena settings (Settings → In-Game Page Features, **all off by
+  default**; with all four off the Fight Advisor is unchanged). They follow
+  a review of the fights since the game's Oct 30 patch, re-checked by two
+  independent analyses: the game's own % CHANCE has become the most reliable
+  predictor, and the advisor's three "Beatable" losses (all NehNehPok) came
+  from armour and damage the card doesn't show.
+  - **Arena Game % Safety Gate:** a regular opponent is Beatable only when
+    the game's % reaches your cut-off (otherwise Coin-flip), and Avoid
+    below a second cut-off. The badge shows the game's % whenever the gate
+    changes a verdict.
+  - **Arena Game % on Badges:** "game N%" on every advisor badge.
+  - **Arena Bank-or-Fight Hint:** while a pot is building, a "Bank first"
+    line names any opponent whose win chance is below
+    pot ÷ (pot + bounty).
+  - **Arena Opponent Memory:** your record against each opponent you've
+    fought and how the last fight ended, e.g. "2–4 vs them · they finished
+    on 148 HP". Rematches are scored with the opponent's real armour from
+    that fight instead of card DEF; NehNehPok goes from Beatable 1.38 to
+    Coin-flip 0.99.
+- Dashboard → Arena:
+  - The Safety Gate's cut-offs (default 90% / 60%) and a "count fights since"
+    date.
+  - Suggestions from your own fights, applied only with a click, and a
+    warning on any loss above the Beatable cut-off.
+  - The opponents you've lost to most.
+  - **Import fight history** from your HTTP-archive exports, raw or merged,
+    overlapping or not; nothing counts twice. The extension's own request
+    archive only holds about 2 days, so these Arena records have their own
+    storage.
+  - Every fight is now recorded with the game's % seen before it.
+
+### Changed
+- The popup's feature list is now one **Open Dashboard** button plus a
+  compact status line per automation. Each line opens that automation on the
+  Dashboard.
+
+### Docs
+- `docs/automation-queue.md`: moved out of `docs/proposals/` now that it has
+  shipped.
+- `docs/arena-combat-mechanics.md`: the 2026-11-03 findings and corrections.
+  - Every hit is cut ~5%.
+  - The roll order and first-strike rules are re-confirmed.
+  - A whole-fight simulation reproduces the game's %.
+  - `armory_mult` doesn't add damage.
+- `docs/proposals/arena-advisor-post-patch-review.md` and
+  `docs/agent-briefs/`: the post-patch review, two independent reviews
+  (review 1 reconstructed after it was overwritten), and how all three
+  compare.
+
 ## [0.56.0] - 2026-11-03
 
 ### Changed
