@@ -119,7 +119,7 @@ export const PAGE_FEATURE_DEFINITIONS = [
     id: 'arenaGamePctGate',
     label: 'Arena Game % Safety Gate',
     description:
-      'Needs the Arena Fight Advisor. Checks each regular opponent’s verdict against the game’s own % CHANCE: Beatable only when the game says 90% or more (otherwise it shows Coin-flip), and Avoid when it says under 60%. Since the Oct 30 patch the game’s % has been the most reliable number: 90%+ won 79 of 79, under 60% won 2 of 25.',
+      'Needs the Arena Fight Advisor. Checks each regular opponent’s verdict against the game’s own % CHANCE: Beatable only when the game’s % reaches your cut-off (otherwise it shows Coin-flip), and Avoid below a second cut-off. Set the cut-offs, and see suggestions from your own fights, in Dashboard → Arena.',
     defaultOn: false,
   },
   {
@@ -139,7 +139,7 @@ export const PAGE_FEATURE_DEFINITIONS = [
     id: 'arenaOpponentMemory',
     label: 'Arena Opponent Memory',
     description:
-      'Needs the Arena Fight Advisor. Remembers every opponent you’ve fought (seeded from the last 14 days of your fight history): shows your record against them and how the last fight ended, and scores them with their real armour from that fight instead of the card’s DEF, which gear makes up to 1.7× higher.',
+      'Needs the Arena Fight Advisor. Remembers every opponent you fight from now on (plus the ones still in the extension’s request archive, about the last 2 days): shows your record against them and how the last fight ended, and scores them with their real armour from that fight instead of the card’s DEF (gear adds armour the card doesn’t show). Older fights can be imported in Dashboard → Arena.',
     defaultOn: false,
   },
   {

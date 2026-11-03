@@ -13,16 +13,27 @@
  *   times and won all three; from the second fight on, this memory has the
  *   real number.
  *
- * Kept in `chrome.storage.local`. Updated from every regular `attack`
- * response, whether or not the page setting that shows it is on (recording
- * is data only, like the advisor's own profile), and seeded once from the
- * request archive (background/features/arena/opponentMemoryBackfill.ts).
+ * Kept in `chrome.storage.local`, separate from the request archive (which
+ * only holds ~2 days). Filled from three places, all de-duplicated by the
+ * fight's capture timestamp:
+ * - every regular `attack` response, live, whatever the page setting;
+ * - a one-time seed from the request archive
+ *   (background/features/arena/opponentMemoryBackfill.ts);
+ * - an import of archive exports on the Dashboard's Arena section.
  */
+
+export interface ArenaOpponentFight {
+  /** Capture timestamp of the `attack` request: the same value the archive
+   *  stores, so a fight seen live and again in an import counts once. */
+  at: number;
+  won: boolean;
+}
 
 export interface ArenaOpponentRecord {
   name: string;
-  fights: number;
-  wins: number;
+  /** Up to `ARENA_OPPONENT_HISTORY_MAX` fights, oldest first. */
+  history: ArenaOpponentFight[];
+  /** The latest fight's numbers. */
   lastAt: number;
   lastWon: boolean;
   /** Median `reduction` on the player's hits in the latest fight: the
@@ -30,8 +41,8 @@ export interface ArenaOpponentRecord {
   armour: number | null;
   /** `def_max_hp` from the latest fight. */
   maxHp: number | null;
-  /** HP left on the losing side of the latest fight: theirs when the player
-   *  lost, the player's when the player won. */
+  /** HP left on the winning side of the latest fight: the player's when
+   *  they won, the opponent's when the player lost. */
   lastHpLeft: number | null;
   lastRounds: number;
 }
@@ -40,6 +51,8 @@ export type ArenaOpponentMemory = Record<string, ArenaOpponentRecord>;
 
 /** Opponents kept, most recently fought first. */
 export const ARENA_OPPONENT_MEMORY_MAX = 400;
+/** Fights kept per opponent (enough for the record line). */
+export const ARENA_OPPONENT_HISTORY_MAX = 50;
 
 function median(xs: number[]): number | null {
   if (xs.length === 0) return null;
@@ -47,10 +60,23 @@ function median(xs: number[]): number | null {
   return s[Math.floor(s.length / 2)];
 }
 
+function capOpponents(m: ArenaOpponentMemory): ArenaOpponentMemory {
+  const names = Object.keys(m);
+  if (names.length <= ARENA_OPPONENT_MEMORY_MAX) return m;
+  const keep = names.sort((a, b) => m[b].lastAt - m[a].lastAt).slice(0, ARENA_OPPONENT_MEMORY_MAX);
+  return Object.fromEntries(keep.map((n) => [n, m[n]]));
+}
+
+function mergeHistory(a: ArenaOpponentFight[], b: ArenaOpponentFight[]): ArenaOpponentFight[] {
+  const byAt = new Map<number, ArenaOpponentFight>();
+  for (const f of [...a, ...b]) byAt.set(f.at, f);
+  return [...byAt.values()].sort((x, y) => x.at - y.at).slice(-ARENA_OPPONENT_HISTORY_MAX);
+}
+
 /**
- * Folds one `attack` response into the memory. Returns the same object when
- * the response isn't a regular fight (bosses, `ok:false`, malformed), so
- * callers can skip the write.
+ * Folds one `attack` response, captured at `at`, into the memory. Returns
+ * the same object when there's nothing to add (a boss, `ok:false`,
+ * malformed, or a fight already counted), so callers can skip the write.
  */
 export function rememberFight(prev: ArenaOpponentMemory, resp: unknown, at: number): ArenaOpponentMemory {
   const r = resp as {
@@ -63,40 +89,63 @@ export function rememberFight(prev: ArenaOpponentMemory, resp: unknown, at: numb
     rounds?: unknown;
   };
   if (r?.ok !== true || typeof r.won !== 'boolean' || typeof r.defender !== 'string' || !Array.isArray(r.rounds)) return prev;
+  const old = prev[r.defender];
+  if (old?.history.some((f) => f.at === at)) return prev;
   const reductions: number[] = [];
   for (const round of r.rounds as Record<string, unknown>[]) {
     const a = round?.attacker as { reduction?: unknown } | undefined;
     if (a && typeof a.reduction === 'number' && a.reduction > 0) reductions.push(a.reduction);
   }
-  const old = prev[r.defender];
-  // The same response seen twice (two tabs, or the backfill overlapping a
-  // live capture) must not count twice.
-  if (old && old.lastAt === at) return prev;
-  if (old && old.lastAt > at) return prev;
-  const record: ArenaOpponentRecord = {
-    name: r.defender,
-    fights: (old?.fights ?? 0) + 1,
-    wins: (old?.wins ?? 0) + (r.won ? 1 : 0),
-    lastAt: at,
-    lastWon: r.won,
-    armour: median(reductions) ?? old?.armour ?? null,
-    maxHp: typeof r.def_max_hp === 'number' ? r.def_max_hp : old?.maxHp ?? null,
-    lastHpLeft: r.won
-      ? typeof r.attacker_hp_left === 'number' ? r.attacker_hp_left : null
-      : typeof r.defender_hp_left === 'number' ? r.defender_hp_left : null,
-    lastRounds: r.rounds.length,
-  };
-  const next = { ...prev, [r.defender]: record };
-  const names = Object.keys(next);
-  if (names.length <= ARENA_OPPONENT_MEMORY_MAX) return next;
-  const keep = names.sort((a, b) => next[b].lastAt - next[a].lastAt).slice(0, ARENA_OPPONENT_MEMORY_MAX);
-  return Object.fromEntries(keep.map((n) => [n, next[n]]));
+  const history = mergeHistory(old?.history ?? [], [{ at, won: r.won }]);
+  const isLatest = !old || at > old.lastAt;
+  const record: ArenaOpponentRecord = isLatest
+    ? {
+        name: r.defender,
+        history,
+        lastAt: at,
+        lastWon: r.won,
+        armour: median(reductions) ?? old?.armour ?? null,
+        maxHp: typeof r.def_max_hp === 'number' ? r.def_max_hp : old?.maxHp ?? null,
+        lastHpLeft: r.won
+          ? typeof r.attacker_hp_left === 'number' ? r.attacker_hp_left : null
+          : typeof r.defender_hp_left === 'number' ? r.defender_hp_left : null,
+        lastRounds: r.rounds.length,
+      }
+    : // An older fight (from an import) only adds to the record.
+      { ...old!, history };
+  return capOpponents({ ...prev, [r.defender]: record });
 }
 
-/** "Lost 0–3 · last: they finished on 117 HP". */
+/** Combines two memories (e.g. stored + imported): histories are joined
+ *  without double-counting; the latest fight's numbers win. */
+export function mergeMemory(a: ArenaOpponentMemory, b: ArenaOpponentMemory): ArenaOpponentMemory {
+  const out: ArenaOpponentMemory = { ...a };
+  for (const [name, rb] of Object.entries(b)) {
+    const ra = out[name];
+    if (!ra) {
+      out[name] = rb;
+      continue;
+    }
+    const newer = rb.lastAt > ra.lastAt ? rb : ra;
+    out[name] = { ...newer, history: mergeHistory(ra.history, rb.history) };
+  }
+  return capOpponents(out);
+}
+
+/** Older stored records (before `history` existed) read as one-fight records. */
+export function normaliseMemory(m: ArenaOpponentMemory | null | undefined): ArenaOpponentMemory {
+  const out: ArenaOpponentMemory = {};
+  for (const [name, r] of Object.entries(m ?? {})) {
+    out[name] = Array.isArray(r.history) ? r : { ...r, history: [{ at: r.lastAt, won: r.lastWon }] };
+  }
+  return out;
+}
+
+/** "2–4 vs them · they finished on 148 HP". */
 export function memoryText(rec: ArenaOpponentRecord): string {
-  const losses = rec.fights - rec.wins;
-  const record = rec.fights === 1 ? (rec.lastWon ? 'Won last time' : 'Lost last time') : `${rec.wins}–${losses} vs them`;
+  const fights = rec.history.length;
+  const wins = rec.history.filter((f) => f.won).length;
+  const record = fights <= 1 ? (rec.lastWon ? 'Won last time' : 'Lost last time') : `${wins}–${fights - wins} vs them`;
   if (rec.lastHpLeft === null) return record;
   return rec.lastWon ? `${record} · you finished on ${rec.lastHpLeft} HP` : `${record} · they finished on ${rec.lastHpLeft} HP`;
 }

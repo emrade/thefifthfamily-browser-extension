@@ -6,6 +6,7 @@ import './dashboard.css';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { isDashboardSection, type DashboardSection } from '@/shared/dashboardSections';
 import { AutomationsSection } from './sections/Automations';
+import { ArenaSection } from './sections/Arena';
 import { LiveStats } from '../popup/views/LiveStats';
 import { HealthAlert } from '../popup/views/HealthAlert';
 import { ReloadGameTabsRow, UpdateBanner } from '../popup/views/GameTabs';
@@ -44,6 +45,7 @@ const MENU: MenuItem[] = [
   { id: 'automations/career-auto', label: 'Career Auto', sub: true },
   { id: 'automations/crimes-auto', label: 'Crimes Auto', sub: true },
   { id: 'automations/real-estate-auto', label: 'Real Estate Auto-Collect', sub: true },
+  { id: 'arena', label: 'Arena' },
   { id: 'fight-club', label: 'Fight Club' },
   { id: 'http-archive', label: 'HTTP Archive' },
   { id: 'settings', label: 'Settings' },
@@ -96,6 +98,8 @@ function Content({ section }: { section: DashboardSection }) {
       return <Narrow><CrimesAutoHome /></Narrow>;
     case 'automations/real-estate-auto':
       return <Narrow><RealEstateAutoHome /></Narrow>;
+    case 'arena':
+      return <ArenaSection />;
     case 'fight-club':
       return <Narrow><FightClubHome /></Narrow>;
     case 'http-archive':

@@ -13,10 +13,36 @@ default** (not yet released):
   fight instead of card DEF.
   - Code: `src/shared/arenaOpponentMemory.ts`.
   - Recorded from every regular fight, whatever the setting.
-  - Seeded once from the last 14 days of the request archive
-    (`background/features/arena/opponentMemoryBackfill.ts`).
+  - Seeded once from the request archive
+    (`background/features/arena/opponentMemoryBackfill.ts`). The archive
+    only holds ~1.4–2 days (it's capped at ~100 MB), so the seed covers
+    roughly the last 2 days; the memory's own storage keeps everything
+    after that.
   - Tested on the archived fights: NehNehPok goes from Beatable 1.38 to
     Coin-flip 0.99 on a rematch.
+
+**Dashboard → Arena** (same build):
+- The gate's cut-offs are the player's own (default 90 / 60), plus a
+  "count fights since" date that defaults to the Oct 30 patch.
+- Suggestions from the player's own game-%-vs-result record, Street Intel
+  style, never applied without a click (`shared/arenaGate.ts`
+  `suggestGate`):
+  - Beatable from: the lowest cut-off at which every fight at or above it
+    was won, with ≥ 20 fights there.
+  - Avoid below: the highest cut-off where ≤ 10% were won, with ≥ 20
+    fights.
+  - It warns about any loss at or above the Beatable cut-off (a sign the
+    game changed again).
+- **Import fight history:** pick any HTTP-archive exports, raw or merged,
+  overlapping or not (`dashboard/arenaImport.ts`). It fills Opponent Memory
+  and the gate's record, keyed by capture timestamp, so nothing counts twice.
+  - Tested in Node on the 19 raw exports since Oct 20: 328 fights, all
+    paired with their card's %; since the patch 116, with ≥ 90% 79/79 and
+    < 60% 2/25 (matching review 2).
+  - Re-importing added nothing.
+  - Suggestions on that data: Beatable from 85%, Avoid below 62%.
+- The in-extension request archive only holds ~2 days (100 MB cap), which
+  is why these records have their own storage and an import.
 
 Code: `judge()` in `content/features/arena/fightAdvisor.ts`. With all four
 off it is exactly `verdictFor`. The track record still scores the advisor's

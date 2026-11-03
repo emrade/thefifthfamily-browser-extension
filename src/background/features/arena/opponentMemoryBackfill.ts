@@ -2,7 +2,7 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import { db } from '@/shared/db';
 import { LOG_PREFIX } from '@/shared/log';
 import { decompressText } from '@/shared/requestLog/compress';
-import { rememberFight, type ArenaOpponentMemory } from '@/shared/arenaOpponentMemory';
+import { mergeMemory, rememberFight, type ArenaOpponentMemory } from '@/shared/arenaOpponentMemory';
 import { storage } from '@/shared/storage';
 
 /**
@@ -14,6 +14,9 @@ import { storage } from '@/shared/storage';
  */
 
 const ATTACK_ENDPOINT = 'POST /actions/arena_v2.php';
+/** Upper bound only. The request archive is capped at ~100 MB, which in
+ *  practice holds 1.4–2 days (export headers, Oct 30 – Nov 3), so this
+ *  seeds from whatever is left of that. */
 const BACKFILL_DAYS = 14;
 
 export async function backfillOpponentMemory(): Promise<void> {
@@ -34,12 +37,9 @@ export async function backfillOpponentMemory(): Promise<void> {
     }
   }
 
-  // A fight captured live since startup is newer than anything here: keep it.
-  const current = await storage.getArenaOpponentMemory();
-  const merged: ArenaOpponentMemory = { ...seeded };
-  for (const [name, rec] of Object.entries(current)) {
-    if (!merged[name] || rec.lastAt > merged[name].lastAt) merged[name] = rec;
-  }
+  // Joined with anything already stored (live captures, an import): fights
+  // are keyed by capture time, so nothing counts twice.
+  const merged = mergeMemory(await storage.getArenaOpponentMemory(), seeded);
   await storage.setArenaOpponentMemory(merged);
   await chrome.storage.local.set({ [STORAGE_KEYS.ARENA_OPPONENT_MEMORY_SEEDED]: true });
   console.info(LOG_PREFIX, `arena opponent memory seeded: ${Object.keys(seeded).length} opponents from ${rows.length} archived arena actions`);

@@ -50,7 +50,7 @@ function withCollection(list: Collection[] | undefined, c: Collection): Collecti
 
 /**
  * Collections from before this history was kept, read back from the
- * extension's own request archive (30 days, when archiving is on), so the
+ * extension's own request archive (only ~1.4–2 days: it's capped at ~100 MB), so the
  * advisor has a week of figures from the first day rather than a week later.
  */
 async function backfillCollections(): Promise<Collection[]> {

@@ -27,7 +27,8 @@ import {
 import type { ArenaBand, ArenaLineupPoints, ArenaMyProfile, ArenaTrackRecord } from '@/shared/types';
 import { MASTERY_TIER_LABEL, neededForMastery, type ArenaMasteryState } from '@/shared/arenaMastery';
 import { hideHover, injectDetailStyles, openModal, showHover, type FightDetail } from './fightDetails';
-import { memoryText, rememberFight, type ArenaOpponentMemory, type ArenaOpponentRecord } from '@/shared/arenaOpponentMemory';
+import { memoryText, normaliseMemory, rememberFight, type ArenaOpponentMemory, type ArenaOpponentRecord } from '@/shared/arenaOpponentMemory';
+import { addQuotedFights, DEFAULT_ARENA_GATE_CONFIG, type ArenaGateConfig } from '@/shared/arenaGate';
 
 /**
  * The Arena fight advisor: badges every live opponent and the boss
@@ -166,10 +167,12 @@ export interface ArenaAdvisorOptions {
 }
 const NO_OPTIONS: ArenaAdvisorOptions = { gamePctGate: false, showGamePct: false, bankOrFight: false, opponentMemory: false };
 let options: ArenaAdvisorOptions = NO_OPTIONS;
-/** Post-patch record by the game's quoted % (116 fights, Oct 30 – Nov 3):
- *  90%+ won 79/79; 60–89% won 11/14; under 60% won 2/25. */
-const GATE_BEATABLE_FROM = 90;
-const GATE_AVOID_BELOW = 60;
+/** The gate's cut-offs: the player's own (Dashboard → Arena), defaulting to
+ *  90 / 60 from the post-patch record (shared/arenaGate.ts). */
+let gate: ArenaGateConfig = DEFAULT_ARENA_GATE_CONFIG;
+/** The game's % last shown on each regular card, by name, so a fight can be
+ *  recorded with the % the player saw before attacking. */
+const quotedSeen = new Map<string, number>();
 /** Recorded from every regular fight whatever the settings (data only);
  *  only shown and used when `opponentMemory` is on. */
 let memory: ArenaOpponentMemory | null = null;
@@ -237,11 +240,19 @@ export function handleCapturedRequest(req: CapturedRequest): void {
 
     if (action === 'attack') {
       await scoreFight(data);
+      // Keyed by the capture timestamp, the archive's own value, so a fight
+      // seen live and again in an imported export counts once.
       if (memory === null) memory = await storage.getArenaOpponentMemory();
-      const remembered = rememberFight(memory, data, Date.now());
+      const remembered = rememberFight(memory, data, req.timestamp);
       if (remembered !== memory) {
         memory = remembered;
         await storage.setArenaOpponentMemory(remembered);
+      }
+      const quoted = typeof data.defender === 'string' ? quotedSeen.get(data.defender) : undefined;
+      if (quoted !== undefined && typeof data.won === 'boolean' && new URLSearchParams(req.requestBody ?? '').get('opponent_id') !== '0') {
+        const prevRecord = await storage.getArenaQuoteRecord();
+        const nextRecord = addQuotedFights(prevRecord, [{ at: req.timestamp, name: data.defender, quoted, won: data.won }]);
+        if (nextRecord !== prevRecord) await storage.setArenaQuoteRecord(nextRecord);
       }
       const sample = sampleFromAttack(data);
       if (!sample) {
@@ -367,8 +378,8 @@ function judge(c: CardOnPage, me: ArenaMyProfile): Judged {
   let v = raw;
   const q = c.card.quotedPct;
   if (options.gamePctGate && !c.card.isBoss && q !== null) {
-    if (q < GATE_AVOID_BELOW && raw.kind !== 'avoid') v = { ...raw, kind: 'avoid', leansWin: false };
-    else if (q < GATE_BEATABLE_FROM && raw.kind === 'beatable') v = { ...raw, kind: 'coinflip' };
+    if (q < gate.avoidBelow && raw.kind !== 'avoid') v = { ...raw, kind: 'avoid', leansWin: false };
+    else if (q < gate.beatableFrom && raw.kind === 'beatable') v = { ...raw, kind: 'coinflip' };
   }
   return { v, raw, rec, armourFromMemory, gated: v !== raw };
 }
@@ -483,6 +494,7 @@ function paint(): void {
 
   const cards = [...root.querySelectorAll<HTMLElement>('.ar-opp')].map(readCard).filter((c): c is CardOnPage => c !== null);
   const regulars = cards.filter((c) => !c.card.isBoss);
+  for (const c of regulars) if (c.card.quotedPct !== null) quotedSeen.set(c.card.name, c.card.quotedPct);
   const boss = cards.find((c) => c.card.isBoss) ?? null;
 
   const scored = regulars
@@ -715,6 +727,13 @@ export function initArenaFightAdvisor(withMasteryTag = false, opts: ArenaAdvisor
       schedulePaint();
     })
     .catch((err) => console.error(LOG_PREFIX, 'arena opponent memory read failed', err));
+  storage
+    .getArenaGateConfig()
+    .then((g) => {
+      gate = g;
+      schedulePaint();
+    })
+    .catch((err) => console.error(LOG_PREFIX, 'arena gate config read failed', err));
   masteryTag = withMasteryTag;
   if (masteryTag) {
     storage
@@ -756,7 +775,11 @@ export function initArenaFightAdvisor(withMasteryTag = false, opts: ArenaAdvisor
       schedulePaint();
     }
     if (STORAGE_KEYS.ARENA_OPPONENT_MEMORY in changes) {
-      memory = (changes[STORAGE_KEYS.ARENA_OPPONENT_MEMORY].newValue as ArenaOpponentMemory | undefined) ?? {};
+      memory = normaliseMemory(changes[STORAGE_KEYS.ARENA_OPPONENT_MEMORY].newValue as ArenaOpponentMemory | undefined);
+      schedulePaint();
+    }
+    if (STORAGE_KEYS.ARENA_GATE_CONFIG in changes) {
+      gate = { ...DEFAULT_ARENA_GATE_CONFIG, ...(changes[STORAGE_KEYS.ARENA_GATE_CONFIG].newValue as Partial<ArenaGateConfig> | undefined) };
       schedulePaint();
     }
     if (STORAGE_KEYS.ARENA_TRACK_RECORD in changes) {
