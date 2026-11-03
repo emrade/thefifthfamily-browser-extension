@@ -1,7 +1,7 @@
 # Background automations acting at the same time
 
-Status (2026-11-03): **design agreed, nothing built** (see "Decisions"
-below). Next step: the bank attribution check. The question to settle
+Status (2026-11-03): **design agreed, refined check done, nothing built.**
+See "Decisions" and "Refined check" below. Next step: build the queue (step 2). The question to settle
 first: how often do two different background automations act at the same
 moment? A real player in one tab can't do that unless they play from two
 devices, so it's a pattern the game's developers could notice.
@@ -53,7 +53,58 @@ automated requests can be told apart from the player's.
   regularly. A queue is justified, unless the refined check below brings
   these numbers down a lot.
 
-## Refine before building
+## Refined check (2026-11-03): bank calls attributed
+
+Done. Scratch scripts `posts.py` and `clash3.py` in the session scratchpad;
+rebuild them from this description if needed. All archives through
+2026-11-02 (139,686 POSTs, 66 days with background activity).
+
+**Attribution.**
+- Every deposit goes through `depositCashOnHand(feature)` in
+  `gameAction.ts`. In the code, it's called by Pet Courier, Street Intel,
+  Racing, Real Estate and Inventory sell.
+- Withdrawals come only from Pet Courier and Crimes Auto.
+- Each bank call was given to the nearest earlier background POST (within
+  3 min) from a feature that sends that kind of bank call. 38 of 23,885
+  couldn't be matched.
+- Result: 19,512 bank calls were Pet Courier's own, 3,216 Street Intel's,
+  791 Racing's. So the "bank + smuggling" pair (6,757) was almost entirely
+  Pet Courier depositing and withdrawing inside its own run. **Not a clash.**
+
+**Real cross-feature overlaps, after attribution:**
+
+| Measure | Count (66 days) |
+|---|---|
+| Next request started while the other feature's was still in flight | 1,237 |
+| … or within 1 s of it | 2,877 |
+| … or within 3 s of it | 3,225 |
+| Whole runs overlapping (each feature's requests ≤ 60 s apart = one run) | 1,638 |
+
+Run-level pairs: Pet Courier + Street Intel 372, Career + Street Intel 303,
+Career + Pet Courier 192, Crimes + Street Intel 191, Career + Crimes 172,
+Crimes + Pet Courier 158, Pet Courier + Stocks poll 106, Pet Courier +
+Racing 53.
+
+**Steady, not bursts.** Since Oct 15 there are 14–34 run overlaps per day
+(about 25 on a typical day), and 10–40 request-level clashes (1 s). There's
+no day with a spike: it's the ordinary result of independent alarms.
+
+**Players' clicks.** 2,050 background POSTs landed within 1 s of any player
+POST. This is broader than the earlier 296, which counted only player POSTs
+on automated features. Per the decisions, this is left to the "Up next" chip.
+
+**Verdict:** the problem is real but smaller than first measured: ~25
+overlapping runs a day, not ~180. The queue is still justified, since a
+single player can't run two features at once. It is not urgent.
+
+**Stocks poll joins the queue** (decided 2026-11-03). `stocks_v2.php
+action=poll` only reads prices, but the real client sends it only while the
+player is on the Stock Market page, and a player can't be on that page and
+Career at the same time. It's a single quick request, so it barely delays
+anyone. If the queue is busy, it skips that poll and takes the next one,
+rather than waiting.
+
+## Refine before building (done 2026-11-03, see above)
 
 1. Attribute every bank, shops and stocks call to the feature that made it
    (by sequence, or by the `action=` value), then recount true cross-feature
