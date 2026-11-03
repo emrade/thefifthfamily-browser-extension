@@ -38,14 +38,11 @@ export function App() {
       <main class="ff-main">
         <Home
           onOpenDashboard={open('overview')}
-          onOpenFightClub={open('fight-club')}
-          onOpenRequestLog={open('http-archive')}
           onOpenCareerAuto={open('automations/career-auto')}
           onOpenStreetIntelAuto={open('automations/street-intel')}
           onOpenPetCouriers={open('automations/pet-couriers')}
           onOpenCrimesAuto={open('automations/crimes-auto')}
           onOpenRealEstateAuto={open('automations/real-estate-auto')}
-          onOpenSettings={open('settings')}
         />
       </main>
 

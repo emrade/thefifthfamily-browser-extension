@@ -5,18 +5,15 @@ import { HealthAlert } from './HealthAlert';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, RealEstateAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
-import { ArchiveIcon, BriefcaseIcon, BuildingIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, GaugeIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
+import { ChevronRightIcon, GaugeIcon } from './icons';
 
 interface HomeProps {
   onOpenDashboard: () => void;
-  onOpenFightClub: () => void;
-  onOpenRequestLog: () => void;
   onOpenCareerAuto: () => void;
   onOpenStreetIntelAuto: () => void;
   onOpenPetCouriers: () => void;
   onOpenCrimesAuto: () => void;
   onOpenRealEstateAuto: () => void;
-  onOpenSettings: () => void;
 }
 
 export function Home(props: HomeProps) {
@@ -88,6 +85,15 @@ export function Home(props: HomeProps) {
   const realEstateAutoStatus = realEstateAutoConfig?.enabled ? `Collects after ${realEstateAutoConfig.intervalHours}h without one` : 'Off';
 
 
+  // Compact, glanceable statuses; each opens that automation's Dashboard section.
+  const statuses = [
+    { label: 'Career Auto', value: careerAutoStatus, open: props.onOpenCareerAuto },
+    { label: 'Street Intel Auto', value: streetIntelAutoStatus, open: props.onOpenStreetIntelAuto },
+    { label: 'Pet Couriers', value: courierAutoStatus, open: props.onOpenPetCouriers },
+    { label: 'Crimes Auto', value: crimesAutoStatus, open: props.onOpenCrimesAuto },
+    { label: 'Real Estate Auto-Collect', value: realEstateAutoStatus, open: props.onOpenRealEstateAuto },
+  ];
+
   return (
     <>
       <UpdateBanner />
@@ -96,90 +102,24 @@ export function Home(props: HomeProps) {
 
       <HealthAlert />
 
-      <div class="ff-section-label">Features</div>
-
-      <button class="ff-nav-row" onClick={props.onOpenFightClub}>
-        <div class="ff-nav-row__icon"><FightClubIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Fight Club</div>
-          <div class="ff-nav-row__status">Your rating, hits, and record</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
+      <button class="ff-dash-btn" onClick={props.onOpenDashboard}>
+        <GaugeIcon />
+        <span>Open Dashboard</span>
+        <ChevronRightIcon />
       </button>
 
-      <button class="ff-nav-row" onClick={props.onOpenRequestLog}>
-        <div class="ff-nav-row__icon"><ArchiveIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">HTTP Archive</div>
-          <div class="ff-nav-row__status">Raw request capture and exports</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
+      <div class="ff-section-label">Automations</div>
 
-      <button class="ff-nav-row" onClick={props.onOpenDashboard}>
-        <div class="ff-nav-row__icon"><GaugeIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Dashboard</div>
-          <div class="ff-nav-row__status">Everything, including settings, in its own tab</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenCareerAuto}>
-        <div class="ff-nav-row__icon"><BriefcaseIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Career Auto</div>
-          <div class="ff-nav-row__status">{careerAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenStreetIntelAuto}>
-        <div class="ff-nav-row__icon"><CrosshairIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Street Intel Auto</div>
-          <div class="ff-nav-row__status">{streetIntelAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenPetCouriers}>
-        <div class="ff-nav-row__icon"><SendIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Pet Couriers</div>
-          <div class="ff-nav-row__status">{courierAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenCrimesAuto}>
-        <div class="ff-nav-row__icon"><MaskIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Crimes Auto</div>
-          <div class="ff-nav-row__status">{crimesAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
-
-      <button class="ff-nav-row" onClick={props.onOpenRealEstateAuto}>
-        <div class="ff-nav-row__icon"><BuildingIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Real Estate Auto-Collect</div>
-          <div class="ff-nav-row__status">{realEstateAutoStatus}</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
+      <div class="ff-status-list">
+        {statuses.map((s) => (
+          <button class="ff-status-row" key={s.label} onClick={s.open} title={`Open ${s.label} on the Dashboard`}>
+            <span class="ff-status-row__name">{s.label}</span>
+            <span class={`ff-status-row__value${s.value === 'Off' || s.value === 'Not set up' ? ' is-off' : ''}`}>{s.value}</span>
+          </button>
+        ))}
+      </div>
 
       <ReloadGameTabsRow />
-
-      <button class="ff-nav-row" onClick={props.onOpenSettings}>
-        <div class="ff-nav-row__icon"><SettingsIcon /></div>
-        <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Settings</div>
-          <div class="ff-nav-row__status">Backup or clear stored data</div>
-        </div>
-        <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
-      </button>
     </>
   );
 }
