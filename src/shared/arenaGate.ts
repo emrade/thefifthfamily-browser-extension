@@ -67,15 +67,29 @@ export interface ArenaGateBand {
   wins: number;
 }
 
+/** An inclusive range of game % with no fights in it. */
+export interface ArenaGateGap {
+  from: number;
+  to: number;
+}
+
 export interface ArenaGateSuggestion {
   /** Fights counted (since `config.since`). */
   fights: number;
-  /** Lowest cut-off at which every fight at or above it was won, with at
-   *  least `ARENA_GATE_MIN_FIGHTS` there. Null until there are enough. */
+  /** Lowest game % actually fought at, at or above which every fight was
+   *  won, with at least `ARENA_GATE_MIN_FIGHTS` there. Null until there are
+   *  enough. */
   beatable: ArenaGateBand | null;
-  /** Highest cut-off below which at most 10% were won, with at least
-   *  `ARENA_GATE_MIN_FIGHTS` there. Null until there are enough. */
+  /** Game % between the highest loss below `beatable` and `beatable` itself
+   *  that no fight was quoted at: the data can't place the cut-off there. */
+  beatableUntested: ArenaGateGap | null;
+  /** Just above the highest game % actually fought at, below which at most
+   *  10% were won, with at least `ARENA_GATE_MIN_FIGHTS` there. Null until
+   *  there are enough. */
   avoid: ArenaGateBand | null;
+  /** Game % from `avoid` up to the next fight above it that no fight was
+   *  quoted at. */
+  avoidUntested: ArenaGateGap | null;
   /** The record of the current cut-offs, for the player to judge them. */
   current: { beatable: ArenaGateBand; avoid: ArenaGateBand };
   /** Losses at or above the current Beatable cut-off: a sign the game's %
@@ -90,28 +104,44 @@ function band(fights: ArenaQuotedFight[], cutoff: number, above: boolean): Arena
 
 export function suggestGate(record: ArenaQuotedFight[], config: ArenaGateConfig): ArenaGateSuggestion {
   const fights = record.filter((f) => f.at >= config.since);
+  // Every cut-off between two neighbouring fights splits them the same way,
+  // so the search alone can't tell 85% from 89% when no fight sat between.
+  // Each suggestion is snapped to the side with fights: Beatable to the
+  // lowest % actually won at, Avoid to just above the highest % it covers.
+  // The empty range is reported instead of guessed.
   let beatable: ArenaGateBand | null = null;
+  let beatableUntested: ArenaGateGap | null = null;
   for (let c = 1; c <= 100; c++) {
     const b = band(fights, c, true);
     if (b.fights >= ARENA_GATE_MIN_FIGHTS && b.wins === b.fights) {
-      beatable = b;
+      const lowestWon = Math.min(...fights.filter((f) => f.quoted >= c).map((f) => f.quoted));
+      beatable = band(fights, lowestWon, true);
+      if (lowestWon > c) beatableUntested = { from: c, to: lowestWon - 1 };
       break;
     }
   }
   let avoid: ArenaGateBand | null = null;
+  let avoidUntested: ArenaGateGap | null = null;
   for (let c = 100; c >= 1; c--) {
     const b = band(fights, c, false);
     if (b.fights >= ARENA_GATE_MIN_FIGHTS && b.wins <= b.fights * ARENA_GATE_AVOID_MAX_WIN_SHARE) {
-      avoid = b;
+      const highestCovered = Math.max(...fights.filter((f) => f.quoted < c).map((f) => f.quoted));
+      avoid = band(fights, highestCovered + 1, false);
+      if (highestCovered + 1 < c) avoidUntested = { from: highestCovered + 1, to: c - 1 };
       break;
     }
   }
   // Never suggest an Avoid cut-off above the Beatable one.
-  if (beatable && avoid && avoid.cutoff > beatable.cutoff) avoid = null;
+  if (beatable && avoid && avoid.cutoff > beatable.cutoff) {
+    avoid = null;
+    avoidUntested = null;
+  }
   return {
     fights: fights.length,
     beatable,
+    beatableUntested,
     avoid,
+    avoidUntested,
     current: { beatable: band(fights, config.beatableFrom, true), avoid: band(fights, config.avoidBelow, false) },
     lossesAboveBeatable: fights.filter((f) => !f.won && f.quoted >= config.beatableFrom),
   };

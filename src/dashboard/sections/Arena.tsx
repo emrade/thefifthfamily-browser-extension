@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
-import { ARENA_GATE_MIN_FIGHTS, DEFAULT_ARENA_GATE_CONFIG, suggestGate, type ArenaGateBand, type ArenaGateConfig, type ArenaQuotedFight } from '@/shared/arenaGate';
+import { ARENA_GATE_MIN_FIGHTS, DEFAULT_ARENA_GATE_CONFIG, suggestGate, type ArenaGateBand, type ArenaGateConfig, type ArenaGateGap, type ArenaQuotedFight } from '@/shared/arenaGate';
 import { memoryText, type ArenaOpponentMemory } from '@/shared/arenaOpponentMemory';
 import { currentSeasonStart } from '@/shared/arenaSeason';
 import type { PageFeaturePreferences } from '@/shared/pageFeatures';
+import { PageFeatureSettings } from '../../popup/views/PageFeatureSettings';
+import { NotificationSettings } from '../../popup/views/NotificationSettings';
 import { NumberInput } from '../../popup/views/NumberInput';
 import { importArenaExports, type ArenaImportProgress, type ArenaImportResult } from '../arenaImport';
 
@@ -12,8 +14,9 @@ import { importArenaExports, type ArenaImportProgress, type ArenaImportResult } 
  * Dashboard → Arena: the Game % Safety Gate's cut-offs with suggestions from
  * the player's own fights (Street Intel style: suggested, never applied
  * without a click), the opponent memory, and the import of archive exports
- * that fills both. The on/off switches stay in Settings → In-Game Page
- * Features with the other Arena settings.
+ * that fills both. Every Arena on/off switch (page features and the Arena
+ * notification) is shown at the top too, so they're all in one place; they
+ * also stay in Settings, the same stored values in both.
  */
 
 function useStored<T>(key: string, read: () => Promise<T>, initial: T): T {
@@ -30,6 +33,7 @@ function useStored<T>(key: string, read: () => Promise<T>, initial: T): T {
 }
 
 const day = (t: number) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+const gapText = (g: ArenaGateGap) => (g.from === g.to ? `at ${g.from}%` : `between ${g.from}% and ${g.to}%`);
 const pct = (b: ArenaGateBand) => (b.fights ? `${Math.round((b.wins / b.fights) * 100)}%` : '—');
 
 function toDateInput(t: number): string {
@@ -46,7 +50,7 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
     <section class="db-card">
       <h2 class="db-h">Game % Safety Gate</h2>
       <p class="db-p">
-        {prefs?.arenaGamePctGate ? 'On.' : 'Off — switch it on in Settings → In-Game Page Features.'} A regular opponent is Beatable only when the
+        {prefs?.arenaGamePctGate ? 'On.' : 'Off — switch it on under Arena settings above.'} A regular opponent is Beatable only when the
         game’s % is at least the first number, and Avoid below the second.
       </p>
       <div class="db-fields">
@@ -104,6 +108,11 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
                 </button>
               )}
               {s.beatable.cutoff === config.beatableFrom && <span class="db-muted">(current)</span>}
+              {s.beatableUntested && (
+                <div class="db-muted">
+                  No fights quoted {gapText(s.beatableUntested)} yet, so the data can't say whether a lower cut-off is safe.
+                </div>
+              )}
             </>
           ) : (
             <span class="db-muted">
@@ -123,6 +132,11 @@ function GateCard({ config, record, prefs }: { config: ArenaGateConfig; record: 
                 </button>
               )}
               {s.avoid.cutoff === config.avoidBelow && <span class="db-muted">(current)</span>}
+              {s.avoidUntested && (
+                <div class="db-muted">
+                  No fights quoted {gapText(s.avoidUntested)} yet, so the data can't say whether to avoid those too.
+                </div>
+              )}
             </>
           ) : (
             <span class="db-muted">
@@ -150,7 +164,7 @@ function MemoryCard({ memory, prefs, seasonStart }: { memory: ArenaOpponentMemor
     <section class="db-card">
       <h2 class="db-h">Opponent Memory</h2>
       <p class="db-p">
-        {prefs?.arenaOpponentMemory ? 'On.' : 'Off — switch it on in Settings → In-Game Page Features.'} {all.length} opponent
+        {prefs?.arenaOpponentMemory ? 'On.' : 'Off — switch it on under Arena settings above.'} {all.length} opponent
         {all.length === 1 ? '' : 's'} remembered (recorded whether the setting is on or off).
       </p>
       {toughest.length > 0 && (
@@ -238,6 +252,12 @@ export function ArenaSection() {
   const seasonStart = useStored<number | null>(STORAGE_KEYS.ARENA_SEASON_START, storage.getArenaSeasonStart, null);
   return (
     <div class="db-grid">
+      <section class="db-card">
+        <h2 class="db-h">Arena settings</h2>
+        <p class="db-p">The same switches as in Settings; changing one here changes it there too.</p>
+        <PageFeatureSettings title="On the Arena page" only={(id) => id.startsWith('arena')} />
+        <NotificationSettings title="Notifications" only={(id) => id.startsWith('arena')} />
+      </section>
       <GateCard config={config} record={record} prefs={prefs} />
       <MemoryCard memory={memory} prefs={prefs} seasonStart={seasonStart} />
       <ImportCard />

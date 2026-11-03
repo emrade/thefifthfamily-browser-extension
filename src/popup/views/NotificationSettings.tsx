@@ -3,7 +3,9 @@ import { storage } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { NOTIFICATION_DEFINITIONS, DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from '@/shared/notifications';
 
-export function NotificationSettings() {
+/** The notification toggles. `only` narrows it to some of them (the Arena
+ *  section shows just the Arena one). */
+export function NotificationSettings({ title = 'Notifications', only }: { title?: string; only?: (id: keyof NotificationPreferences) => boolean } = {}) {
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [loaded, setLoaded] = useState(false);
 
@@ -34,8 +36,8 @@ export function NotificationSettings() {
 
   return (
     <>
-      <div class="ff-section-label">Notifications</div>
-      {NOTIFICATION_DEFINITIONS.map((def) => (
+      <div class="ff-section-label">{title}</div>
+      {NOTIFICATION_DEFINITIONS.filter((def) => !only || only(def.id)).map((def) => (
         <label class="ff-toggle-row" key={def.id}>
           <div class="ff-toggle-row__text">
             <div class="ff-toggle-row__title">{def.label}</div>
