@@ -69,6 +69,12 @@ export const NOTIFICATION_DEFINITIONS = [
       'Notify when property vaults earning at least a tenth of your hourly income are full and the rest is going to waste. Once per collection; checks the live vaults first, so a collection on another device cancels it.',
   },
   {
+    id: 'archiveExportReminder',
+    label: 'HTTP Archive Export Reminder',
+    description:
+      'Notify when the requests you haven’t exported yet are filling the archive (it only holds about 2 days before the oldest are trimmed): once at half full, once when it’s urgent, and if rows were already lost. Click it to open the HTTP Archive and export.',
+  },
+  {
     id: 'realEstateAutoStopped',
     label: 'Real Estate Auto-Collect Stopped',
     description: 'Notify when Real Estate Auto-Collect stops itself after an unrecognized response, so you know to collect by hand.',

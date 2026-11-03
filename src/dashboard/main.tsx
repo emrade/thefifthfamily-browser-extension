@@ -9,6 +9,7 @@ import { AutomationsSection } from './sections/Automations';
 import { ArenaSection } from './sections/Arena';
 import { LiveStats } from '../popup/views/LiveStats';
 import { HealthAlert } from '../popup/views/HealthAlert';
+import { ExportDueBanner } from '../popup/views/ExportDueBanner';
 import { ReloadGameTabsRow, UpdateBanner } from '../popup/views/GameTabs';
 import { Settings } from '../popup/views/Settings';
 import { FightClubHome } from '../popup/features/fightClub/FightClubHome';
@@ -81,6 +82,7 @@ function Content({ section }: { section: DashboardSection }) {
       return (
         <Narrow>
           <UpdateBanner />
+          <ExportDueBanner onOpen={() => (location.hash = '#/http-archive')} />
           <LiveStats />
           <HealthAlert />
           <ReloadGameTabsRow />
@@ -103,7 +105,12 @@ function Content({ section }: { section: DashboardSection }) {
     case 'fight-club':
       return <Narrow><FightClubHome /></Narrow>;
     case 'http-archive':
-      return <Narrow><RequestLogHome /></Narrow>;
+      return (
+        <Narrow>
+          <ExportDueBanner />
+          <RequestLogHome />
+        </Narrow>
+      );
     case 'settings':
       return <Narrow><Settings /></Narrow>;
   }

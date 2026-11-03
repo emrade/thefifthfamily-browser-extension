@@ -68,6 +68,7 @@ import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { enqueueRecord, observeRecords } from '@/shared/requestLog/queue';
 import { ensureSweepAlarm, handleSweepAlarm } from '@/shared/requestLog/retention';
+import { checkExportReminder, init as initArchiveReminder } from './features/archiveReminder';
 import { setCsrfToken } from './csrfToken';
 import { upsertRoster, getRoster } from '@/shared/petRoster';
 import { storage } from '@/shared/storage';
@@ -96,6 +97,8 @@ ensureSeedData().catch((err) => console.error(LOG_PREFIX, 'ensureSeedData failed
 // Same "runs on every wake, cheap no-op after the first" shape as ensureSeedData —
 // it only creates the alarm if one isn't already registered.
 ensureSweepAlarm().catch((err) => console.error(LOG_PREFIX, 'ensureSweepAlarm failed', err));
+// Export reminder: checked after each hourly sweep (see the alarm handler).
+initArchiveReminder();
 
 // Re-arms the career auto-runner's alarm (if enabled) and starts watching for
 // config changes from the popup — see careerAuto/index.ts.
@@ -417,7 +420,9 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   handleTravelAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleTravelAlarm failed', err));
   handleStreetIntelPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelPollAlarm failed', err));
-  handleSweepAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm failed', err));
+  handleSweepAlarm(alarm)
+    .then(() => (alarm.name === ALARM_NAMES.REQUEST_LOG_SWEEP ? checkExportReminder() : undefined))
+    .catch((err) => console.error(LOG_PREFIX, 'handleSweepAlarm / export reminder failed', err));
   handleCareerAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCareerAutoAlarm failed', err));
   handleStreetIntelAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStreetIntelAutoAlarm failed', err));
   handleStockMarketPollAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleStockMarketPollAlarm failed', err));

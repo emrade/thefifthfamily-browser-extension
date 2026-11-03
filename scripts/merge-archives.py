@@ -23,6 +23,18 @@ and response body match the newest kept row for the same endpoint is dropped.
 Page traffic and every POST are always kept; only the timestamp of a repeated
 read is lost, its content is still in the earlier identical row.
 
+With --thin-near-repeats it also drops *near-repeat reads*, the same rule
+the extension applies at capture time since 0.58.0 (`nearRepeatIntervalFor`
+in src/shared/requestLog/policy.ts): for the extension's own background reads
+of the Smuggling, Crimes and Careers pages, a row whose body matches the
+newest kept row for its endpoint *once every digit is ignored* is dropped,
+unless the interval for that page has passed since that kept row (1 min
+Smuggling, 1 h Crimes and Careers). Any change beyond numbers is always kept.
+These three pages were ~60% of the history (2026-11-03): huge pages re-read
+every few seconds, differing only in counters and timers.
+
+  python3 scripts/merge-archives.py "~/Downloads/tff archives" --thin-near-repeats --out /tmp/test
+
 Sources are only ever deleted with --delete-sources, and only after the merged
 output has been re-read and every distinct input row confirmed present.
 
@@ -75,6 +87,24 @@ def content_hash(row: dict) -> bytes:
 
 def is_repeat_candidate(row: dict) -> bool:
     return row.get("origin") == "background" and str(row.get("method", "")).upper() == "GET"
+
+
+# Same pages and intervals as `NEAR_REPEAT_PATHS` in
+# src/shared/requestLog/policy.ts; keep the two in step.
+NEAR_REPEAT_INTERVAL_MS = {
+    "GET /api/panel.php?type=smuggling": 60_000,
+    "GET /api/panel.php?type=crimes": HOUR_MS,
+    "GET /api/panel.php?type=careers": HOUR_MS,
+}
+DIGITS_RE = re.compile(r"\d+")
+
+
+def numberless_hash(row: dict) -> bytes:
+    """Status and stored body with every run of digits removed: two reads
+    that differ only in counters, cash or timers hash the same."""
+    status = row.get("status")
+    text = f"{'' if status is None else status}\n{DIGITS_RE.sub('', row.get('responseBody') or '')}"
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
 
 
 def is_merged_file(path: Path) -> bool:
@@ -130,6 +160,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, help="where monthly files go (default: <folder>/merged)")
     ap.add_argument("--keep-repeats", action="store_true", help="keep background GETs that repeat the previous stored response for their endpoint")
     ap.add_argument("--delete-sources", action="store_true", help="delete the merged source exports after verification passes")
+    ap.add_argument("--thin-near-repeats", action="store_true", help="drop background Smuggling/Crimes/Careers page reads that differ from the last kept one only in numbers, within that page's interval")
     args = ap.parse_args()
 
     folder = args.folder.expanduser().resolve()
@@ -204,6 +235,11 @@ def main() -> int:
         # Dropped repeats: row key -> (endpoint, content hash), checked below
         # against what was actually written.
         repeats: dict[bytes, tuple[str, bytes]] = {}
+        # Near repeats (--thin-near-repeats): newest kept numberless hash and
+        # time per endpoint, and every dropped row's (endpoint, numberless
+        # hash), verified below against what was written.
+        latest_nh: dict[str, tuple[bytes, int]] = {}
+        near: dict[bytes, tuple[str, bytes]] = {}
         for month, days in months.items():
             tmp_out = work / f"{MERGED_PREFIX}{month}.ndjson.gz"
             count = 0
@@ -229,6 +265,15 @@ def main() -> int:
                             if not args.keep_repeats and is_repeat_candidate(row) and latest.get(endpoint) == chash:
                                 repeats[row_key(row)] = (endpoint, chash)
                                 continue
+                            interval = NEAR_REPEAT_INTERVAL_MS.get(endpoint)
+                            nh = numberless_hash(row) if interval is not None else None
+                            if args.thin_near_repeats and interval is not None and is_repeat_candidate(row):
+                                prev = latest_nh.get(endpoint)
+                                if prev is not None and prev[0] == nh and ts - prev[1] < interval:
+                                    near[row_key(row)] = (endpoint, nh)
+                                    continue
+                            if nh is not None:
+                                latest_nh[endpoint] = (nh, ts)
                             latest[endpoint] = chash
                             bf.write(l)
                             count += 1
@@ -241,6 +286,7 @@ def main() -> int:
                     "mergedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                     "note": "Merged by scripts/merge-archives.py. One JSON object per line; first line is this header. Rows are de-duplicated and sorted by timestamp. `coverage` lists the spans where full exports vouch for complete capture; time outside them may be missing rows.",
                     "repeatsDropped": not args.keep_repeats,
+                    **({"nearRepeatsThinned": {k: v for k, v in NEAR_REPEAT_INTERVAL_MS.items()}} if args.thin_near_repeats else {}),
                     "rows": count,
                     "oldestTimestamp": lo,
                     "newestTimestamp": hi,
@@ -257,6 +303,7 @@ def main() -> int:
         # status + body) was written.
         found: set[bytes] = set()
         written_content: set[tuple[str, bytes]] = set()
+        written_numberless: set[tuple[str, bytes]] = set()
         out_rows = 0
         for p in written:
             for header, line in read_export(p):
@@ -266,12 +313,18 @@ def main() -> int:
                 row = json.loads(line)
                 found.add(row_key(row))
                 written_content.add((row.get("endpoint") or "", content_hash(row)))
+                if (row.get("endpoint") or "") in NEAR_REPEAT_INTERVAL_MS:
+                    written_numberless.add((row.get("endpoint") or "", numberless_hash(row)))
         repeat_keys = set(repeats)
+        near_keys = set(near)
+        dropped = repeat_keys | near_keys
         orphaned = sum(1 for c in repeats.values() if c not in written_content)
-        if found | repeat_keys != seen or found & repeat_keys or out_rows != len(found) or orphaned:
+        near_orphaned = sum(1 for c in near.values() if c not in written_numberless)
+        if found | dropped != seen or found & dropped or repeat_keys & near_keys or out_rows != len(found) or orphaned or near_orphaned:
             print(
                 f"VERIFY FAILED: {len(seen):,} distinct input rows, {out_rows:,} written, {len(repeat_keys):,} dropped as repeats, "
-                f"{len((found | repeat_keys) ^ seen):,} unaccounted, {orphaned:,} repeats with no written copy — nothing replaced or deleted"
+                f"{len(near_keys):,} as near repeats, {len((found | dropped) ^ seen):,} unaccounted, {orphaned:,} repeats and "
+                f"{near_orphaned:,} near repeats with no matching written copy — nothing replaced or deleted"
             )
             return 2
 
@@ -287,7 +340,10 @@ def main() -> int:
     print(f"removed: {total_rows - len(seen):,} duplicate rows across exports ({(1 - len(seen) / max(total_rows, 1)) * 100:.0f}%)")
     if not args.keep_repeats:
         print(f"         {len(repeats):,} repeat background reads ({len(repeats) / max(len(seen), 1) * 100:.0f}% of distinct rows)")
-    print("verify:  OK — every distinct input row is written once" + ("" if args.keep_repeats else ", or is a repeat whose identical copy is written"))
+    if args.thin_near_repeats:
+        print(f"         {len(near):,} near-repeat page reads thinned ({len(near) / max(len(seen), 1) * 100:.0f}% of distinct rows)")
+    print("verify:  OK — every distinct input row is written once" + ("" if args.keep_repeats else ", or is a repeat whose identical copy is written")
+          + (", or is a near repeat whose numbers-only twin is written" if args.thin_near_repeats else ""))
 
     cov = union(spans + carried_coverage)
     holes = [(a[1], b[0]) for a, b in zip(cov, cov[1:]) if b[0] - a[1] > HOUR_MS]

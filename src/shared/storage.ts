@@ -197,6 +197,13 @@ export const storage = {
   // until the first export.
   getRequestLogExportCursor: () => get<number | null>(STORAGE_KEYS.REQUEST_LOG_EXPORT_CURSOR, null),
   setRequestLogExportCursor: (v: number) => set(STORAGE_KEYS.REQUEST_LOG_EXPORT_CURSOR, v),
+  /** When the last archive export was downloaded (any kind). */
+  getRequestLogLastExportAt: () => get<number | null>(STORAGE_KEYS.REQUEST_LOG_LAST_EXPORT_AT, null),
+  setRequestLogLastExportAt: (v: number) => set(STORAGE_KEYS.REQUEST_LOG_LAST_EXPORT_AT, v),
+  /** The export reminder level already notified since the last export, so
+   *  each level notifies once. */
+  getRequestLogExportReminded: () => get<string | null>(STORAGE_KEYS.REQUEST_LOG_EXPORT_REMINDED, null),
+  setRequestLogExportReminded: (v: string | null) => set(STORAGE_KEYS.REQUEST_LOG_EXPORT_REMINDED, v),
 
   getLastCourierRun: () => get<CourierRunSummary | null>(STORAGE_KEYS.LAST_COURIER_RUN, null),
   setLastCourierRun: (v: CourierRunSummary) => set(STORAGE_KEYS.LAST_COURIER_RUN, v),

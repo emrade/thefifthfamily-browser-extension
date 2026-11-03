@@ -959,6 +959,8 @@ button {
 }
 
 .ff-update-banner__btn:disabled { opacity: .6; cursor: default; }
+.ff-update-banner--urgent { background: rgba(239, 68, 68, .08); border-color: rgba(248, 113, 113, .45); }
+.ff-update-banner--urgent .ff-update-banner__title { color: #f87171; }
 
 .ff-update-banner__dismiss {
   flex-shrink: 0;

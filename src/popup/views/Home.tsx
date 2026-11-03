@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { LiveStats } from './LiveStats';
 import { ReloadGameTabsRow, UpdateBanner } from './GameTabs';
 import { HealthAlert } from './HealthAlert';
+import { ExportDueBanner } from './ExportDueBanner';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, RealEstateAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
@@ -9,6 +10,8 @@ import { ChevronRightIcon, GaugeIcon } from './icons';
 
 interface HomeProps {
   onOpenDashboard: () => void;
+  /** Opens the Dashboard's HTTP Archive section (the export reminder's button). */
+  onOpenRequestLog: () => void;
   onOpenCareerAuto: () => void;
   onOpenStreetIntelAuto: () => void;
   onOpenPetCouriers: () => void;
@@ -97,6 +100,7 @@ export function Home(props: HomeProps) {
   return (
     <>
       <UpdateBanner />
+      <ExportDueBanner onOpen={props.onOpenRequestLog} />
 
       <LiveStats />
 

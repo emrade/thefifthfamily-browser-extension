@@ -11,6 +11,8 @@ export const STORAGE_KEYS = {
   PAGE_FEATURE_PREFERENCES: 'ff_page_feature_preferences',
   REQUEST_LOG_PREFERENCES: 'ff_request_log_preferences',
   REQUEST_LOG_EXPORT_CURSOR: 'ff_request_log_export_cursor',
+  REQUEST_LOG_LAST_EXPORT_AT: 'ff_request_log_last_export_at',
+  REQUEST_LOG_EXPORT_REMINDED: 'ff_request_log_export_reminded',
   LAST_COURIER_RUN: 'ff_last_courier_run',
   CAREER_AUTO_CONFIG: 'ff_career_auto_config',
   CAREER_AUTO_STATUS: 'ff_career_auto_status',

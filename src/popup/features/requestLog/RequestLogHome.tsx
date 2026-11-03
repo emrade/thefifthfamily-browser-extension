@@ -144,6 +144,9 @@ export function RequestLogHome() {
     const blob = await buildArchiveBlob(incremental && cursor != null ? { afterId: cursor, throughId } : { throughId });
     download(blob, `fifth-family-archive-${incremental && cursor != null ? 'new-' : ''}${timestamp()}.ndjson.gz`);
     await storage.setRequestLogExportCursor(throughId);
+    // Starts the export reminder afresh (shared/requestLog/exportReminder.ts).
+    await storage.setRequestLogLastExportAt(Date.now());
+    await storage.setRequestLogExportReminded(null);
     await refresh();
   }
 

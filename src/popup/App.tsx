@@ -38,6 +38,7 @@ export function App() {
       <main class="ff-main">
         <Home
           onOpenDashboard={open('overview')}
+          onOpenRequestLog={open('http-archive')}
           onOpenCareerAuto={open('automations/career-auto')}
           onOpenStreetIntelAuto={open('automations/street-intel')}
           onOpenPetCouriers={open('automations/pet-couriers')}
