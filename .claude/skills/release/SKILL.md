@@ -27,6 +27,14 @@ Run `git status --short`. If there's uncommitted work:
 - Don't silently fold arbitrary uncommitted diffs into the version-bump
   commit without saying so first.
 
+## 1b. Pre-ship check
+
+Before going further, work through the `pre-ship-check` skill
+(`.claude/skills/pre-ship-check/SKILL.md`) for everything shipping since the
+last tag that hasn't had one yet. Report anything it turns up to the user
+**before** bumping the version. A signed version can't be re-signed, so
+fixing something found after signing costs a whole new release.
+
 ## 2. Determine the version bump
 
 This project's convention (see `CHANGELOG.md`'s own header and

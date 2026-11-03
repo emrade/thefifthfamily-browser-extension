@@ -88,6 +88,33 @@ account. Any UI surface showing a background feature's own toggle state
 needs that same `onChanged` listener for the same reason: a
 background-triggered change won't otherwise ever be reflected there.
 
+## Before calling anything done: check what it rests on
+
+Check that each change or conclusion's premises are true, not only that
+its arithmetic is right. Answer these with evidence (a file read, a query
+run, real data), not from memory or a code comment, before reporting a
+feature, fix or analysis as done:
+
+1. **Premises:** what does this depend on (data retention, which endpoint
+   or page variant, what a field means, when a period starts)? Is each one
+   verified, or assumed?
+2. **The real source:** am I using a stand-in (HP for "season", one page
+   variant for "all pages") when the game or data states the real thing?
+3. **Time windows:** which period should each number cover, and does it mix
+   periods? Check the dates in the test output, not just the totals.
+4. **Missing inputs:** what dropped out of the matching or filtering, and
+   why?
+5. **Failure cases:** the same data seen twice, a new season or patch, old
+   stored data, two writers to the same key or file.
+6. **Generalising:** before blaming one cause, check similar cases and a
+   control group.
+7. **The first question:** what will the player ask first? Answer it now.
+
+For anything non-trivial, and always before `/release`, work through the
+`pre-ship-check` skill (`.claude/skills/pre-ship-check/SKILL.md`), which
+expands these with the real misses that prompted them. For analyses that
+drive decisions, offer an independent review (`docs/agent-briefs/`).
+
 ## General
 
 - Run `npm run build` after code changes, not just a type-check — see
