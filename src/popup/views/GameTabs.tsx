@@ -81,6 +81,44 @@ export function UpdateBanner() {
   );
 }
 
+/** Shown in Settings after a page-feature setting changes: those only take
+ *  effect when the game tab reloads (`content/index.ts` reads them once at
+ *  load). Goes away once a game tab has finished reloading. */
+export function PageSettingsReloadBanner({ onDone }: { onDone: () => void }) {
+  const { open } = useGameTabs();
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    const onUpdated = (_id: number, info: { status?: string }, tab: chrome.tabs.Tab) => {
+      if (info.status === 'complete' && tab.url?.startsWith(GAME_ORIGIN)) onDone();
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    return () => chrome.tabs.onUpdated.removeListener(onUpdated);
+  }, [onDone]);
+
+  return (
+    <div class="ff-update-banner" role="status">
+      <div class="ff-update-banner__text">
+        <span class="ff-update-banner__title">Page settings changed</span>
+        <span class="ff-update-banner__meta">
+          {open === 0 ? 'No game tabs open' : `Takes effect after reloading ${tabsText(open)}`}
+        </span>
+      </div>
+      <button
+        type="button"
+        class="ff-update-banner__btn"
+        disabled={open === 0 || sent}
+        onClick={() => {
+          setSent(true);
+          send('all');
+        }}
+      >
+        {sent ? 'Reloading…' : 'Reload now'}
+      </button>
+    </div>
+  );
+}
+
 /** Always there: reloads every open game tab, one at a time. */
 export function ReloadGameTabsRow() {
   const { open } = useGameTabs();
