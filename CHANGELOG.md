@@ -9,6 +9,42 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.58.0] - 2026-11-03
+
+### Added
+- **HTTP Archive export reminder.** The archive holds only ~1.4–2 days
+  (it's capped at ~100 MB), and two gaps in the long-run history came from
+  exports made too late.
+  - It watches how much of that cap is taken by rows not exported yet,
+    rather than counting time since the last export.
+  - A notification fires once at half full ("soon"), once at 80% ("now",
+    with the hours left at your current pace), and once if rows were already
+    lost unexported. Clicking it opens Dashboard → HTTP Archive.
+  - A banner shows the same on the popup, Dashboard → Overview and the HTTP
+    Archive section.
+  - Downloading either export starts it afresh. On by default in Settings →
+    Notifications ("HTTP Archive Export Reminder").
+
+### Changed
+- **The HTTP Archive now drops the automations' re-reads of the Smuggling,
+  Crimes and Careers pages that differ only in numbers.** These pages were
+  ~60% of the history: huge pages re-read every few seconds, mostly changing
+  only timers, counters and cash.
+  - A background read is skipped when it matches the newest stored copy of
+    that page once numbers are ignored, and that copy is under 1 minute old
+    (Smuggling) or 1 hour old (Crimes, Careers).
+  - Any change beyond numbers is always kept. So is every page you load
+    yourself, and every action (yours or an automation's) with its result.
+  - The Crimes page's embedded crime-button script is decoded before
+    comparing: it re-encodes entirely when one number inside it changes.
+  - The archive's ~100 MB now covers more time.
+- `scripts/merge-archives.py --thin-near-repeats` applies the same rule to
+  the history on disk, and checks that every dropped copy has a stored
+  numbers-only twin. Applied on 2026-11-03: 2.85 GB to 2.14 GB, with crime
+  names, the district timeline and the hourly Smuggling state (destination,
+  launch blockers, pet statuses) verified identical. `/merge-archives` now
+  always passes it.
+
 ## [0.57.1] - 2026-11-03
 
 ### Fixed
