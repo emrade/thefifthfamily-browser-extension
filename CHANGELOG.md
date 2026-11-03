@@ -9,6 +9,33 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.56.0] - 2026-11-03
+
+### Changed
+- The Dashboard is now the extension's main page: a full page in its own
+  tab, with a menu down the side.
+  - Sections: Overview (live stats, "a feature has stopped working" alerts,
+    Reload game tabs), Automations (the queue view, with Street Intel Auto,
+    Pet Couriers, Career Auto, Crimes Auto and Real Estate Auto-Collect
+    under it), Fight Club, HTTP Archive and Settings.
+  - The feature and settings screens are the popup's own, unchanged in names,
+    wording and behaviour, with more room and 20% larger text.
+  - Each section has its own address (e.g. `#/settings`), so a reload keeps
+    your place. Opening the Dashboard again switches to the open tab, at the
+    section asked for.
+  - Renamed from "Automation Dashboard" to "Dashboard": it's meant to hold
+    more than automations.
+- The popup is now a launcher, because it closed on a stray click while
+  settings were being edited.
+  - It keeps live stats, health alerts and each feature's status.
+  - Every row opens that section of the Dashboard. Nothing is edited in the
+    popup any more.
+- The "Up next" chip's button opens the Dashboard's Automations section.
+
+### Removed
+- Firefox's sidebar for the extension (it showed the popup and shrank the
+  game page), along with the `sidePanel` permission.
+
 ## [0.55.0] - 2026-11-03
 
 ### Added
