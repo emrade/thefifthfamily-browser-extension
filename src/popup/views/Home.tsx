@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import { LiveStats } from './LiveStats';
 import { ReloadGameTabsRow, UpdateBanner } from './GameTabs';
-import { FEATURE_LABELS, isBroken, readFeatureHealth, type FeatureHealthMap } from '@/shared/featureHealth';
+import { HealthAlert } from './HealthAlert';
 import { LOG_PREFIX } from '@/shared/log';
-import type { ExtensionMessage } from '@/shared/messaging';
 import { storage } from '@/shared/storage';
 import type { CareerAutoConfig, CourierAutoConfig, CrimesAutoConfig, RealEstateAutoConfig, StreetIntelAutoConfig } from '@/shared/types';
 import { ArchiveIcon, BriefcaseIcon, BuildingIcon, ChevronRightIcon, CrosshairIcon, FightClubIcon, GaugeIcon, MaskIcon, SendIcon, SettingsIcon } from './icons';
 
 interface HomeProps {
+  onOpenDashboard: () => void;
   onOpenFightClub: () => void;
   onOpenRequestLog: () => void;
   onOpenCareerAuto: () => void;
@@ -19,17 +19,7 @@ interface HomeProps {
   onOpenSettings: () => void;
 }
 
-function since(ms: number | null): string {
-  if (ms == null) return 'never';
-  const mins = Math.round((Date.now() - ms) / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
-}
-
 export function Home(props: HomeProps) {
-  const [health, setHealth] = useState<FeatureHealthMap>({});
   const [careerAutoConfig, setCareerAutoConfig] = useState<CareerAutoConfig | null>(null);
   const [streetIntelAutoConfig, setStreetIntelAutoConfig] = useState<StreetIntelAutoConfig | null>(null);
   const [courierAutoConfig, setCourierAutoConfig] = useState<CourierAutoConfig | null>(null);
@@ -42,9 +32,6 @@ export function Home(props: HomeProps) {
   const [courierBadge, setCourierBadge] = useState('');
 
   useEffect(() => {
-    readFeatureHealth()
-      .then(setHealth)
-      .catch((err) => console.error(LOG_PREFIX, 'failed to read feature health', err));
     storage
       .getCareerAutoConfig()
       .then(setCareerAutoConfig)
@@ -100,10 +87,6 @@ export function Home(props: HomeProps) {
 
   const realEstateAutoStatus = realEstateAutoConfig?.enabled ? `Collects after ${realEstateAutoConfig.intervalHours}h without one` : 'Off';
 
-  // Only broken features are listed. A healthy extension shows nothing here — this
-  // is meant to be invisible until the day the game changes underneath it, which
-  // is the only day it matters.
-  const broken = Object.entries(health).filter(([, h]) => isBroken(h));
 
   return (
     <>
@@ -111,23 +94,7 @@ export function Home(props: HomeProps) {
 
       <LiveStats />
 
-      {broken.length > 0 && (
-        <div class="ff-health-alert">
-          <strong>{broken.length === 1 ? 'A feature has stopped working' : `${broken.length} features have stopped working`}</strong>
-          {broken.map(([id, h]) => (
-            <div class="ff-health-alert__row" key={id}>
-              <span class="ff-health-alert__name">{FEATURE_LABELS[id] ?? id}</span>
-              <span class="ff-health-alert__detail">
-                {h.consecutiveFailures} failed parses · last worked {since(h.lastSuccess)}
-              </span>
-            </div>
-          ))}
-          <span class="ff-health-alert__hint">
-            The game's responses no longer match what this extension expects. The HTTP Archive holds the new
-            responses — export a selection for the affected endpoint to see what changed.
-          </span>
-        </div>
-      )}
+      <HealthAlert />
 
       <div class="ff-section-label">Features</div>
 
@@ -149,11 +116,11 @@ export function Home(props: HomeProps) {
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>
 
-      <button class="ff-nav-row" onClick={() => void chrome.runtime.sendMessage({ type: 'automation-dashboard-open-requested' } satisfies ExtensionMessage)}>
+      <button class="ff-nav-row" onClick={props.onOpenDashboard}>
         <div class="ff-nav-row__icon"><GaugeIcon /></div>
         <div class="ff-nav-row__text">
-          <div class="ff-nav-row__title">Automation Dashboard</div>
-          <div class="ff-nav-row__status">What's running and what's next, in its own tab</div>
+          <div class="ff-nav-row__title">Dashboard</div>
+          <div class="ff-nav-row__status">Everything, including settings, in its own tab</div>
         </div>
         <div class="ff-nav-row__chevron"><ChevronRightIcon /></div>
       </button>

@@ -118,7 +118,7 @@ export function MaskIcon() {
   );
 }
 
-/** Gauge — the Automation Dashboard. */
+/** Gauge — the Dashboard. */
 export function GaugeIcon() {
   return (
     <svg {...commonProps}>

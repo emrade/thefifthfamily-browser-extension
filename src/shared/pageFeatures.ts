@@ -119,7 +119,7 @@ export const PAGE_FEATURE_DEFINITIONS = [
     id: 'automationUpNextChip',
     label: 'Automation Up Next Chip',
     description:
-      'A small button at the top-right of every game page showing when the next background automation check is due (gold while one is running). Tap it to see each automation in order, switch the Automation Queue on or off, or open the Automation Dashboard.',
+      'A small button at the top-right of every game page showing when the next background automation check is due (gold while one is running). Tap it to see each automation in order, switch the Automation Queue on or off, or open the Dashboard.',
     defaultOn: false,
   },
   {

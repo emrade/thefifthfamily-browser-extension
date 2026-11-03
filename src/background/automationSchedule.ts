@@ -1,6 +1,7 @@
 import { ALARM_NAMES } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import type { AutomationQueueFeature, AutomationScheduleItem, AutomationScheduleSnapshot } from '@/shared/types';
+import { DASHBOARD_PATH, type DashboardSection } from '@/shared/dashboardSections';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { getQueueState } from './automationQueue';
 
@@ -66,32 +67,34 @@ export async function getAutomationSchedule(): Promise<AutomationScheduleSnapsho
   return { now: Date.now(), queueEnabled: queue.enabled, holder: queue.holder, items };
 }
 
-export const AUTOMATION_DASHBOARD_PATH = 'src/dashboard/index.html';
-
 const PING_TIMEOUT_MS = 500;
 
-/** Asks an open dashboard tab for its own tab id. Undefined when none is open
+/** Asks an open Dashboard tab for its own tab id. Undefined when none is open
  *  (no listener rejects; other extension pages don't answer this message). */
 async function findOpenDashboard(): Promise<{ tabId: number; windowId: number } | undefined> {
-  const msg: ExtensionMessage = { type: 'automation-dashboard-ping' };
+  const msg: ExtensionMessage = { type: 'dashboard-ping' };
   const reply = chrome.runtime.sendMessage(msg).catch(() => undefined) as Promise<{ tabId: number; windowId: number } | undefined>;
   const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), PING_TIMEOUT_MS));
   const found = await Promise.race([reply, timeout]);
   return found && typeof found.tabId === 'number' ? found : undefined;
 }
 
-/** Switches to the dashboard if a tab already shows it, otherwise opens it.
- *  Finding it this way avoids asking for the "tabs" permission. */
-export async function openAutomationDashboard(): Promise<void> {
+/** Switches to the Dashboard if a tab already shows it (moving it to
+ *  `section` when given), otherwise opens it. Finding it this way avoids
+ *  asking for the "tabs" permission. */
+export async function openDashboard(section?: DashboardSection): Promise<void> {
+  const base = chrome.runtime.getURL(DASHBOARD_PATH);
+  const url = section ? `${base}#/${section}` : base;
   const open = await findOpenDashboard();
   if (open) {
     try {
-      await chrome.tabs.update(open.tabId, { active: true });
+      // A hash-only change: the page switches section without reloading.
+      await chrome.tabs.update(open.tabId, section ? { active: true, url } : { active: true });
       await chrome.windows.update(open.windowId, { focused: true });
       return;
     } catch {
       // The tab closed in the meantime: fall through and open a new one.
     }
   }
-  await chrome.tabs.create({ url: chrome.runtime.getURL(AUTOMATION_DASHBOARD_PATH) });
+  await chrome.tabs.create({ url });
 }

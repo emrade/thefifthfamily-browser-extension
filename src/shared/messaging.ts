@@ -1,5 +1,6 @@
 import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
 import { LOG_PREFIX } from './log';
+import type { DashboardSection } from './dashboardSections';
 
 /**
  * Raw envelope posted from the MAIN-world fetch/XHR hook (mainWorldHook.ts) to the
@@ -125,14 +126,15 @@ export type ExtensionMessage =
   // waiting and coming up (alarms + the queue's in-memory state, which only
   // the background has). Returns `AutomationScheduleSnapshot`.
   | { type: 'automation-schedule-requested' }
-  // From the "Up next" chip: content scripts can't open extension pages
-  // themselves, so the background opens the dashboard tab.
-  | { type: 'automation-dashboard-open-requested' }
-  // Background -> an open dashboard tab: "are you there?". The dashboard
+  // From the popup and the "Up next" chip: open the Dashboard, at `section`
+  // when given (content scripts can't open extension pages themselves, and the
+  // background is the one place that finds an already-open Dashboard tab).
+  | { type: 'dashboard-open-requested'; section?: DashboardSection }
+  // Background -> an open Dashboard tab: "are you there?". The Dashboard
   // answers with its own tab (`tabs.getCurrent()` needs no permission), so the
   // background can switch to it instead of opening another one, without the
   // "tabs" permission. Returns `{ tabId, windowId }`, or nothing if none is open.
-  | { type: 'automation-dashboard-ping' }
+  | { type: 'dashboard-ping' }
   // Sent from the popup's Career Auto tab, not a content-script adapter — same
   // request/response exception as 'courier-run-requested'. Returns a fresh
   // Promise<CareerCatalogEntry[]> (background fetches+parses the live careers

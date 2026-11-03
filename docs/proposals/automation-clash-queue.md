@@ -25,7 +25,7 @@ default. See "Decisions" and "Refined check" below.
   - Shared data: `src/background/automationSchedule.ts`, which builds a
     snapshot from each automation's own switch and alarm plus the queue's
     in-memory state. Message `automation-schedule-requested`. Also
-    `automation-dashboard-open-requested`, for the chip.
+    `dashboard-open-requested` (with an optional section), for the chip and popup.
   - The queue also records which automations are mid-run, queue on or off.
     That's read-only bookkeeping that never delays a run.
   - Dashboard: `src/dashboard/` (index.html, main.tsx, dashboard.css), a full

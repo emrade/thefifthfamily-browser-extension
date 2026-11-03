@@ -112,7 +112,7 @@ function build(): HTMLDivElement {
       <div class="ff-un-head">Up next</div>
       <ul class="ff-un-list"></ul>
       <label class="ff-un-queue"><input type="checkbox"> Automation Queue</label>
-      <button type="button" class="ff-un-open">Open dashboard</button>
+      <button type="button" class="ff-un-open">Open Dashboard</button>
       <div class="ff-un-hint">Times are each automation's next check; a check can find nothing to do.</div>
     </div>
   `;
@@ -126,7 +126,7 @@ function build(): HTMLDivElement {
     void chrome.storage.local.set({ [STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG]: { enabled } }).then(() => refresh());
   });
   el.querySelector('.ff-un-open')!.addEventListener('click', () => {
-    const msg: ExtensionMessage = { type: 'automation-dashboard-open-requested' };
+    const msg: ExtensionMessage = { type: 'dashboard-open-requested', section: 'automations' };
     chrome.runtime.sendMessage(msg).catch((err) => console.error(LOG_PREFIX, 'open dashboard failed', err));
   });
   return el;

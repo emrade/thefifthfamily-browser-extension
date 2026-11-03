@@ -1,23 +1,28 @@
-import { useState } from 'preact/hooks';
 import '../design/tokens.css';
 import './app.css';
 import { Home } from './views/Home';
-import { Settings } from './views/Settings';
-import { ChevronLeftIcon } from './views/icons';
-import { FightClubHome } from './features/fightClub/FightClubHome';
-import { RequestLogHome } from './features/requestLog/RequestLogHome';
-import { CareerAutoHome } from './features/careerAuto/CareerAutoHome';
-import { StreetIntelAutoHome } from './features/streetIntelAuto/StreetIntelAutoHome';
-import { PetCouriersHome } from './features/petCouriers/PetCouriersHome';
-import { CrimesAutoHome } from './features/crimesAuto/CrimesAutoHome';
-import { RealEstateAutoHome } from './features/realEstateAuto/RealEstateAutoHome';
+import type { DashboardSection } from '@/shared/dashboardSections';
+import type { ExtensionMessage } from '@/shared/messaging';
+import { LOG_PREFIX } from '@/shared/log';
 import manifest from '../../manifest.json';
 
-type View = 'home' | 'fightClub' | 'requestLog' | 'careerAuto' | 'streetIntelAuto' | 'petCouriers' | 'crimesAuto' | 'realEstateAuto' | 'settings';
+/**
+ * The popup is a launcher: live stats, health alerts and each feature's
+ * status at a glance. Every row opens that section of the Dashboard (a full
+ * page in its own tab), where all the screens and settings now live — the
+ * popup closes on a stray click, so nothing is edited here any more.
+ */
+function open(section: DashboardSection): () => void {
+  return () => {
+    const msg: ExtensionMessage = { type: 'dashboard-open-requested', section };
+    chrome.runtime
+      .sendMessage(msg)
+      .then(() => window.close())
+      .catch((err) => console.error(LOG_PREFIX, 'open Dashboard failed', err));
+  };
+}
 
 export function App() {
-  const [view, setView] = useState<View>('home');
-
   return (
     <div class="popup-root">
       <header class="ff-header">
@@ -26,37 +31,22 @@ export function App() {
           <span class="ff-header__title">The Fifth Family</span>
           <span class="ff-header__subtitle">Enhancements</span>
         </div>
-        {view !== 'home' && (
-          <button class="ff-header__back" onClick={() => setView('home')}>
-            <ChevronLeftIcon />
-            Back
-          </button>
-        )}
       </header>
 
       <div class="ff-divider" />
 
       <main class="ff-main">
-        {view === 'home' && (
-          <Home
-            onOpenFightClub={() => setView('fightClub')}
-            onOpenRequestLog={() => setView('requestLog')}
-            onOpenCareerAuto={() => setView('careerAuto')}
-            onOpenStreetIntelAuto={() => setView('streetIntelAuto')}
-            onOpenPetCouriers={() => setView('petCouriers')}
-            onOpenCrimesAuto={() => setView('crimesAuto')}
-            onOpenRealEstateAuto={() => setView('realEstateAuto')}
-            onOpenSettings={() => setView('settings')}
-          />
-        )}
-        {view === 'fightClub' && <FightClubHome />}
-        {view === 'requestLog' && <RequestLogHome />}
-        {view === 'careerAuto' && <CareerAutoHome />}
-        {view === 'streetIntelAuto' && <StreetIntelAutoHome />}
-        {view === 'petCouriers' && <PetCouriersHome />}
-        {view === 'crimesAuto' && <CrimesAutoHome />}
-        {view === 'realEstateAuto' && <RealEstateAutoHome />}
-        {view === 'settings' && <Settings />}
+        <Home
+          onOpenDashboard={open('overview')}
+          onOpenFightClub={open('fight-club')}
+          onOpenRequestLog={open('http-archive')}
+          onOpenCareerAuto={open('automations/career-auto')}
+          onOpenStreetIntelAuto={open('automations/street-intel')}
+          onOpenPetCouriers={open('automations/pet-couriers')}
+          onOpenCrimesAuto={open('automations/crimes-auto')}
+          onOpenRealEstateAuto={open('automations/real-estate-auto')}
+          onOpenSettings={open('settings')}
+        />
       </main>
 
       <footer class="ff-footer">

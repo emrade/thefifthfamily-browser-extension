@@ -73,7 +73,7 @@ import { upsertRoster, getRoster } from '@/shared/petRoster';
 import { storage } from '@/shared/storage';
 import { runQueued } from './automationQueue';
 import { removeLegacyFuryCatcher } from './legacyCleanup';
-import { getAutomationSchedule, openAutomationDashboard } from './automationSchedule';
+import { getAutomationSchedule, openDashboard } from './automationSchedule';
 
 /** Player-started jobs arrive one step per message: keep the automation
  *  queue theirs between steps (see automationQueue.ts). */
@@ -205,8 +205,8 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return getAutomationSchedule();
   }
 
-  if (msg.type === 'automation-dashboard-open-requested') {
-    return openAutomationDashboard();
+  if (msg.type === 'dashboard-open-requested') {
+    return openDashboard(msg.section);
   }
 
   if (msg.type === 'street-intel-next-check-requested') {

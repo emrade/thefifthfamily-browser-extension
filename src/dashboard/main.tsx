@@ -1,257 +1,153 @@
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import '../design/tokens.css';
+import '../popup/app.css';
 import './dashboard.css';
-import { STORAGE_KEYS } from '@/shared/constants';
-import { LOG_PREFIX } from '@/shared/log';
-import { storage } from '@/shared/storage';
-import { AUTOMATION_FEATURE_LABELS } from '@/shared/automationLabels';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationScheduleSnapshot } from '@/shared/types';
+import { isDashboardSection, type DashboardSection } from '@/shared/dashboardSections';
+import { AutomationsSection } from './sections/Automations';
+import { LiveStats } from '../popup/views/LiveStats';
+import { HealthAlert } from '../popup/views/HealthAlert';
+import { ReloadGameTabsRow, UpdateBanner } from '../popup/views/GameTabs';
+import { Settings } from '../popup/views/Settings';
+import { FightClubHome } from '../popup/features/fightClub/FightClubHome';
+import { RequestLogHome } from '../popup/features/requestLog/RequestLogHome';
+import { CareerAutoHome } from '../popup/features/careerAuto/CareerAutoHome';
+import { StreetIntelAutoHome } from '../popup/features/streetIntelAuto/StreetIntelAutoHome';
+import { PetCouriersHome } from '../popup/features/petCouriers/PetCouriersHome';
+import { CrimesAutoHome } from '../popup/features/crimesAuto/CrimesAutoHome';
+import { RealEstateAutoHome } from '../popup/features/realEstateAuto/RealEstateAutoHome';
+import manifest from '../../manifest.json';
 
 /**
- * Automation Dashboard: a full extension page in its own tab (the popup closes
- * too easily and the sidebar shrinks the game). Shows what the background
- * automations are doing and, with the Automation Queue on, how it spaced them
- * out. Read-only apart from the queue's own switch. See
- * docs/proposals/automation-clash-queue.md.
+ * The Dashboard: the extension's full page, in its own tab (the popup closes
+ * too easily, and Firefox's sidebar shrank the game). Every feature screen and
+ * all settings live here; the popup is a launcher into it. Each section has
+ * its own address (`#/settings`, `#/automations/street-intel`, …) so a reload
+ * keeps the place and the popup / "Up next" chip can open straight to one.
+ *
+ * The feature screens are the popup's own components, unchanged — same names,
+ * wording and behaviour, just with more room.
  */
 
-const SCHEDULE_REFRESH_MS = 2_000;
-const RECENT_ROWS = 60;
-const HOUR_MS = 3_600_000;
-
-/** The game day starts 23:00 UTC (player midnight, WAT). */
-function gameDayStart(now: number): number {
-  const shifted = now + HOUR_MS;
-  return shifted - (shifted % (24 * HOUR_MS)) - HOUR_MS;
+interface MenuItem {
+  id: DashboardSection;
+  label: string;
+  sub?: boolean;
 }
 
-function duration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+const MENU: MenuItem[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'automations', label: 'Automations' },
+  { id: 'automations/street-intel', label: 'Street Intel Auto', sub: true },
+  { id: 'automations/pet-couriers', label: 'Pet Couriers', sub: true },
+  { id: 'automations/career-auto', label: 'Career Auto', sub: true },
+  { id: 'automations/crimes-auto', label: 'Crimes Auto', sub: true },
+  { id: 'automations/real-estate-auto', label: 'Real Estate Auto-Collect', sub: true },
+  { id: 'fight-club', label: 'Fight Club' },
+  { id: 'http-archive', label: 'HTTP Archive' },
+  { id: 'settings', label: 'Settings' },
+];
+
+function sectionFromHash(): DashboardSection {
+  const s = location.hash.replace(/^#\/?/, '');
+  return isDashboardSection(s) ? s : 'overview';
 }
 
-function until(at: number, now: number): string {
-  const ms = at - now;
-  if (ms <= 0) return 'due now';
-  return `in ${duration(ms)}`;
-}
-
-function clock(at: number): string {
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-const STATE_TEXT: Record<AutomationScheduleItem['state'], string> = {
-  running: 'Running now',
-  waiting: 'Waiting its turn',
-  scheduled: 'Next check',
-  off: 'Off',
-};
-
-const OUTCOME_TEXT: Record<AutomationQueueLogEntry['outcome'], string> = {
-  ok: 'Ran',
-  error: 'Stopped with an error',
-  'forced-wait': 'Waited the maximum, went ahead',
-  skipped: 'Skipped (queue busy)',
-};
-
-function useSchedule(): AutomationScheduleSnapshot | null {
-  const [snap, setSnap] = useState<AutomationScheduleSnapshot | null>(null);
+function useSection(): DashboardSection {
+  const [section, setSection] = useState<DashboardSection>(sectionFromHash());
   useEffect(() => {
-    let alive = true;
-    const load = () => {
-      const msg: ExtensionMessage = { type: 'automation-schedule-requested' };
-      chrome.runtime
-        .sendMessage(msg)
-        .then((s: AutomationScheduleSnapshot) => alive && setSnap(s))
-        .catch((err) => console.error(LOG_PREFIX, 'automation schedule read failed', err));
+    const onHash = () => {
+      setSection(sectionFromHash());
+      window.scrollTo(0, 0);
     };
-    load();
-    const timer = setInterval(load, SCHEDULE_REFRESH_MS);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  return snap;
+  return section;
 }
 
-function useQueueLog(): AutomationQueueLogEntry[] {
-  const [log, setLog] = useState<AutomationQueueLogEntry[]>([]);
-  useEffect(() => {
-    storage.getAutomationQueueLog().then(setLog);
-    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && STORAGE_KEYS.AUTOMATION_QUEUE_LOG in changes) {
-        setLog((changes[STORAGE_KEYS.AUTOMATION_QUEUE_LOG].newValue as AutomationQueueLogEntry[] | undefined) ?? []);
-      }
-    };
-    chrome.storage.onChanged.addListener(onChanged);
-    return () => chrome.storage.onChanged.removeListener(onChanged);
-  }, []);
-  return log;
+/** The popup's screens were drawn for its 380px width: keep forms to a
+ *  readable column instead of stretching them across the page. */
+function Narrow({ children }: { children: ComponentChildren }) {
+  return <div class="db-narrow">{children}</div>;
 }
 
-/** Ticks once a second so "in 2m 10s" counts down between refreshes. */
-function useNow(): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return now;
-}
-
-function QueueSwitch({ enabled }: { enabled: boolean }) {
-  return (
-    <label class="db-switch">
-      <div>
-        <div class="db-switch__title">Automation Queue</div>
-        <div class="db-switch__hint">
-          {enabled
-            ? 'On: automations take turns, one at a time, with a 3–8 s gap.'
-            : 'Off: automations run exactly as before. Turn on to make them take turns.'}
-        </div>
-      </div>
-      <input
-        type="checkbox"
-        class="db-toggle"
-        checked={enabled}
-        onChange={() => void storage.setAutomationQueueConfig({ enabled: !enabled })}
-      />
-    </label>
-  );
-}
-
-function ComingUp({ snap, now }: { snap: AutomationScheduleSnapshot; now: number }) {
-  return (
-    <section class="db-card">
-      <h2 class="db-h">Now and coming up</h2>
-      <ul class="db-list">
-        {snap.items.map((item) => (
-          <li class={`db-row db-row--${item.state}`} key={item.feature}>
-            <span class="db-dot" aria-hidden="true" />
-            <span class="db-row__name">{AUTOMATION_FEATURE_LABELS[item.feature]}</span>
-            <span class="db-row__state">
-              {item.state === 'scheduled' && item.nextAt !== null
-                ? `${STATE_TEXT.scheduled} ${until(item.nextAt, now)} · ${clock(item.nextAt)}`
-                : item.state === 'scheduled'
-                  ? 'On, no check scheduled yet'
-                  : item.state === 'running' && snap.holder?.feature === item.feature
-                    ? `${STATE_TEXT.running} · ${duration(now - snap.holder.startedAt)}`
-                    : STATE_TEXT[item.state]}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p class="db-note">A check can find nothing to do (e.g. no Street Intel card worth taking). Garage, Inventory, Street Racing and achievement claims only appear while they run.</p>
-    </section>
-  );
-}
-
-function TodayStats({ log, now }: { log: AutomationQueueLogEntry[]; now: number }) {
-  const today = log.filter((e) => e.endedAt >= gameDayStart(now));
-  const turns = today.filter((e) => e.outcome !== 'skipped');
-  const waited = turns.filter((e) => e.waitedMs >= 1000);
-  const totalWait = waited.reduce((s, e) => s + e.waitedMs, 0);
-  const longest = waited.reduce((m, e) => Math.max(m, e.waitedMs), 0);
-  const stats: [string, string][] = [
-    ['Turns today', String(turns.length)],
-    ['Had to wait', String(waited.length)],
-    ['Total waiting', duration(totalWait)],
-    ['Longest wait', waited.length ? duration(longest) : '—'],
-    ['Price checks skipped', String(today.filter((e) => e.outcome === 'skipped').length)],
-    ['Forced / errors', `${today.filter((e) => e.outcome === 'forced-wait' || e.tookOverStale).length} / ${today.filter((e) => e.outcome === 'error').length}`],
-  ];
-  return (
-    <section class="db-card">
-      <h2 class="db-h">Queue today</h2>
-      <div class="db-stats">
-        {stats.map(([label, value]) => (
-          <div class="db-stat" key={label}>
-            <div class="db-stat__value">{value}</div>
-            <div class="db-stat__label">{label}</div>
-          </div>
-        ))}
-      </div>
-      <p class="db-note">Since the game's daily reset (23:00 UTC). Only counted while the queue is on.</p>
-    </section>
-  );
-}
-
-function Recent({ log }: { log: AutomationQueueLogEntry[] }) {
-  const rows = log.slice(-RECENT_ROWS).reverse();
-  return (
-    <section class="db-card db-card--wide">
-      <h2 class="db-h">Recent activity</h2>
-      {rows.length === 0 ? (
-        <p class="db-empty">Nothing yet. Each automation's turn shows up here once the Automation Queue is on.</p>
-      ) : (
-        <table class="db-table">
-          <thead>
-            <tr>
-              <th>Finished</th>
-              <th>Automation</th>
-              <th>Waited</th>
-              <th>Ran for</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((e, i) => (
-              <tr key={`${e.endedAt}-${i}`} class={e.outcome === 'ok' ? '' : `db-tr--${e.outcome}`}>
-                <td class="db-mono">{clock(e.endedAt)}</td>
-                <td>{AUTOMATION_FEATURE_LABELS[e.feature] ?? e.feature}</td>
-                <td class="db-mono">{e.waitedMs >= 1000 ? duration(e.waitedMs) : '—'}</td>
-                <td class="db-mono">{e.startedAt !== null ? duration(e.endedAt - e.startedAt) : '—'}</td>
-                <td>
-                  {OUTCOME_TEXT[e.outcome]}
-                  {e.tookOverStale ? ` (took over from ${AUTOMATION_FEATURE_LABELS[e.tookOverStale]})` : ''}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
+function Content({ section }: { section: DashboardSection }) {
+  switch (section) {
+    case 'overview':
+      return (
+        <Narrow>
+          <UpdateBanner />
+          <LiveStats />
+          <HealthAlert />
+          <ReloadGameTabsRow />
+        </Narrow>
+      );
+    case 'automations':
+      return <AutomationsSection />;
+    case 'automations/street-intel':
+      return <Narrow><StreetIntelAutoHome /></Narrow>;
+    case 'automations/pet-couriers':
+      return <Narrow><PetCouriersHome /></Narrow>;
+    case 'automations/career-auto':
+      return <Narrow><CareerAutoHome /></Narrow>;
+    case 'automations/crimes-auto':
+      return <Narrow><CrimesAutoHome /></Narrow>;
+    case 'automations/real-estate-auto':
+      return <Narrow><RealEstateAutoHome /></Narrow>;
+    case 'fight-club':
+      return <Narrow><FightClubHome /></Narrow>;
+    case 'http-archive':
+      return <Narrow><RequestLogHome /></Narrow>;
+    case 'settings':
+      return <Narrow><Settings /></Narrow>;
+  }
 }
 
 function Dashboard() {
-  const snap = useSchedule();
-  const log = useQueueLog();
-  const now = useNow();
+  const section = useSection();
+  const current = MENU.find((m) => m.id === section)!;
+
+  useEffect(() => {
+    document.title = `${current.label} · Dashboard · The Fifth Family Enhancements`;
+  }, [current]);
 
   return (
-    <main class="db-root">
-      <header class="db-header">
-        <div>
+    <div class="db-shell">
+      <nav class="db-nav" aria-label="Dashboard sections">
+        <div class="db-brand">
           <div class="db-eyebrow">The Fifth Family Enhancements</div>
-          <h1 class="db-title">Automation Dashboard</h1>
+          <div class="db-brand__title">Dashboard</div>
         </div>
-        {snap && <QueueSwitch enabled={snap.queueEnabled} />}
-      </header>
+        <ul class="db-menu">
+          {MENU.map((m) => (
+            <li key={m.id}>
+              <a
+                href={`#/${m.id}`}
+                class={`db-menu__link${m.sub ? ' db-menu__link--sub' : ''}${m.id === section ? ' is-active' : ''}`}
+                aria-current={m.id === section ? 'page' : undefined}
+              >
+                {m.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="db-version">v{manifest.version}</div>
+      </nav>
 
-      {!snap ? (
-        <p class="db-empty">Loading…</p>
-      ) : (
-        <div class="db-grid">
-          <ComingUp snap={snap} now={now} />
-          <TodayStats log={log} now={now} />
-          <Recent log={log} />
-        </div>
-      )}
-    </main>
+      <main class="db-main">
+        <h1 class="db-title">{current.label}</h1>
+        <Content section={section} />
+      </main>
+    </div>
   );
 }
 
-// Answers the background's "is a dashboard open?" so "Open dashboard" switches
-// to this tab instead of opening another (see openAutomationDashboard).
+// Answers the background's "is a Dashboard open?" so opening it again
+// switches to this tab instead of opening another (see openDashboard).
 chrome.runtime.onMessage.addListener((msg: ExtensionMessage) => {
-  if (msg?.type !== 'automation-dashboard-ping') return false;
+  if (msg?.type !== 'dashboard-ping') return false;
   return chrome.tabs.getCurrent().then((tab) => (tab?.id !== undefined ? { tabId: tab.id, windowId: tab.windowId } : undefined));
 });
 
