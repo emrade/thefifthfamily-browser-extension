@@ -32,7 +32,7 @@ standing workflow. If there is nothing new anywhere, say so and stop.
 ## 2. Run the merge
 
 ```bash
-python3 -I scripts/merge-archives.py "$HOME/Downloads/tff archives" --delete-sources
+python3 -I scripts/merge-archives.py "$HOME/Downloads/tff archives" --thin-near-repeats --delete-sources
 ```
 
 - Run it with `run_in_background` — it re-reads the whole history (~1.5 GB+ and
@@ -43,6 +43,11 @@ python3 -I scripts/merge-archives.py "$HOME/Downloads/tff archives" --delete-sou
   files it actually merged — never anything in `merged/`.
 - Repeat background reads are dropped by default, matching the extension's capture
   rule. Only pass `--keep-repeats` if the user asks to keep them.
+- Always pass `--thin-near-repeats` (user's choice, 2026-11-03). The merged history
+  was thinned with it that day, and the extension applies the same rule at capture
+  from 0.58.0; without it, exports from older versions would fill `merged/` back up
+  with copies of the Smuggling, Crimes and Careers pages that differ only in
+  numbers. Its verify step covers the thinned rows too.
 - While it runs, `merged/ff-merge-*` is its scratch folder. It removes it itself,
   even on failure. Tell the user not to touch it if they ask.
 
