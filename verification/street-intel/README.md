@@ -24,6 +24,7 @@ python3 verification/street-intel/verify_complication_blocked_choices.py [--arch
 python3 verification/street-intel/analyze_profit_and_stamina.py [--archive ...] [--since YYYY-MM-DD]
 python3 verification/street-intel/simulate_target_selection.py [--archive ...] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 python3 verification/street-intel/analyze_live_modes.py [--archive ...] [--since YYYY-MM-DD]
+python3 -I verification/street-intel/analyze_blind_vs_scouted.py [--archive ...] [--since YYYY-MM-DD]
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
@@ -40,6 +41,12 @@ deduplicated automatically.
 
 ## What each script checks
 
+- **`analyze_blind_vs_scouted.py`** — Go blind against scouted attempts on live
+  results: cash per Stamina, success against predicted odds, drops and their
+  quicksell value, with crime gold as a control. Defaults to every archive.
+  Findings and caveats: `docs/street-intel-plan.md` → "Go blind: first live
+  results". Re-run at about 500 blind attempts; it shows whether a gain holds, not
+  its cause.
 - **`verify_exact_formula.py`** — Section 1-2's exact server formula. Cross-references
   the `autofail` flag (only ever exposed in the pre-scout `data-approaches`
   attribute, never in the scout response itself) and reports any raw value

@@ -517,6 +517,146 @@ scouts about one card per attempt and exact odds can only trim a little.
 Go blind's gain is the ~45 Stamina/day of scouting turned into ~2 more
 attempts — real only if blind rolls the same, which is what the test is for.
 
+### Go blind: first live results (checked 2026-11-05)
+
+231 automated blind attempts, Nov 1-4 (player days, WAT), against scouted
+attempts from the archive. The player's three impressions after the test:
+more cash per Stamina, a better success rate, better drops.
+
+| Window | Attempts | Net per Stamina (scouts included) | Scouting share of Stamina | Drops per attempt | Gold drops | Drop value per Stamina (quicksell) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Oct 1-14 | 841 | $42.4k | 13.5% | 23.7% | 1 | $86k |
+| Oct 15-25 | 582 | $63.3k | 8.4% | 29.6% | 26 | $201k |
+| Oct 26-31 | 321 | $69.9k | 7.8% | 23.6% | 4 | $100k |
+| Nov 1-4, blind | 242 | $90.4k | 0.3% | 29.4% | 17 | $218k |
+
+(Attempts, cash and scouting cover every attempt in the window, including 11
+scouted ones on Nov 1 and a few manual blind ones in October. The three drop
+columns compare scouted attempts in October with the 231 automated blind ones.
+Drops exclude Halloween event items, which have no sale value.)
+
+**Cash per Stamina: true, but blind is a minority of the +29%.**
+
+- Dropping cards under $800k (32% of Oct 26-31 attempts, 0% blind) is the card
+  minimum, not blind: net per attempt Stamina $75.8k to $87.1k, about +15%.
+- No scouting: 7.8% of Stamina back, about +8% by arithmetic. Replayed on the
+  same Nov 1-4 boards (`simulate_scout_modes.py`, same odds assumed), the review
+  below gets $74.5k per Stamina against Smart exact odds' $70.9k, +5.1%, because
+  the extra attempts land on weaker cards. So +5% to +8% per Stamina. (The +2.3%
+  this section first gave, $70.37M against $68.77M, is per day, not per Stamina.)
+- The rest is mostly more wins than the odds predict, see below. On the same
+  23 card titles, reweighted to blind's mix, scouted made $83.7k per attempt
+  Stamina against blind's $90.9k. Card payouts didn't change (same titles:
+  $1.525M against $1.529M midpoint).
+- Cash per day also rose ($50.8M to $79.6M) partly on more Stamina (670 to 878
+  a day), which isn't a blind effect. The October figures are probably about 6%
+  low: the archive has no rows for 8.7 hours (Oct 28 15:44 to Oct 29 00:24 UTC).
+  Per-Stamina figures aren't affected.
+
+**Success rate: no penalty, a possible bonus, not proven.** The raw rate proves
+little (73.2% against 70.1% for Oct 26-31, p=0.45) because blind took harder
+cards (68.4% average predicted odds against 72.9%). Against those predicted
+odds: blind won 169 of 231 against 158.1 predicted (+4.7 points), while every
+scouted attempt since 08-21 runs 2.2 points under (2,686 against 2,768.4).
+Against what scouted attempts really land at for the same odds, blind is +7.4
+points (95% CI +1.5 to +13.4, z=2.45), and only 0.7% of rolling 231-attempt
+scouted windows reached +4.7. Reasons not to call it settled:
+
+- All of it comes from high-risk cards (86 of 106 against 74.3 predicted);
+  medium and extreme landed on prediction, and Nov 2 alone supplies most of it.
+- Critical successes fell (10.0% against 14.4% in October), and the 24 manual
+  blind attempts show no uplift (16 against 16.8).
+- This test was chosen after seeing the data, and no game mechanism is known.
+  The game's own button says "No intel. Higher risk."; the data shows no penalty.
+- Predictions hold player modifiers from the last scout (Nov 1 22:28 UTC, after
+  the level jump), and there were no scouts Nov 2-4. The review below found the
+  board's "Your edge" and recon unchanged from Oct 31 to Nov 4, so only a
+  collection change or short buff could flatter blind. On scouted October
+  attempts the prediction matched the shown odds on 567 of 574.
+
+The question this test was built for, whether blind rolls worse, is answered:
+it doesn't. More blind attempts show whether the excess holds, not why: every
+blind attempt comes after Nov 1, and only 4 automated scouted attempts came after
+the first blind one, so `oddsCheck` has almost no same-period scouted side.
+
+**Drops: better than the week before, but no better than mid-October.**
+
+*Correction, same day: this section first counted only drops in the attempt
+response, and so missed every drop awarded by a won complication. It said gold
+was new in November (12 against 2-3) and never came from cards under level 120.
+Both were wrong. The in-game "Drops by day" panel showed the difference.*
+
+- Drop rate is unchanged: 29.4% per attempt against 27.5% for scouted Oct 15-31
+  (p=0.51 on attempts with any drop), and fewer per Stamina (2.03 against 2.29 per 100).
+- Value is real and almost all gold: 17 gold drops are $521M of Nov 1-4's $728M.
+  Without gold, value per attempt looks flat ($0.89M against $0.77M-$0.86M), but
+  that isn't adjusted for card level, and the review below finds a rise in it.
+- It isn't a blind effect the data can show. Scouted Oct 15-25 reached the same
+  value per Stamina ($201k against $218k) with 26 gold drops, and gold per
+  attempt doesn't differ significantly from that window (4.6% against 7.4%,
+  p=0.12). Against Oct 26-31 (1.3%) it does (p=0.0004), so scouted windows alone
+  range from 1.3% to 4.6%. Single days swing widely: $53k per Stamina on
+  Nov 3 ($45.8M in total) against $339k on Nov 1 ($268.1M).
+
+That headline is about the total. Split by route, which the next list does, the
+attempt route has no earlier match: 12 gold against 3 and 2. Oct 15-25's gold was
+23 of 26 from complications; Nov's is 12 of 17 from attempts.
+
+Gold arrives two ways, and they behave differently:
+
+- **From a won complication** (these counts include manual attempts). 32 gold
+  since Oct 1, all at player level 122 or
+  above, from cards of any level (27 from cards under level 120). Over the same
+  days the complication loot tier changed: Oct 1-14 gave 19 underworld_epic and 1
+  gold, Oct 15-25 gave 0 and 24. So it looks tied to player level, passing about
+  120 (inferred from timing). This route then fell: 24 gold from 84 won
+  complications in Oct 15-25, 7 from 84 since Oct 26, starting before blind.
+  Unexplained; the archive has a gap around Oct 24-25.
+- **From the attempt.** Gold here has only come from cards of level 120 or above
+  (0 in 3,847 attempts on lower cards). It rose from 3 and 2 in the October
+  windows to 12, with blind spending 31% of attempts on level 125+ cards against
+  10% for Oct 26-31. On matching cards the difference isn't significant (blind 12
+  of 72, scouted 2 of 37, p=0.13), so a blind effect isn't ruled out.
+
+A control: crimes, with no scouting, also rose, 0.41% gold per commit in October
+(7 of 1,723) to 1.94% in Nov 1-4 (9 of 464, p=0.002), all nine from crimes
+1066-1068, barely played before November (23 commits, all on 1066). That makes it
+a limited control, since it can't separate level from date. Around Nov 1 the
+player also went from level 132 to 136 (133-136 inside 41 minutes), Halloween
+ended (last event drops Oct 31) and the card minimum got stricter. The wiki's Street Intel page is byte-identical between Oct
+31 and Nov 4.
+
+**The panel's values are reliable, but not yet banked.** Rebuilding "Drops by
+day" from the archive matches the panel on all six days checked (Oct 30-Nov 4),
+both count and dollars. Its quotes are the game's real quicksell prices: on 119
+sales with every item quoted beforehand, $793.1M quoted, $793.1M paid, no
+mismatches, and none of the 68 items quoted more than once ever changed price.
+Only $5.1M of Nov's $728M uses a typical price rather than the item's own quote.
+It's the quicksell price, not a market price. The archive has no sale of these
+items through Nov 4; the last big bulk sale was Oct 30.
+
+**Independent review (2026-11-05):**
+`docs/agent-briefs/street-intel-go-blind-independent-review-findings-1.md`,
+written from the data first, reaches the same bottom line and corrected this
+section where noted. Its own additions, not re-derived here:
+
+- The rise in level 125+ attempts is card supply plus the stricter minimum, not
+  blind's choice rule: replaying both rules on the Nov boards picks the same cards
+  on 230 of 231.
+- Top-tier drops per win rose across Bands 4-7, 38 against about 24 expected
+  (z about 3), which no rolling scouted window matched. It chose this test after
+  seeing the data, out of about 30 comparisons, and can't attribute it to blind.
+- Saved Stamina may partly mean fewer drinks rather than more attempts: median
+  Stamina before a blind attempt was 153 of 372.
+
+Only running both modes side by side can separate blind from what else changed:
+about 30 days alternating for drops, 22 for a 7-point success gap, 44 for 5 points.
+
+**Decision so far:** keep Go blind on, since it costs nothing and saves Stamina.
+Don't count on a success bonus or a gold bonus from it until more attempts are
+in; expect drop value to swing a lot from week to week regardless. `StreetIntelAutoStatus.oddsCheck` keeps tracking the first; re-check at
+about 500 blind attempts.
+
 **Keeping it current.** `verification/street-intel/build_intel_tables.py`
 rebuilds the catalog and the condition table and re-runs the 99% check
 (refusing to write below 98%). Rerun it when `wiki.py diff intel` shows a
