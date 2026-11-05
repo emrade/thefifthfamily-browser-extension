@@ -9,6 +9,26 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.60.1] - 2026-11-05
+
+### Fixed
+- **Run to Cap no longer scans target after target.** Its first live run reached
+  the cap, but sent 22 recons for 5 fights, including 13 skips in a row, where
+  playing by hand skipped 2 in 138. That looks like a script. Targets above your
+  level are now skipped without a recon (nobody at 140+ reached 60% with the
+  player at 137-138). Each target's odds are remembered for 7 days, and anyone
+  more than 5 points under your minimum isn't checked again. Eight skips in a row
+  pause the run. Replaying that run's real list gives 12 recons for the same 5
+  fights, and 9 on a repeat visit. Not yet run on the live game.
+- **Run to Cap waits 2-4 s after loading the list before its first recon,** like
+  normal play. It had gone 0.2 s after.
+
+### Changed
+- **The HTTP Archive page leads with the export you use.** Download New Since
+  Last Export is now the main button, followed by Full Archive and Shape Digest.
+  The list of over 100 endpoints sits in a closed Export Specific Endpoints
+  section, with a search box and a shorter scrolling list.
+
 ## [0.60.0] - 2026-11-05
 
 ### Added
