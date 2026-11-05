@@ -9,6 +9,32 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.60.0] - 2026-11-05
+
+### Added
+- **Gold Run panel on the Fight Club page.** Off until you turn on Gold Run
+  Panel in Settings. Shows today's gold against the 350 cap, Stamina and HP,
+  how much Stamina the rest of the day's gold needs and how much to top up,
+  and your district's targets in one list. A Fight button checks the game's
+  odds first and only attacks at your minimum (60% by default, adjustable):
+  all 14 losses in 1,425 past fights came at 55% or lower.
+- **Run to Cap.** Has its own switch in the panel, off by default. Fights one
+  target at a time at about the pace of playing by hand and stops at the gold
+  cap. It never uses items or travels: it pauses and tells you when it needs
+  Stamina, healing (below 50% HP by default) or a new district, after a lost
+  fight, or on anything it doesn't recognise. A paused run ends after 30
+  minutes, and a run still going at the daily reset ends too. Street Intel
+  Auto leaves Stamina alone during a run. Tested against archived responses,
+  not yet on the live game; see `docs/gold-run-plan.md`.
+- **Gold Run Paused or Finished notification.**
+
+### Changed
+- **The Settings page is split into tabs, with search.** All 44 settings now
+  sit under Combat, Crime & Jobs, Money & Items and General, with notifications
+  next to the feature they belong to. Search covers every tab. Long descriptions
+  show one line with a More link. Your saved settings and what they do haven't
+  changed.
+
 ## [0.59.1] - 2026-11-03
 
 ### Fixed
