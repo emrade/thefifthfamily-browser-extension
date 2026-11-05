@@ -47,6 +47,11 @@ export const NOTIFICATION_DEFINITIONS = [
     description: 'Notify when the pet courier auto-watch stops itself after an unrecognized response.',
   },
   {
+    id: 'goldRunStopped',
+    label: 'Gold Run Paused or Finished',
+    description: 'Notify when a Gold Run reaches the gold cap, or pauses because it needs you: top up Stamina, heal, travel, or check something unexpected.',
+  },
+  {
     id: 'crimesAutoDistrictMastered',
     label: 'Crimes Auto District Mastered',
     description: 'Notify when every crime in your current district reaches Mastered, so you know to go challenge the boss.',

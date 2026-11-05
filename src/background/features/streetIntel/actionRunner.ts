@@ -13,6 +13,7 @@ import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
+import { goldRunHoldsStamina } from '../goldRun';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetIntelOpportunity } from './streetIntelPanelRegexParser';
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
@@ -692,6 +693,14 @@ export async function runIfEligible(force = false): Promise<void> {
 async function runIfEligibleOnce(force: boolean): Promise<void> {
   const config = await storage.getStreetIntelAutoConfig();
   if (!config.enabled && !force) return;
+
+  // A Gold Run has first call on Stamina while one is going. Run Now is the
+  // player overriding that on purpose. With no run, this changes nothing.
+  if (!force && (await goldRunHoldsStamina())) {
+    await updateStatus({ waiting: { kind: 'gold-run' } });
+    scheduleNextCheck(null);
+    return;
+  }
 
   const status = await fetchLiveStatus();
   if (!status) {

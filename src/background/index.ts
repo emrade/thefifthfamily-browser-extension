@@ -63,6 +63,18 @@ import {
   runCheckNow as runRealEstateAutoCheckNow,
 } from './features/realEstate/autoCollect';
 import { init as initGameTabs, reloadGameTabs } from './features/gameTabs';
+import {
+  fightOnce as goldRunFightOnce,
+  handleAlarm as handleGoldRunAlarm,
+  handleMessage as handleGoldRun,
+  init as initGoldRun,
+  panelOpened as goldRunPanelOpened,
+  pauseRunByPlayer as goldRunPause,
+  refreshByPlayer as goldRunRefresh,
+  resumeRun as goldRunResume,
+  startRun as goldRunStart,
+  stopRun as goldRunStop,
+} from './features/goldRun';
 import type { ExtensionMessage } from '@/shared/messaging';
 import { ALARM_NAMES } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
@@ -84,7 +96,7 @@ import type { CourierStatus } from '@/shared/types';
 // Each feature reacts to whichever message types it cares about and no-ops on the
 // rest, so every message is simply offered to all of them in turn — see
 // content/index.ts for the matching dispatch on the capture side.
-const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArena, handleRealEstateVaults];
+const messageHandlers = [handlePlayerStats, handleSmuggling, handleFightClub, handleStreetIntel, handleArena, handleRealEstateVaults, handleGoldRun];
 
 async function handleMessage(msg: ExtensionMessage) {
   for (const handle of messageHandlers) await handle(msg);
@@ -124,6 +136,10 @@ initCrimesAuto();
 // The Halloween Fury Catcher was removed (2026-11-03): clear what it left
 // behind in a long-installed profile.
 removeLegacyFuryCatcher().catch((err) => console.error(LOG_PREFIX, 'removeLegacyFuryCatcher failed', err));
+
+// Shows a Gold Run that was mid-run when the background restarted as paused —
+// see features/goldRun.
+initGoldRun().catch((err) => console.error(LOG_PREFIX, 'initGoldRun failed', err));
 
 // Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
 // init.
@@ -284,6 +300,16 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return runRealEstateAutoCheckNow();
   }
 
+  // The Gold Run panel's buttons. Off the ordered queue: a fight takes seconds,
+  // and the captures on that queue shouldn't wait for it.
+  if (msg.type === 'gold-run-panel-opened') return goldRunPanelOpened();
+  if (msg.type === 'gold-run-fight-requested') return goldRunFightOnce(msg.targetId);
+  if (msg.type === 'gold-run-refresh-requested') return goldRunRefresh();
+  if (msg.type === 'gold-run-start-requested') return goldRunStart();
+  if (msg.type === 'gold-run-pause-requested') return goldRunPause();
+  if (msg.type === 'gold-run-resume-requested') return goldRunResume();
+  if (msg.type === 'gold-run-stop-requested') return goldRunStop();
+
   // Sent by the in-page Street Racing overlay on mount/refresh — see that
   // message type's own doc in shared/messaging.ts.
   if (msg.type === 'street-race-catalog-requested') {
@@ -432,4 +458,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleArenaAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleArenaAlarm failed', err));
   handleRealEstateVaultAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateVaultAlarm failed', err));
   handleRealEstateAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateAutoAlarm failed', err));
+  handleGoldRunAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleGoldRunAlarm failed', err));
 });

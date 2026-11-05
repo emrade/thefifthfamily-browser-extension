@@ -27,6 +27,8 @@ export const STORAGE_KEYS = {
   COURIER_AUTO_CONFIG: 'ff_courier_auto_config',
   COURIER_WATCH_STATE: 'ff_courier_watch_state',
   PENDING_COURIER_RETURNS: 'ff_pending_courier_returns',
+  GOLD_RUN_CONFIG: 'ff_gold_run_config',
+  GOLD_RUN_STATE: 'ff_gold_run_state',
   CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
   CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
   STREET_RACING_STATUS: 'ff_street_racing_status',
@@ -77,6 +79,7 @@ export const ALARM_NAMES = {
   ARENA_WATCH: 'ff-arena-watch',
   REAL_ESTATE_VAULT: 'ff-real-estate-vault',
   REAL_ESTATE_AUTO: 'ff-real-estate-auto',
+  GOLD_RUN_PAUSE_EXPIRY: 'ff-gold-run-pause-expiry',
 } as const;
 
 // --- Request log retention ---------------------------------------------------
@@ -501,3 +504,33 @@ export const REAL_ESTATE_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 
 /** Auto-collect runs kept for the popup's history list. */
 export const REAL_ESTATE_AUTO_HISTORY_MAX = 30;
+
+/** Gold Run (docs/gold-run-plan.md). The game's daily gold limit, used only
+ *  until a won fight reports the real `gold_cap`. */
+export const GOLD_RUN_DEFAULT_CAP = 350;
+export const GOLD_RUN_DEFAULT_MIN_CHANCE_PCT = 60;
+export const GOLD_RUN_DEFAULT_HEAL_FLOOR_PCT = 50;
+/** Every recon on record (1,881) quoted 5; recon's own `stamina_cost` wins. */
+export const GOLD_RUN_STAMINA_PER_FIGHT = 5;
+/** Fights at 60%+ since 2026-10-25 averaged 5.14 gold (156 fights). Used until
+ *  today has `GOLD_RUN_MIN_FIGHTS_FOR_OWN_AVERAGE` fights of its own. */
+export const GOLD_RUN_DEFAULT_GOLD_PER_FIGHT = 5.14;
+export const GOLD_RUN_MIN_FIGHTS_FOR_OWN_AVERAGE = 10;
+/** A paused run ends after this, which releases the Stamina reserve. */
+export const GOLD_RUN_PAUSE_TTL_MS = 30 * 60_000;
+/** How long one by-hand "Fight next" holds the Stamina reserve. */
+export const GOLD_RUN_MANUAL_RESERVE_MS = 5 * 60_000;
+/** Consecutive "target unavailable" rejections before a run pauses. */
+export const GOLD_RUN_MAX_REJECT_STREAK = 3;
+/** 20 cards a page, so at most the 100 highest-level targets. */
+export const GOLD_RUN_MAX_LIST_PAGES = 5;
+export const GOLD_RUN_PAGE_SIZE = 20;
+/** Re-read the list on opening the panel if it's older than this. */
+export const GOLD_RUN_LIST_STALE_MS = 5 * 60_000;
+/** Page traffic on Nov 4-5: recon to attack usually 1.3-2.2 s (fastest 1.08),
+ *  attack to list reload about 1.5-4 s, reload to next recon about 2-4 s. */
+export const GOLD_RUN_RECON_TO_ATTACK_MS: [number, number] = [1_200, 2_300];
+export const GOLD_RUN_ATTACK_TO_LIST_MS: [number, number] = [1_500, 4_000];
+export const GOLD_RUN_LIST_TO_RECON_MS: [number, number] = [2_000, 4_000];
+export const GOLD_RUN_SKIP_TO_RECON_MS: [number, number] = [3_000, 6_000];
+export const GOLD_RUN_PAGE_GAP_MS: [number, number] = [1_500, 3_000];

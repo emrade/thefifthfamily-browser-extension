@@ -13,4 +13,5 @@ export const AUTOMATION_FEATURE_LABELS: Record<AutomationQueueFeature, string> =
   garage: 'Garage',
   inventory: 'Inventory',
   achievements: 'Achievement claims',
+  'gold-run': 'Gold Run',
 };

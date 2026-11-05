@@ -48,6 +48,7 @@ export function formatFloor(amount: number): string {
 export function streetIntelWaitingText(waiting: StreetIntelAutoWaiting | null | undefined, minSuccessPct: number, now: number): string | null {
   if (!waiting) return null;
   if (waiting.kind === 'stamina') return `Waiting for ${waiting.need} Stamina (have ${waiting.have})`;
+  if (waiting.kind === 'gold-run') return 'Holding Stamina for a Gold Run';
   if (waiting.kind === 'no-pick') return `Nothing on the board clears ${minSuccessPct}% yet`;
   if (waiting.kind === 'saving') {
     const target = waiting.floor > 0 ? `cards paying ${formatFloor(waiting.floor)}+` : 'cards that meet the extreme minimum';

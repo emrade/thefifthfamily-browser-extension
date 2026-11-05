@@ -738,7 +738,8 @@ export type AutomationQueueFeature =
   | 'street-racing'
   | 'garage'
   | 'inventory'
-  | 'achievements';
+  | 'achievements'
+  | 'gold-run';
 
 export interface AutomationScheduleItem {
   feature: AutomationQueueFeature;
@@ -1233,6 +1234,8 @@ export type StreetIntelAutoWaiting =
   | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
   | { kind: 'stamina'; need: number; have: number }
   | { kind: 'no-pick' }
+  /** A Gold Run is using the Stamina; see background/features/goldRun. */
+  | { kind: 'gold-run' }
   /** Nothing on the board meets the minimum card value; saving Stamina
    *  until one appears (or the bar reaches its release point). */
   | { kind: 'saving'; floor: number; have: number; releaseAt: number };
@@ -1860,4 +1863,89 @@ export interface StaleGameTabs {
   previousVersion: string | null;
   tabIds: number[];
   reloading: boolean;
+}
+
+/** Gold Run settings, written by the in-page panel. Design:
+ *  docs/gold-run-plan.md. */
+export interface GoldRunConfig {
+  /** Kill switch for run-to-cap. Off by default; by-hand fights don't need it. */
+  automationEnabled: boolean;
+  /** Recon `success_chance` a target must reach. */
+  minChancePct: number;
+  /** Below this share of max HP, no fight starts. */
+  healFloorPct: number;
+}
+
+export interface GoldRunTarget {
+  id: number;
+  name: string;
+  level: number;
+  rating: number;
+  online: boolean;
+  /** Last recon's `success_chance`, if reconned. */
+  chance: number | null;
+  /** Why it won't be tried again until the list is refreshed by hand. */
+  skipped: string | null;
+}
+
+/** One fight, parsed from `POST /actions/attack.php`. `goldToday`/`goldCap`
+ *  mean nothing on a loss: the game reports 0 and 200 then. */
+export interface GoldRunFightResult {
+  won: boolean;
+  defender: string;
+  defenderLevel: number;
+  goldGained: number;
+  goldToday: number;
+  goldCap: number;
+  xpGained: number;
+  cashStolen: number;
+  stamina: number;
+  maxStamina: number;
+  /** `stats.vitality`: includes the half of the damage a win gives back. */
+  hp: number;
+  maxHp: number;
+}
+
+export interface GoldRunLogEntry {
+  at: number;
+  name: string;
+  level: number;
+  outcome: 'won' | 'lost' | 'skipped';
+  chance: number | null;
+  gold: number;
+  detail: string;
+}
+
+export type GoldRunPauseKind = 'player' | 'stamina' | 'heal' | 'lost' | 'blocked' | 'no-targets' | 'rejections' | 'unexpected' | 'restart';
+
+export interface GoldRunState {
+  /** Game day (resets 23:00 UTC) the counters below belong to. */
+  dayKey: string;
+  goldToday: number;
+  goldCap: number;
+  fightsToday: number;
+  goldEarnedToday: number;
+  /** Fought today, hidden from the list and from the game's stale cards. */
+  attackedIds: number[];
+  run: 'idle' | 'running' | 'paused';
+  pauseKind: GoldRunPauseKind | null;
+  pausedAt: number | null;
+  /** Latest thing to tell the player, in any mode. */
+  notice: string | null;
+  runFights: number;
+  runGold: number;
+  rejectStreak: number;
+  /** A by-hand fight holds the Stamina reserve until this time. */
+  reserveUntil: number;
+  /** While true, the panel's action buttons wait. */
+  busy: boolean;
+  stamina: number | null;
+  maxStamina: number | null;
+  hp: number | null;
+  maxHp: number | null;
+  targets: GoldRunTarget[];
+  targetsAt: number;
+  /** The query the game itself last used for its target list, minus `_t`. */
+  hubQuery: string | null;
+  log: GoldRunLogEntry[];
 }

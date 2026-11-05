@@ -4,7 +4,7 @@ import { GAME_ORIGIN } from '@/shared/constants';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { LOG_PREFIX } from '@/shared/log';
 import type { FightClubRecon } from '@/shared/types';
-import { parseRecon } from './adapters/reconAdapter';
+import { parseRecon } from '@/shared/fightClubRecon';
 
 /**
  * A floating panel on the live Fight Club page, same "badge + expand" shape as

@@ -13,6 +13,7 @@ import {
   initStreetIntelComplicationHint,
   initStreetIntelHighlights,
 } from './features/streetIntel';
+import { initGoldRunPanel } from './features/goldRun/panel';
 import { initStreetIntelStatusPanel } from './features/streetIntel/statusPanel';
 import { initCourierPanel } from './features/smuggling/courierPanel';
 import { initRealEstateAdvisor } from './features/realEstate';
@@ -139,6 +140,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.fightClubRecon) {
       initFightClubReconOverlay();
+    }
+    if (prefs.goldRunPanel) {
+      initGoldRunPanel();
     }
     if (prefs.streetIntelHighlights) {
       initStreetIntelHighlights(prefs.streetIntelExactOdds);

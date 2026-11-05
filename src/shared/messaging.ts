@@ -1,4 +1,4 @@
-import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
+import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, GoldRunFightResult, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
 import { LOG_PREFIX } from './log';
 import type { DashboardSection } from './dashboardSections';
 
@@ -55,6 +55,19 @@ export type ExtensionMessage =
   // captures produce an empty array and aren't sent at all.
   | { type: 'pet-roster-observed'; entries: PetRosterEntry[] }
   | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number }
+  // Gold Run (background/features/goldRun), from the game page: the query its
+  // own target list uses, and a fight the player made there.
+  | { type: 'gold-run-hub-observed'; url: string }
+  | { type: 'gold-run-attack-observed'; targetId: number; result: GoldRunFightResult }
+  // From the Gold Run panel. Same request/response exception as
+  // 'courier-run-requested': each returns the resulting `GoldRunState`.
+  | { type: 'gold-run-panel-opened' }
+  | { type: 'gold-run-fight-requested'; targetId?: number }
+  | { type: 'gold-run-refresh-requested' }
+  | { type: 'gold-run-start-requested' }
+  | { type: 'gold-run-pause-requested' }
+  | { type: 'gold-run-resume-requested' }
+  | { type: 'gold-run-stop-requested' }
   // Sent from the popup, not a content-script adapter — the one exception to this
   // union's usual "parsed capture" shape. background/index.ts special-cases it,
   // returning a Promise<CourierRunSummary> from the listener rather than the

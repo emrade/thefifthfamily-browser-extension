@@ -18,6 +18,13 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'Surfaces the win-odds/threat/steal-estimate the game already computes for a target — automatically when you open their attack view, or on demand via a Recon button added to each target card.',
   },
   {
+    id: 'goldRunPanel',
+    label: 'Gold Run Panel',
+    description:
+      'A floating panel on the Fight Club page for reaching the daily gold cap: gold, Stamina and HP at a glance, the Stamina you still need, your district’s targets in one list, and a Fight button that checks the odds before attacking. Run to Cap, which fights for you, has its own switch in the panel and is off until you turn it on.',
+    defaultOn: false,
+  },
+  {
     id: 'streetIntelHighlights',
     label: 'Street Intel Highlights',
     description: 'Highlights the best-value job, risky-but-lucrative jobs, and the best scout odds on the Street Intel page.',

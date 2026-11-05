@@ -1,7 +1,8 @@
 import type { CapturedRequest } from '@/shared/messaging';
 import { sendMessage as send } from '@/shared/messaging';
 import { parseAttackHubHeroStats } from './adapters/attackHubAdapter';
-import { parseRecon } from './adapters/reconAdapter';
+import { parseRecon } from '@/shared/fightClubRecon';
+import { parseFightResult } from '@/shared/goldRun';
 import { showObservedRecon } from './reconOverlay';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 
@@ -19,11 +20,28 @@ export { initFightClubReconOverlay } from './reconOverlay';
  * rendered elements, not a parsed copy of the response.
  */
 export function handleCapturedRequest(req: CapturedRequest) {
-  if (req.method !== 'GET') return;
-
   const url = new URL(req.url, window.location.origin);
 
+  // A fight made in the game itself, so Gold Run's counter stays right. Losses
+  // and rejections are its to sort out; anything unrecognised is ignored here,
+  // since nothing is being spent on the strength of it.
+  if (req.method === 'POST' && url.pathname.endsWith('/actions/attack.php')) {
+    const targetId = Number(new URLSearchParams(req.requestBody ?? '').get('target_id'));
+    let json: unknown = null;
+    try {
+      json = JSON.parse(req.responseText);
+    } catch {
+      return;
+    }
+    const result = parseFightResult(json);
+    if (result && targetId) send({ type: 'gold-run-attack-observed', targetId, result });
+    return;
+  }
+
+  if (req.method !== 'GET') return;
+
   if (url.pathname.endsWith('/api/panel.php') && url.searchParams.get('type') === 'attack_hub') {
+    send({ type: 'gold-run-hub-observed', url: req.url });
     const heroStats = parseAttackHubHeroStats(req.responseText);
     if (heroStats) {
       send({ type: 'fight-stats', heroStats, timestamp: req.timestamp });

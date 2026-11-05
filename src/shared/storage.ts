@@ -15,6 +15,8 @@ import type {
   CourierRunSummary,
   CourierWatchState,
   CrimesAutoConfig,
+  GoldRunConfig,
+  GoldRunState,
   CrimesAutoStatus,
   FightClubFilterPrefs,
   RealEstateAutoConfig,
@@ -39,6 +41,7 @@ import {
   STREET_INTEL_AUTO_DEFAULT_MIN_CARD_VALUE,
   STREET_INTEL_AUTO_DEFAULT_MIN_SUCCESS_PCT,
 } from './constants';
+import { DEFAULT_GOLD_RUN_CONFIG } from './goldRun';
 import { DEFAULT_NOTIFICATION_PREFERENCES, type NotificationPreferences } from './notifications';
 import { DEFAULT_PAGE_FEATURE_PREFERENCES, type PageFeaturePreferences } from './pageFeatures';
 import { DEFAULT_REQUEST_LOG_PREFERENCES, type RequestLogPreferences } from './requestLog/preferences';
@@ -372,6 +375,12 @@ export const storage = {
   getStaleGameTabs: () => get<StaleGameTabs | null>(STORAGE_KEYS.STALE_GAME_TABS, null),
   setStaleGameTabs: (v: StaleGameTabs) => set(STORAGE_KEYS.STALE_GAME_TABS, v),
   clearStaleGameTabs: () => remove(STORAGE_KEYS.STALE_GAME_TABS),
+
+  getGoldRunConfig: async (): Promise<GoldRunConfig> => ({ ...DEFAULT_GOLD_RUN_CONFIG, ...(await get<Partial<GoldRunConfig>>(STORAGE_KEYS.GOLD_RUN_CONFIG, {})) }),
+  setGoldRunConfig: (v: GoldRunConfig) => set(STORAGE_KEYS.GOLD_RUN_CONFIG, v),
+
+  getGoldRunState: () => get<GoldRunState | null>(STORAGE_KEYS.GOLD_RUN_STATE, null),
+  setGoldRunState: (v: GoldRunState) => set(STORAGE_KEYS.GOLD_RUN_STATE, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };
