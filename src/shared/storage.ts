@@ -16,6 +16,7 @@ import type {
   CourierWatchState,
   CrimesAutoConfig,
   GoldRunConfig,
+  GoldRunOdds,
   GoldRunState,
   CrimesAutoStatus,
   FightClubFilterPrefs,
@@ -381,6 +382,9 @@ export const storage = {
 
   getGoldRunState: () => get<GoldRunState | null>(STORAGE_KEYS.GOLD_RUN_STATE, null),
   setGoldRunState: (v: GoldRunState) => set(STORAGE_KEYS.GOLD_RUN_STATE, v),
+
+  getGoldRunOdds: () => get<GoldRunOdds>(STORAGE_KEYS.GOLD_RUN_ODDS, {}),
+  setGoldRunOdds: (v: GoldRunOdds) => set(STORAGE_KEYS.GOLD_RUN_ODDS, v),
 
   clearAll: () => chrome.storage.local.remove(Object.values(STORAGE_KEYS)),
 };

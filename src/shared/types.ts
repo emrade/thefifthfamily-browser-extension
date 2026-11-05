@@ -1884,7 +1884,8 @@ export interface GoldRunTarget {
   online: boolean;
   /** Last recon's `success_chance`, if reconned. */
   chance: number | null;
-  /** Why it won't be tried again until the list is refreshed by hand. */
+  /** Why it won't be tried for now. Refresh clears it, then the rules that need
+   *  no recon (above your level, remembered low odds) apply again. */
   skipped: string | null;
 }
 
@@ -1899,6 +1900,7 @@ export interface GoldRunFightResult {
   goldCap: number;
   xpGained: number;
   cashStolen: number;
+  attackerLevel: number;
   stamina: number;
   maxStamina: number;
   /** `stats.vitality`: includes the half of the damage a win gives back. */
@@ -1916,7 +1918,10 @@ export interface GoldRunLogEntry {
   detail: string;
 }
 
-export type GoldRunPauseKind = 'player' | 'stamina' | 'heal' | 'lost' | 'blocked' | 'no-targets' | 'rejections' | 'unexpected' | 'restart';
+export type GoldRunPauseKind = 'player' | 'stamina' | 'heal' | 'lost' | 'blocked' | 'no-targets' | 'rejections' | 'skips' | 'unexpected' | 'restart';
+
+/** Last recon odds per target id, kept across days. */
+export type GoldRunOdds = Record<number, { chance: number; at: number }>;
 
 export interface GoldRunState {
   /** Game day (resets 23:00 UTC) the counters below belong to. */
@@ -1935,6 +1940,10 @@ export interface GoldRunState {
   runFights: number;
   runGold: number;
   rejectStreak: number;
+  /** Recons in a row that ended in a skip. */
+  skipStreak: number;
+  /** Own level, for skipping targets above it. Null until first read. */
+  myLevel: number | null;
   /** A by-hand fight holds the Stamina reserve until this time. */
   reserveUntil: number;
   /** While true, the panel's action buttons wait. */

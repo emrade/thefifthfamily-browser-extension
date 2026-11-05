@@ -56,9 +56,10 @@ export type ExtensionMessage =
   | { type: 'pet-roster-observed'; entries: PetRosterEntry[] }
   | { type: 'fight-stats'; heroStats: FightClubHeroStats; timestamp: number }
   // Gold Run (background/features/goldRun), from the game page: the query its
-  // own target list uses, and a fight the player made there.
+  // own target list uses, and a fight or recon the player made there.
   | { type: 'gold-run-hub-observed'; url: string }
   | { type: 'gold-run-attack-observed'; targetId: number; result: GoldRunFightResult }
+  | { type: 'gold-run-recon-observed'; targetId: number; chance: number }
   // From the Gold Run panel. Same request/response exception as
   // 'courier-run-requested': each returns the resulting `GoldRunState`.
   | { type: 'gold-run-panel-opened' }

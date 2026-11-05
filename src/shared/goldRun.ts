@@ -4,10 +4,12 @@ import {
   GOLD_RUN_DEFAULT_HEAL_FLOOR_PCT,
   GOLD_RUN_DEFAULT_MIN_CHANCE_PCT,
   GOLD_RUN_MIN_FIGHTS_FOR_OWN_AVERAGE,
+  GOLD_RUN_ODDS_MARGIN_PCT,
+  GOLD_RUN_ODDS_TTL_MS,
   GOLD_RUN_PAUSE_TTL_MS,
   GOLD_RUN_STAMINA_PER_FIGHT,
 } from './constants';
-import type { GoldRunConfig, GoldRunFightResult, GoldRunState, GoldRunTarget } from './types';
+import type { GoldRunConfig, GoldRunFightResult, GoldRunOdds, GoldRunState, GoldRunTarget } from './types';
 
 /**
  * Gold Run's parsing and arithmetic, with no chrome.* or network use, shared by
@@ -43,6 +45,8 @@ export function emptyGoldRunState(now: number): GoldRunState {
     runFights: 0,
     runGold: 0,
     rejectStreak: 0,
+    skipStreak: 0,
+    myLevel: null,
     reserveUntil: 0,
     busy: false,
     stamina: null,
@@ -58,11 +62,14 @@ export function emptyGoldRunState(now: number): GoldRunState {
 
 /** Zeroes yesterday's counters. Everyone can be attacked again on a new day, so
  *  the attacked list and any skip verdicts go too. */
-export function withCurrentDay(state: GoldRunState, now: number): GoldRunState {
+export function withCurrentDay(stored: GoldRunState, now: number): GoldRunState {
+  // State saved by 0.60.0 doesn't have these yet.
+  const state = stored.skipStreak === undefined ? { ...stored, skipStreak: 0, myLevel: stored.myLevel ?? null } : stored;
   const dayKey = gameDayKey(now);
   if (state.dayKey === dayKey) return state;
   return {
     ...state,
+    skipStreak: 0,
     dayKey,
     goldToday: 0,
     goldCap: GOLD_RUN_DEFAULT_CAP,
@@ -179,6 +186,7 @@ export function parseFightResult(json: any): GoldRunFightResult | null {
     goldGained: json.gold_gained,
     goldToday: json.gold_today,
     goldCap: json.gold_cap,
+    attackerLevel: Number(json.att_level) || 0,
     xpGained: Number(json.xp_gained) || 0,
     cashStolen: Number(json.cash_stolen) || 0,
     stamina: stats.stamina,
@@ -208,6 +216,34 @@ export function nextCandidate(targets: GoldRunTarget[]): GoldRunTarget | null {
     if (!best || t.level > best.level) best = t;
   }
   return best;
+}
+
+/**
+ * Rules that skip a target without sending a recon, so a run doesn't scan target
+ * after target. Above your own level: nobody at 140+ reached 60% with the player
+ * at level 137-138 (0 of 11, Nov 4-5). Remembered low odds: see
+ * `GOLD_RUN_ODDS_MARGIN_PCT`. Targets already skipped keep their reason.
+ */
+export function withoutReconSkips(targets: GoldRunTarget[], myLevel: number | null, odds: GoldRunOdds, minChancePct: number, now: number): GoldRunTarget[] {
+  return targets.map((t) => {
+    if (t.skipped) return t;
+    if (myLevel !== null && myLevel > 0 && t.level > myLevel) return { ...t, skipped: 'Above your level' };
+    const known = odds[t.id];
+    if (known && now - known.at < GOLD_RUN_ODDS_TTL_MS && known.chance < minChancePct - GOLD_RUN_ODDS_MARGIN_PCT) {
+      return { ...t, chance: known.chance, skipped: `${known.chance}% last check` };
+    }
+    return t;
+  });
+}
+
+/** Adds one recon's odds and drops anything past its time. */
+export function rememberOdds(odds: GoldRunOdds, targetId: number, chance: number, now: number): GoldRunOdds {
+  const kept: GoldRunOdds = {};
+  for (const [id, entry] of Object.entries(odds)) {
+    if (now - entry.at < GOLD_RUN_ODDS_TTL_MS) kept[Number(id)] = entry;
+  }
+  kept[targetId] = { chance, at: now };
+  return kept;
 }
 
 /** Folds in a re-read first page: adds who's new, and drops anyone missing from

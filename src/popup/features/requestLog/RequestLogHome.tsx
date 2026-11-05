@@ -78,6 +78,7 @@ export function RequestLogHome() {
   const [shapes, setShapes] = useState<ShapeSummary | null>(null);
   const [endpoints, setEndpoints] = useState<EndpointSummary[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [endpointQuery, setEndpointQuery] = useState('');
   const [windowMs, setWindowMs] = useState<number>(3 * DAY_MS);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -154,6 +155,11 @@ export function RequestLogHome() {
     setPrefs(next);
     await storage.setRequestLogPreferences(next);
   }
+
+  const endpointWords = endpointQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  // A selected endpoint stays selected when a search hides it: the count on the
+  // section and the download button still include it.
+  const matchingEndpoints = endpoints.filter((summary) => endpointWords.every((word) => summary.endpoint.toLowerCase().includes(word)));
 
   /**
    * Approximate size of the current selection, for the button label.
@@ -275,11 +281,60 @@ export function RequestLogHome() {
 
       <div class="ff-section-label">Export</div>
 
-      {endpoints.length > 0 && (
-        <div class="ff-archive-picker">
-          <div class="ff-archive-picker__title">Select Endpoints</div>
+      <button
+        class="ff-archive-primary"
+        disabled={busy !== null || newRows === 0}
+        onClick={() => run('new archive', () => exportArchive(true))}
+      >
+        {busy === 'new archive'
+          ? 'Compressing…'
+          : exportCursor == null
+            ? `Download New Since Last Export (first export — all ${newRows.toLocaleString()} rows)`
+            : newRows === 0
+              ? 'Nothing new since last export'
+              : `Download New Since Last Export (${newRows.toLocaleString()} rows)`}
+      </button>
 
-          {endpoints.map((summary) => (
+      <button
+        class="ff-export-trigger"
+        disabled={busy !== null || stats.rows === 0}
+        onClick={() => run('archive', () => exportArchive(false))}
+      >
+        {busy === 'archive' ? 'Compressing…' : `Download Full Archive (${formatBytes(stats.storedBytes)})`}
+      </button>
+
+      <button
+        class="ff-export-trigger"
+        disabled={busy !== null}
+        onClick={() =>
+          run('shape digest', async () => {
+            const json = await buildShapeDigest();
+            download(new Blob([json], { type: 'application/json' }), `fifth-family-shapes-${timestamp()}.json`);
+          })
+        }
+      >
+        {busy === 'shape digest' ? 'Preparing…' : 'Download Shape Digest (small)'}
+      </button>
+
+      {/* Closed by default: over 100 rows, for a one-off most exports don't need. */}
+      {endpoints.length > 0 && (
+        <details class="ff-archive-picker">
+          <summary class="ff-archive-picker__title">
+            Export Specific Endpoints{selected.size > 0 ? ` (${selected.size} selected)` : ''}
+          </summary>
+
+          <input
+            type="search"
+            class="ff-archive-picker__search"
+            placeholder={`Search ${endpoints.length} endpoints`}
+            aria-label="Search endpoints"
+            value={endpointQuery}
+            onInput={(e) => setEndpointQuery((e.target as HTMLInputElement).value)}
+          />
+
+          <div class="ff-archive-picker__list">
+          {matchingEndpoints.length === 0 && <div class="ff-archive-picker__none">No endpoint matches</div>}
+          {matchingEndpoints.map((summary) => (
             <label class="ff-archive-endpoint" key={summary.endpoint}>
               <input
                 type="checkbox"
@@ -295,6 +350,7 @@ export function RequestLogHome() {
               <span class="ff-archive-endpoint__rows">{summary.rows.toLocaleString()}</span>
             </label>
           ))}
+          </div>
 
           <select
             class="ff-select ff-field__control"
@@ -325,43 +381,9 @@ export function RequestLogHome() {
                 ? 'Select an endpoint above'
                 : `Download Selection (~${formatBytes(estimateSelectionBytes())})`}
           </button>
-        </div>
+        </details>
       )}
 
-      <button
-        class="ff-export-trigger"
-        disabled={busy !== null}
-        onClick={() =>
-          run('shape digest', async () => {
-            const json = await buildShapeDigest();
-            download(new Blob([json], { type: 'application/json' }), `fifth-family-shapes-${timestamp()}.json`);
-          })
-        }
-      >
-        {busy === 'shape digest' ? 'Preparing…' : 'Download Shape Digest (small)'}
-      </button>
-
-      <button
-        class="ff-export-trigger"
-        disabled={busy !== null || newRows === 0}
-        onClick={() => run('new archive', () => exportArchive(true))}
-      >
-        {busy === 'new archive'
-          ? 'Compressing…'
-          : exportCursor == null
-            ? `Download New Since Last Export (first export — all ${newRows.toLocaleString()} rows)`
-            : newRows === 0
-              ? 'Nothing new since last export'
-              : `Download New Since Last Export (${newRows.toLocaleString()} rows)`}
-      </button>
-
-      <button
-        class="ff-export-trigger"
-        disabled={busy !== null || stats.rows === 0}
-        onClick={() => run('archive', () => exportArchive(false))}
-      >
-        {busy === 'archive' ? 'Compressing…' : `Download Full Archive (${formatBytes(stats.storedBytes)})`}
-      </button>
 
       <div class="ff-section-label">Maintenance</div>
 

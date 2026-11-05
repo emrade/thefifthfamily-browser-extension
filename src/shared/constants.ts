@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   PENDING_COURIER_RETURNS: 'ff_pending_courier_returns',
   GOLD_RUN_CONFIG: 'ff_gold_run_config',
   GOLD_RUN_STATE: 'ff_gold_run_state',
+  GOLD_RUN_ODDS: 'ff_gold_run_odds',
   CRIMES_AUTO_CONFIG: 'ff_crimes_auto_config',
   CRIMES_AUTO_STATUS: 'ff_crimes_auto_status',
   STREET_RACING_STATUS: 'ff_street_racing_status',
@@ -522,6 +523,15 @@ export const GOLD_RUN_PAUSE_TTL_MS = 30 * 60_000;
 export const GOLD_RUN_MANUAL_RESERVE_MS = 5 * 60_000;
 /** Consecutive "target unavailable" rejections before a run pauses. */
 export const GOLD_RUN_MAX_REJECT_STREAK = 3;
+/** Skipped recons in a row before a run pauses. The first live run did 13 in a
+ *  row, where by-hand play skipped 2 recons in 138 (Nov 4-5). */
+export const GOLD_RUN_MAX_SKIP_STREAK = 8;
+/** How long a target's recon odds are remembered. A target's odds moved 1.8
+ *  points on average between checks, over gaps of up to 9 days (86 pairs). */
+export const GOLD_RUN_ODDS_TTL_MS = 7 * 24 * 60 * 60_000;
+/** A remembered target this far under the cutoff isn't reconned again. None of
+ *  the 8 targets under 55% later reached 60%; 5 of the 21 at 55-59% did. */
+export const GOLD_RUN_ODDS_MARGIN_PCT = 5;
 /** 20 cards a page, so at most the 100 highest-level targets. */
 export const GOLD_RUN_MAX_LIST_PAGES = 5;
 export const GOLD_RUN_PAGE_SIZE = 20;

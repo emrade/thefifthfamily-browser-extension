@@ -203,7 +203,7 @@ endpoint that dropped a previously universal field. It then splits into three se
 | Section | Holds |
 |---|---|
 | **Capture** | The on/off switch and the retention window |
-| **Export** | The endpoint picker and the three download buttons |
+| **Export** | New Since Last Export first, then Full Archive and Shape Digest, with the searchable endpoint picker in a closed section |
 | **Maintenance** | Rebuild the shape index, recount size, and the archive's own clear control |
 
 ### The exports

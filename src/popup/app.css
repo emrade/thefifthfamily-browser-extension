@@ -796,9 +796,54 @@ button {
   font-size: 8.5px;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: var(--ff-ink-faint);
-  margin-bottom: 8px;
+  color: var(--ff-ink-muted);
+  cursor: pointer;
 }
+.ff-archive-picker__title:focus-visible { outline: 2px solid var(--ff-gold); outline-offset: 2px; }
+
+.ff-archive-picker__search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+  padding: 7px 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--ff-ink);
+  background: var(--ff-bg);
+  border: 1px solid var(--ff-border-strong);
+  border-radius: var(--radius-sm);
+}
+.ff-archive-picker__search::placeholder { color: var(--ff-ink-faint); }
+.ff-archive-picker__search:focus-visible { outline: 2px solid var(--ff-gold); outline-offset: 1px; }
+
+.ff-archive-picker__list {
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+.ff-archive-picker__none {
+  padding: 8px 0;
+  font-size: 10.5px;
+  color: var(--ff-ink-faint);
+}
+
+/* The export used day to day, so it reads as the page's main action. */
+.ff-archive-primary {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ff-bg);
+  background: var(--ff-gold);
+  border: 1px solid var(--ff-gold);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.ff-archive-primary:hover:not(:disabled) { background: var(--ff-gold-bright); border-color: var(--ff-gold-bright); }
+.ff-archive-primary:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 2px; }
+.ff-archive-primary:disabled { opacity: .45; cursor: default; }
 
 .ff-archive-endpoint {
   display: flex;

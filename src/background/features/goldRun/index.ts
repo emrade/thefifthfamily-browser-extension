@@ -1,4 +1,4 @@
-import { ALARM_NAMES, GAME_ORIGIN, GOLD_RUN_ATTACK_TO_LIST_MS, GOLD_RUN_LIST_STALE_MS, GOLD_RUN_LIST_TO_RECON_MS, GOLD_RUN_MANUAL_RESERVE_MS, GOLD_RUN_MAX_LIST_PAGES, GOLD_RUN_MAX_REJECT_STREAK, GOLD_RUN_PAGE_GAP_MS, GOLD_RUN_PAGE_SIZE, GOLD_RUN_PAUSE_TTL_MS, GOLD_RUN_RECON_TO_ATTACK_MS, GOLD_RUN_SKIP_TO_RECON_MS, GOLD_RUN_STAMINA_PER_FIGHT } from '@/shared/constants';
+import { ALARM_NAMES, GAME_ORIGIN, GOLD_RUN_ATTACK_TO_LIST_MS, GOLD_RUN_LIST_STALE_MS, GOLD_RUN_LIST_TO_RECON_MS, GOLD_RUN_MANUAL_RESERVE_MS, GOLD_RUN_MAX_LIST_PAGES, GOLD_RUN_MAX_REJECT_STREAK, GOLD_RUN_MAX_SKIP_STREAK, GOLD_RUN_PAGE_GAP_MS, GOLD_RUN_PAGE_SIZE, GOLD_RUN_PAUSE_TTL_MS, GOLD_RUN_RECON_TO_ATTACK_MS, GOLD_RUN_SKIP_TO_RECON_MS, GOLD_RUN_STAMINA_PER_FIGHT } from '@/shared/constants';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { parseRecon } from '@/shared/fightClubRecon';
 import {
@@ -11,7 +11,9 @@ import {
   normaliseHubQuery,
   parseFightResult,
   parseHubTargets,
+  rememberOdds,
   withCurrentDay,
+  withoutReconSkips,
 } from '@/shared/goldRun';
 import { LOG_PREFIX } from '@/shared/log';
 import type { ExtensionMessage } from '@/shared/messaging';
@@ -74,6 +76,16 @@ function markSkipped(targets: GoldRunTarget[], id: number, skipped: string, chan
   return targets.map((t) => (t.id === id ? { ...t, skipped, chance: chance ?? t.chance } : t));
 }
 
+/** Serialised with `update`: a captured recon from the game page can arrive
+ *  during a step. */
+function saveOdds(targetId: number, chance: number): Promise<void> {
+  const next = writes.then(async () => {
+    await storage.setGoldRunOdds(rememberOdds(await storage.getGoldRunOdds(), targetId, chance, Date.now()));
+  });
+  writes = next.catch((err) => console.error(LOG_PREFIX, 'gold run odds write failed', err));
+  return next;
+}
+
 /** Applies one fight, from this feature or captured from the game page. Only a
  *  win's gold numbers are trusted: a loss reports `gold_today: 0`,
  *  `gold_cap: 200`. */
@@ -86,6 +98,7 @@ function applyFight(state: GoldRunState, result: GoldRunFightResult, targetId: n
     goldEarnedToday: state.goldEarnedToday + result.goldGained,
     attackedIds: state.attackedIds.includes(targetId) ? state.attackedIds : [...state.attackedIds, targetId],
     targets: state.targets.filter((t) => t.id !== targetId),
+    myLevel: result.attackerLevel || state.myLevel,
     stamina: result.stamina,
     maxStamina: result.maxStamina,
     hp: result.hp,
@@ -128,6 +141,7 @@ async function refreshAllTargets(clearSkips: boolean): Promise<GoldRunState> {
     if (cards.length < GOLD_RUN_PAGE_SIZE) break;
   }
 
+  const [config, odds] = await Promise.all([storage.getGoldRunConfig(), storage.getGoldRunOdds()]);
   return update((state) => {
     const previous = new Map(state.targets.map((t) => [t.id, t]));
     const targets = found
@@ -137,7 +151,7 @@ async function refreshAllTargets(clearSkips: boolean): Promise<GoldRunState> {
         return old && !clearSkips ? { ...t, chance: old.chance, skipped: old.skipped } : t;
       })
       .sort((a, b) => b.level - a.level);
-    return { ...state, targets, targetsAt: Date.now() };
+    return { ...state, targets: withoutReconSkips(targets, state.myLevel, odds, config.minChancePct, Date.now()), targetsAt: Date.now() };
   });
 }
 
@@ -150,7 +164,12 @@ async function refreshFirstPage(): Promise<void> {
   try {
     const page = await fetchHubPage(hubQuery, 1);
     const sortedByLevel = new URLSearchParams(hubQuery).get('fc_sort') === 'level_desc';
-    await update((state) => ({ ...state, targets: mergeFirstPage(state.targets, page, state.attackedIds, sortedByLevel), targetsAt: Date.now() }));
+    const [config, odds] = await Promise.all([storage.getGoldRunConfig(), storage.getGoldRunOdds()]);
+    await update((state) => ({
+      ...state,
+      targets: withoutReconSkips(mergeFirstPage(state.targets, page, state.attackedIds, sortedByLevel), state.myLevel, odds, config.minChancePct, Date.now()),
+      targetsAt: Date.now(),
+    }));
   } catch (err) {
     console.error(LOG_PREFIX, 'gold run list reload failed', err);
   }
@@ -182,6 +201,7 @@ async function fightStep(config: GoldRunConfig, targetId?: number): Promise<Step
   if (!target && targetId === undefined) {
     state = await refreshAllTargets(false);
     target = nextCandidate(state.targets);
+    if (target) await sleep(randomBetween(GOLD_RUN_LIST_TO_RECON_MS));
   }
   if (!target) return { kind: 'stop', pause: 'no-targets', message: 'No targets left here at your cutoff. Travel, then continue.' };
 
@@ -193,6 +213,7 @@ async function fightStep(config: GoldRunConfig, targetId?: number): Promise<Step
     return { kind: 'stop', pause: 'unexpected', message: `Recon on ${target.name} came back in an unexpected form: ${text.slice(0, 120)}` };
   }
   recordParseSuccess(FEATURE_KEY);
+  await saveOdds(target.id, recon.successChance);
 
   const skipReason =
     recon.hospitalized ? 'In hospital'
@@ -205,12 +226,16 @@ async function fightStep(config: GoldRunConfig, targetId?: number): Promise<Step
     const id = target.id;
     const name = target.name;
     const level = target.level;
-    await update((s) => ({
+    const after = await update((s) => ({
       ...s,
+      skipStreak: s.skipStreak + 1,
       targets: markSkipped(s.targets, id, skipReason, recon.successChance),
       notice: `Skipped ${name}: ${skipReason}.`,
       log: appendLog(s.log, { at: Date.now(), name, level, outcome: 'skipped', chance: recon.successChance, gold: 0, detail: skipReason }),
     }));
+    if (after.skipStreak >= GOLD_RUN_MAX_SKIP_STREAK) {
+      return { kind: 'stop', pause: 'skips', message: `${after.skipStreak} targets in a row were skipped without a fight. Travel, or press Resume to keep going here.` };
+    }
     return { kind: 'skipped' };
   }
 
@@ -252,6 +277,7 @@ async function fightStep(config: GoldRunConfig, targetId?: number): Promise<Step
   const after = await update((s) => ({
     ...applyFight(s, result, id, chance),
     rejectStreak: 0,
+    skipStreak: 0,
     runFights: s.run === 'running' ? s.runFights + 1 : s.runFights,
     runGold: s.run === 'running' ? s.runGold + result.goldGained : s.runGold,
     notice: result.won ? `Beat ${name}: +${result.goldGained} gold.` : `Lost to ${name} at ${chance}%.`,
@@ -285,7 +311,7 @@ async function guardedStep(config: GoldRunConfig, targetId?: number): Promise<St
 async function refreshVitals(): Promise<StepOutcome | null> {
   const status = await fetchLiveStatus();
   if (!status) return { kind: 'stop', pause: 'unexpected', message: 'Couldn’t read your stats from the game. Check the game tab is logged in.' };
-  await update((s) => ({ ...s, stamina: status.stamina, maxStamina: status.maxStamina, hp: status.vitality, maxHp: status.maxVitality }));
+  await update((s) => ({ ...s, myLevel: status.level || s.myLevel, stamina: status.stamina, maxStamina: status.maxStamina, hp: status.vitality, maxHp: status.maxVitality }));
   if (status.jailed) return { kind: 'stop', pause: 'blocked', message: 'You’re in jail. Sort that out, then continue.' };
   if (status.hospitalized) return { kind: 'stop', pause: 'blocked', message: 'You’re in hospital. Heal, then continue.' };
   if (status.travelling) return { kind: 'stop', pause: 'blocked', message: 'You’re travelling. Continue once you land.' };
@@ -379,6 +405,7 @@ async function beginRunning(isResume: boolean): Promise<GoldRunState> {
       runFights: isResume ? s.runFights : 0,
       runGold: isResume ? s.runGold : 0,
       rejectStreak: 0,
+      skipStreak: 0,
     }));
     const blocked = await refreshVitals();
     if (blocked?.kind === 'stop') {
@@ -386,6 +413,8 @@ async function beginRunning(isResume: boolean): Promise<GoldRunState> {
       return read();
     }
     await refreshAllTargets(false);
+    // The game leaves a gap between loading its list and opening a target.
+    await sleep(randomBetween(GOLD_RUN_LIST_TO_RECON_MS));
   } catch (err) {
     await pauseRun('unexpected', err instanceof Error ? err.message : String(err));
     return read();
@@ -492,8 +521,12 @@ export async function handleMessage(msg: ExtensionMessage): Promise<void> {
     if (hubQuery && (await read()).hubQuery !== hubQuery) await update((s) => ({ ...s, hubQuery }));
     return;
   }
+  if (msg.type === 'gold-run-recon-observed') {
+    await saveOdds(msg.targetId, msg.chance);
+    return;
+  }
   if (msg.type === 'gold-run-attack-observed') {
-    await update((s) => applyFight(s, msg.result, msg.targetId, null));
+    await update((s) => ({ ...applyFight(s, msg.result, msg.targetId, null), skipStreak: 0 }));
     return;
   }
   if (msg.type === 'travel-started') {

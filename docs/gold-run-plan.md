@@ -1,6 +1,6 @@
 # Gold Run
 
-Status: **implemented, not yet tried on the live game.** See "How it was tested".
+Status: **implemented and run on the live game once** (5 fights, 2026-11-05). See "First live run".
 
 Helps the player reach the daily gold cap from Fight Club attacks, to pay for vault
 upgrades (Tier 25 costs 2,625 gold). Phase 1 is a panel where the player clicks each
@@ -160,6 +160,28 @@ Throwaway harnesses, not kept in the repo:
   recons in 138 on Nov 4-5).
 - The 23:00 UTC reset hasn't been seen since the clocks changed in October. If it has moved,
   the counter reads wrong only until the next win.
+
+## First live run (2026-11-05, 0.60.0)
+
+Took gold from 319 to 350 in 5 wins and stopped at the cap. Response fields matched the 128
+by-hand fights from Nov 4-5, and HP matched the half-back rule. Too short to show whether
+Street Intel Auto holds off.
+
+It sent 22 recons for 5 attacks, including 13 skips in a row at about one every 4 s, where
+by-hand play skipped 2 in 138. Attacking nobody after opening target after target looks like
+a script, so these were added:
+
+- **Above your own level:** skipped with no recon. Nobody at 140+ reached 60% with the player
+  at 137-138 (0 of 11).
+- **Remembered odds:** each recon, including the game's own, is kept for 7 days. A target more
+  than 5 points under the cutoff isn't reconned again. Odds moved 1.8 points on average
+  between checks, none of the 8 under 55% later reached 60%, and 5 of the 21 at 55-59% did.
+- **8 skips in a row pause a run,** as a backstop.
+- **A 2-4 s wait after the opening list load.** The first recon had come 0.2 s after it.
+
+On that run these would have left 7 skips, and about 4 on a repeat visit. Above-level targets
+that might have passed are given up: they pay more, but so few pass that it isn't worth the
+recons.
 
 ## Not included
 

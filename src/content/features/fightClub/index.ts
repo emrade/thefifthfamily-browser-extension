@@ -55,6 +55,7 @@ export function handleCapturedRequest(req: CapturedRequest) {
   if (url.pathname.endsWith('/actions/attack.php') && url.searchParams.get('type') === 'recon') {
     const recon = parseRecon(req.responseText, req.timestamp);
     if (recon) {
+      send({ type: 'gold-run-recon-observed', targetId: recon.targetId, chance: recon.successChance });
       showObservedRecon(recon);
       recordParseSuccess('fightClub');
     } else {
