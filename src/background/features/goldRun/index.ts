@@ -1,9 +1,10 @@
-import { ALARM_NAMES, GAME_ORIGIN, GOLD_RUN_ATTACK_TO_LIST_MS, GOLD_RUN_LIST_STALE_MS, GOLD_RUN_LIST_TO_RECON_MS, GOLD_RUN_MANUAL_RESERVE_MS, GOLD_RUN_MAX_LIST_PAGES, GOLD_RUN_MAX_REJECT_STREAK, GOLD_RUN_MAX_SKIP_STREAK, GOLD_RUN_PAGE_GAP_MS, GOLD_RUN_PAGE_SIZE, GOLD_RUN_PAUSE_TTL_MS, GOLD_RUN_RECON_TO_ATTACK_MS, GOLD_RUN_SKIP_TO_RECON_MS, GOLD_RUN_STAMINA_PER_FIGHT } from '@/shared/constants';
+import { ALARM_NAMES, GAME_ORIGIN, GOLD_RUN_ATTACK_TO_LIST_MS, GOLD_RUN_LIST_STALE_MS, GOLD_RUN_LIST_TO_RECON_MS, GOLD_RUN_MANUAL_RESERVE_MS, GOLD_RUN_MAX_LIST_PAGES, GOLD_RUN_MAX_REJECT_STREAK, GOLD_RUN_MAX_SKIP_STREAK, GOLD_RUN_PAGE_GAP_MS, GOLD_RUN_PAUSE_TTL_MS, GOLD_RUN_RECON_TO_ATTACK_MS, GOLD_RUN_SKIP_TO_RECON_MS, GOLD_RUN_STAMINA_PER_FIGHT } from '@/shared/constants';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { parseRecon } from '@/shared/fightClubRecon';
 import {
   classifyAttackRejection,
   emptyGoldRunState,
+  hubHasMorePages,
   hubQueryForPage,
   holdsStamina,
   mergeFirstPage,
@@ -12,6 +13,7 @@ import {
   parseFightResult,
   parseHubTargets,
   rememberOdds,
+  uniqueTargets,
   withCurrentDay,
   withoutReconSkips,
 } from '@/shared/goldRun';
@@ -115,7 +117,7 @@ function applyFight(state: GoldRunState, result: GoldRunFightResult, targetId: n
   };
 }
 
-async function fetchHubPage(query: string, page: number): Promise<GoldRunTarget[]> {
+async function fetchHubPage(query: string, page: number): Promise<{ targets: GoldRunTarget[]; hasMore: boolean }> {
   const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?${hubQueryForPage(query, page, Date.now())}`, { credentials: 'include' });
   const json = await res.json();
   const targets = typeof json?.html === 'string' ? parseHubTargets(json.html) : null;
@@ -124,7 +126,7 @@ async function fetchHubPage(query: string, page: number): Promise<GoldRunTarget[
     throw new Error('The Fight Club list came back in a form this feature doesn’t recognise.');
   }
   recordParseSuccess(FEATURE_KEY);
-  return targets;
+  return { targets, hasMore: hubHasMorePages(json.html) };
 }
 
 /** Reads every page of this district's list, keeping what's known about anyone
@@ -136,15 +138,15 @@ async function refreshAllTargets(clearSkips: boolean): Promise<GoldRunState> {
   const found: GoldRunTarget[] = [];
   for (let page = 1; page <= GOLD_RUN_MAX_LIST_PAGES; page++) {
     if (page > 1) await sleep(randomBetween(GOLD_RUN_PAGE_GAP_MS));
-    const cards = await fetchHubPage(hubQuery, page);
-    found.push(...cards);
-    if (cards.length < GOLD_RUN_PAGE_SIZE) break;
+    const { targets, hasMore } = await fetchHubPage(hubQuery, page);
+    found.push(...targets);
+    if (!hasMore) break;
   }
 
   const [config, odds] = await Promise.all([storage.getGoldRunConfig(), storage.getGoldRunOdds()]);
   return update((state) => {
     const previous = new Map(state.targets.map((t) => [t.id, t]));
-    const targets = found
+    const targets = uniqueTargets(found)
       .filter((t) => !state.attackedIds.includes(t.id))
       .map((t) => {
         const old = previous.get(t.id);
@@ -162,7 +164,7 @@ async function refreshFirstPage(): Promise<void> {
   if (!hubQuery) return;
   await sleep(randomBetween(GOLD_RUN_ATTACK_TO_LIST_MS));
   try {
-    const page = await fetchHubPage(hubQuery, 1);
+    const { targets: page } = await fetchHubPage(hubQuery, 1);
     const sortedByLevel = new URLSearchParams(hubQuery).get('fc_sort') === 'level_desc';
     const [config, odds] = await Promise.all([storage.getGoldRunConfig(), storage.getGoldRunOdds()]);
     await update((state) => ({

@@ -534,7 +534,6 @@ export const GOLD_RUN_ODDS_TTL_MS = 7 * 24 * 60 * 60_000;
 export const GOLD_RUN_ODDS_MARGIN_PCT = 5;
 /** 20 cards a page, so at most the 100 highest-level targets. */
 export const GOLD_RUN_MAX_LIST_PAGES = 5;
-export const GOLD_RUN_PAGE_SIZE = 20;
 /** Re-read the list on opening the panel if it's older than this. */
 export const GOLD_RUN_LIST_STALE_MS = 5 * 60_000;
 /** Page traffic on Nov 4-5: recon to attack usually 1.3-2.2 s (fastest 1.08),

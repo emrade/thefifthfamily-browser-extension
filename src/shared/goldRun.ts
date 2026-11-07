@@ -151,6 +151,30 @@ export function parseHubTargets(html: string): GoldRunTarget[] | null {
   return targets;
 }
 
+/**
+ * Whether the list continues after this page, from the game's own "Page 1 / 2"
+ * label. The label is missing when there's only one page. Asked for a page past
+ * the end, the game returns the last page again, so the card count can't tell
+ * you this: a last page can hold a full 20 cards. The label's number agreed with
+ * the page served on all 249 labelled responses from Nov 1-6, and all 74 without
+ * one were page 1.
+ */
+export function hubHasMorePages(html: string): boolean {
+  const label = />Page (\d+) \/ (\d+)</.exec(html);
+  return !!label && Number(label[1]) < Number(label[2]);
+}
+
+/** Keeps each player's first appearance. The list can shift between page reads,
+ *  which puts one player on two pages (seen Nov 5). */
+export function uniqueTargets(targets: GoldRunTarget[]): GoldRunTarget[] {
+  const seen = new Set<number>();
+  return targets.filter((t) => {
+    if (seen.has(t.id)) return false;
+    seen.add(t.id);
+    return true;
+  });
+}
+
 /** The game's own list query, ready to reuse: without `_t`, and with the two
  *  filters this feature depends on forced on. Every one of the 2,464 archived
  *  list loads had both on, so that's the only combination known to behave. */

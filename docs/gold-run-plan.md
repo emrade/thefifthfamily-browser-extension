@@ -39,6 +39,9 @@ fight. Phase 2 adds a run-to-cap automation on the same code.
 
 ### Traps
 
+- **A page past the end of the list returns the last page again**, with no error, and a
+  last page can hold a full 20 cards. Stop at the game's "Page N / M" label (no label means
+  one page), not on a short page. The real client never asked past the end on Nov 1-6.
 - **A lost fight reports false counters:** `gold_today: 0` and `gold_cap: 200`. Update the
   gold counter from wins only.
 - **Gold progress is not available before the first attack of the day.** It isn't in
