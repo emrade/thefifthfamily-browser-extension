@@ -9,6 +9,21 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.60.2] - 2026-11-07
+
+### Fixed
+- **Gold Run no longer lists the same players several times.** When the last page
+  of a district's target list held exactly 20 players, the panel kept asking for
+  pages past the end, up to its limit of 5. The game answers those with the last
+  page again, so a list of 20 became 100 rows and the counts were inflated ("35 to
+  try, of 95" was really 7 of 19). Those extra requests are something the real
+  game client never sent on Nov 1-6, and they're gone: the panel now stops at the
+  game's own "Page N / M" label. Each player is also kept only once, as the list
+  can shift during a read and put someone on two pages. Fights and gold were not
+  affected. Replayed against 323 archived list responses, with no players lost.
+  Not yet run on the live game. A list saved by 0.60.1 keeps its duplicates until
+  you press Refresh, start a run or the game day resets.
+
 ## [0.60.1] - 2026-11-05
 
 ### Fixed
