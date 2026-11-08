@@ -51,19 +51,25 @@ Street Intel tab. Sections:
      cards just above the new minimum worth the same Stamina — where the
      freed Stamina goes. "Clearly": at least 10% more *and* 2 standard
      errors, with 30+ attempts each side. Otherwise it says keep.
-   - Candidates are the card values that really occur (midpoints), shown as
-     the roundest amount between the card cut and the card kept.
+   - Candidates are the card values on the board in those 7 days
+     (midpoints), shown as the roundest amount between the card cut and the
+     card kept, and the tab names those cards. The 30 days of attempts only
+     price each value range: they include card values from before a level-up
+     that the board no longer shows (first version named $808.65k and
+     $816.35k cards on Nov 8, when the only card between $800k and $850k for
+     a week had been $849,850).
    - Why: the old rule took the highest $50k step that passed supply and
      assumed higher always pays. On Nov 8 it said $850k from $800k, which
      only cut a $849,850 high-risk card paying the same per Stamina as
      $850k–1M ($56.6k against $56.0k); a $1M+ card was affordable on the
      board for 1 of its 72 attempts, so its Stamina wouldn't reach big cards.
    - Checked with `verification/street-intel/verify_min_card_suggestion.py`
-     (runs the real code at past dates): from $800k it suggests $810k
-     Oct 22 – Nov 1 (cutting a $808,650 card at $43–45k against $55k per
-     Stamina) and keep Nov 3–8; from $500k or none, $825–880k; from $1M,
-     lower to $825–880k. The old code reproduces the panel's Nov 8 figures
-     (1,158 against 873, $850k).
+     (runs the real code at past dates): from $800k it says keep on Oct 22,
+     Nov 1, Nov 5 and Nov 8 (Nov 8: the $849,850 card's range made $54k per
+     Stamina against $54k just above); from $500k or none it raises to
+     $700k (Oct 22) or $849–850k (Nov); from $1M it lowers to the same. The
+     old code reproduces the panel's Nov 8 figures (1,158 against 873,
+     $850k).
 2. **Suggested extreme card minimum**, with Apply. For each option ($1M,
    $1.5M, $2M, $3M), over the card table's 30 days: the extreme attempts it
    would skip (worth at least the minimum card value, under the option),

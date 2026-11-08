@@ -114,9 +114,9 @@ function renderSuggestion(a: StreetIntelAnalytics, config: CardRuleConfig): stri
         ? `Over the last ${s.days} days, cards worth ${current}+ came to only about ${whole(s.currentSupply)} Stamina a day, against about ${whole(s.spent)} spent. At ${formatFloor(s.value)}+ they came to about ${whole(s.supply)}, enough to keep Stamina going on cards above the minimum.`
         : `Over the last ${s.days} days the board didn't have enough big cards to use your Stamina (about ${whole(s.spent)} a day) at any minimum.`;
   } else if (s.verdict === 'raise' && s.compare) {
-    note = `Over ${window}, the cards it skips (${range(s.compare.cut)}) made ${perStamina(s.compare.cut)}; the cards just above them that their Stamina would go to (${range(s.compare.next)}) made ${perStamina(s.compare.next)}. Cards worth ${formatFloor(s.value)}+ still came to about ${whole(s.supply)} Stamina a day, against about ${whole(s.spent)} spent.`;
+    note = `It skips cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${perStamina(s.compare.cut)}. Their Stamina would go to the cards just above (${range(s.compare.next)}), and cards in that range made ${perStamina(s.compare.next)}. Cards worth ${formatFloor(s.value)}+ still came to about ${whole(s.supply)} Stamina a day, against about ${whole(s.spent)} spent.`;
   } else if (s.compare) {
-    note = `Raising it would skip cards worth ${range(s.compare.cut)}, which made ${perStamina(s.compare.cut)} over ${window}. The cards just above them (${range(s.compare.next)}) made ${perStamina(s.compare.next)} — not clearly more (it needs 10% more, beyond what chance explains), so skipping them wouldn't be known to earn more.${
+    note = `Raising it would skip cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${perStamina(s.compare.cut)}. Cards in the range just above (${range(s.compare.next)}) made ${perStamina(s.compare.next)}, not clearly more (it needs 10% more, beyond what chance explains), so skipping them wouldn't be known to earn more.${
       s.blockedAt ? ` Higher still, from ${formatFloor(s.blockedAt.value)}, the board wouldn't have enough cards to use your Stamina.` : ''
     }`;
   } else if (s.blockedAt !== null) {

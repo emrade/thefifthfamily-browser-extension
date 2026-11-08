@@ -95,7 +95,8 @@ export interface SiSupply {
 
 /** Attempts on a run of card values, over the card value table's window. */
 export interface SiValueGroup {
-  /** Lowest and highest card midpoint in the group. */
+  /** Lowest and highest card midpoint in the group — of the cards on the
+   *  board lately, when it shows any in that range. */
   from: number;
   to: number;
   attempts: number;
@@ -416,10 +417,19 @@ export function buildStreetIntelAnalytics(
     const judged = attempts
       .filter((a) => a.at >= cellFrom && a.card && cardMidpoint(a.card) >= cardMinimumFor(a.card.risk, { ...config, minCardValue: 0 }))
       .map((a) => ({ mid: cardMidpoint(a.card!), cash: a.reward - a.cashLost, stamina: a.card!.stamina + a.card!.scoutCost }));
-    const tiers = [
-      ...new Set([...judged.map((a) => a.mid), ...supplyDays.flatMap((d) => (cardsByDay.get(d.day) ?? []).map(cardMidpoint))]),
-    ].sort((a, b) => a - b);
+    // Card values on the board lately: the minimums worth suggesting fall
+    // between these. Attempts reach back 30 days, to card values from
+    // before a level-up the board no longer shows (Nov 8 2026: $808.65k and
+    // $816.35k cards named, while the only card between $800k and $850k for
+    // a week had been $849,850), so they only price each value range.
+    const tiers = [...new Set(supplyDays.flatMap((d) => (cardsByDay.get(d.day) ?? []).map(cardMidpoint)))].sort((a, b) => a - b);
     const below = (value: number) => tiers.filter((t) => t < value).pop() ?? 0;
+    // Names a group by the board's card values in its range, so the tab
+    // talks about cards the player sees now; the attempts only price it.
+    const onBoard = (g: SiValueGroup, from: number, until: number): SiValueGroup => {
+      const shown = tiers.filter((t) => t >= from && t < until);
+      return shown.length ? { ...g, from: shown[0], to: shown[shown.length - 1] } : g;
+    };
     const groupOf = (from: number, to: number): SiValueGroup | null => {
       const xs = judged.filter((a) => a.mid >= from && a.mid < to);
       const stamina = xs.reduce((sum, a) => sum + a.stamina, 0);
@@ -484,12 +494,12 @@ export function buildStreetIntelAnalytics(
         if (!cut || cut.attempts < RAISE_MIN_ATTEMPTS) continue;
         const next = replacement(t, cut.stamina);
         if (!next) break;
-        first ??= { cut, next };
+        first ??= { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
         limit = 'payoff';
         const gap = next.cashPerStamina - cut.cashPerStamina;
         if (gap >= cut.cashPerStamina * RAISE_MIN_GAIN && gap >= RAISE_MIN_Z * Math.hypot(cut.standardError, next.standardError)) {
           value = candidate;
-          compare = { cut, next };
+          compare = { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
         }
       }
       if (value !== current) verdict = 'raise';
