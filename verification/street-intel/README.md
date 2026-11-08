@@ -25,6 +25,7 @@ python3 verification/street-intel/analyze_profit_and_stamina.py [--archive ...] 
 python3 verification/street-intel/simulate_target_selection.py [--archive ...] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 python3 verification/street-intel/analyze_live_modes.py [--archive ...] [--since YYYY-MM-DD]
 python3 -I verification/street-intel/analyze_blind_vs_scouted.py [--archive ...] [--since YYYY-MM-DD]
+python3 verification/street-intel/verify_min_card_suggestion.py [--archive ...] [--dates D1,D2] [--minimums 0,800000] [--src DIR] [--seed FILE]
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found
@@ -90,6 +91,14 @@ deduplicated automatically.
 - **`simulate_target_selection.py`** (2026-10-04) — replays real panel
   snapshots and real stamina income against alternative selection policies
   ("big targets only", tier filters, stamina reserve, lazy scouting).
+
+- **`verify_min_card_suggestion.py`** (2026-11-08) — runs the Analytics
+  tab's real `buildStreetIntelAnalytics` (bundled from `src/` with esbuild,
+  harness `verify_min_card_suggestion.harness.ts`) on archive history as of
+  past days, for several minimums, and prints each suggested minimum card
+  value with its reason. `--src` bundles another copy of `src/` (e.g. `git
+  archive HEAD src`) to compare against an older version; `--seed` reuses
+  a history file from an earlier run. See `docs/street-intel-analytics.md`.
 
 - **`analyze_live_modes.py`** (2026-10-05) — how the 0.36.0 modes (Smart
   scouting, Smart complication choices, top 2 by payout) are doing on live

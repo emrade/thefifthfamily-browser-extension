@@ -39,12 +39,31 @@ the minimum at 90% Stamina.
 In the in-page Street Intel panel (Auto | Analytics tabs) and the popup's
 Street Intel tab. Sections:
 
-1. **Suggested minimum card value**, with Apply. The highest value (in $50k
-   steps) whose cards, averaged over the last 7 days with the board watched
-   (≥30 new cards and ≥5 attempts), add up to at least 1.1× the Stamina spent
-   per day. The extreme rule, if on, is applied — taking extreme cards under
-   $1M out of the supply lowers the suggestion for the rest. Needs 3 such
-   days. On Oct 24–30: $800k (extreme rule off).
+1. **Suggested minimum card value**, with Apply: raise, keep or lower.
+   - **Supply** (unchanged rule): over the last 7 days with the board watched
+     (≥30 new cards and ≥5 attempts; needs 3 such days), cards at or above a
+     minimum must add up to at least 1.1× the Stamina spent per day. The
+     extreme rule, if on, is applied. If the current minimum fails this, it
+     suggests lowering to the highest card value that passes.
+   - **Payoff** (since 2026-11-08): otherwise it raises only to the highest
+     card value where the cards the raise cuts (from your minimum up) paid
+     clearly less per Stamina, over the last 30 days of attempts, than the
+     cards just above the new minimum worth the same Stamina — where the
+     freed Stamina goes. "Clearly": at least 10% more *and* 2 standard
+     errors, with 30+ attempts each side. Otherwise it says keep.
+   - Candidates are the card values that really occur (midpoints), shown as
+     the roundest amount between the card cut and the card kept.
+   - Why: the old rule took the highest $50k step that passed supply and
+     assumed higher always pays. On Nov 8 it said $850k from $800k, which
+     only cut a $849,850 high-risk card paying the same per Stamina as
+     $850k–1M ($56.6k against $56.0k); a $1M+ card was affordable on the
+     board for 1 of its 72 attempts, so its Stamina wouldn't reach big cards.
+   - Checked with `verification/street-intel/verify_min_card_suggestion.py`
+     (runs the real code at past dates): from $800k it suggests $810k
+     Oct 22 – Nov 1 (cutting a $808,650 card at $43–45k against $55k per
+     Stamina) and keep Nov 3–8; from $500k or none, $825–880k; from $1M,
+     lower to $825–880k. The old code reproduces the panel's Nov 8 figures
+     (1,158 against 873, $850k).
 2. **Suggested extreme card minimum**, with Apply. For each option ($1M,
    $1.5M, $2M, $3M), over the card table's 30 days: the extreme attempts it
    would skip (worth at least the minimum card value, under the option),

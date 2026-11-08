@@ -73,6 +73,12 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+/** A card's midpoint without rounding it across a minimum: $849.85k, not $850k. */
+function cardValue(amount: number): string {
+  if (amount >= 1_000_000) return `$${Number((amount / 1_000_000).toFixed(4))}M`;
+  return `$${Number((amount / 1_000).toFixed(2))}k`;
+}
+
 function whole(n: number): string {
   return Math.round(n).toLocaleString();
 }
@@ -98,14 +104,30 @@ function renderSuggestion(a: StreetIntelAnalytics, config: CardRuleConfig): stri
   const current = config.minCardValue > 0 ? formatFloor(config.minCardValue) : 'none';
   parts.push(`<div class="ff-sia-big">${s.value > 0 ? formatFloor(s.value) : 'None'}<span class="ff-sia-current">yours: ${current}</span></div>`);
   const extreme = config.extremeMinEnabled ? ` With extreme cards needing ${formatFloor(config.extremeMinValue)}+, as you have it set.` : '';
-  parts.push(
-    s.value > 0
-      ? `<div class="ff-sia-note">Over the last ${s.days} days, cards worth ${formatFloor(s.value)}+ came to about ${whole(s.supply)} Stamina a day, and you spent about ${whole(s.spent)}. Set it higher and Stamina sits waiting for big cards that don't come often enough; lower and it goes on cards that pay less per Stamina.${extreme}</div>`
-      : `<div class="ff-sia-note">Over the last ${s.days} days the board didn't have enough big cards to use your Stamina (about ${whole(s.spent)} a day) at any minimum.${extreme}</div>`,
-  );
+  const range = (g: { from: number; to: number }) => (g.from === g.to ? cardValue(g.from) : `${cardValue(g.from)}–${cardValue(g.to)}`);
+  const perStamina = (g: { cashPerStamina: number; attempts: number }) => `${money(g.cashPerStamina)} per Stamina (${g.attempts} attempts)`;
+  const window = `your last ${a.cellDays} days`;
+  let note: string;
+  if (s.verdict === 'lower') {
+    note =
+      s.value > 0
+        ? `Over the last ${s.days} days, cards worth ${current}+ came to only about ${whole(s.currentSupply)} Stamina a day, against about ${whole(s.spent)} spent. At ${formatFloor(s.value)}+ they came to about ${whole(s.supply)}, enough to keep Stamina going on cards above the minimum.`
+        : `Over the last ${s.days} days the board didn't have enough big cards to use your Stamina (about ${whole(s.spent)} a day) at any minimum.`;
+  } else if (s.verdict === 'raise' && s.compare) {
+    note = `Over ${window}, the cards it skips (${range(s.compare.cut)}) made ${perStamina(s.compare.cut)}; the cards just above them that their Stamina would go to (${range(s.compare.next)}) made ${perStamina(s.compare.next)}. Cards worth ${formatFloor(s.value)}+ still came to about ${whole(s.supply)} Stamina a day, against about ${whole(s.spent)} spent.`;
+  } else if (s.compare) {
+    note = `Raising it would skip cards worth ${range(s.compare.cut)}, which made ${perStamina(s.compare.cut)} over ${window}. The cards just above them (${range(s.compare.next)}) made ${perStamina(s.compare.next)} — not clearly more (it needs 10% more, beyond what chance explains), so skipping them wouldn't be known to earn more.${
+      s.blockedAt ? ` Higher still, from ${formatFloor(s.blockedAt.value)}, the board wouldn't have enough cards to use your Stamina.` : ''
+    }`;
+  } else if (s.blockedAt !== null) {
+    note = `A higher minimum would leave too few cards: over the last ${s.days} days, cards worth ${formatFloor(s.blockedAt.value)}+ came to about ${whole(s.blockedAt.supply)} Stamina a day, against about ${whole(s.spent)} spent — not enough room for cards that expire or come during a cooldown.`;
+  } else {
+    note = `Not enough attempts on cards above your minimum to compare yet — each side needs 30 over ${window}.`;
+  }
+  parts.push(`<div class="ff-sia-note">${note}${extreme}</div>`);
   parts.push(
     s.value === config.minCardValue
-      ? '<div class="ff-sia-ok">Your minimum already matches.</div>'
+      ? '<div class="ff-sia-ok">Keep your minimum.</div>'
       : `<button class="ff-sia-apply" type="button" data-value="${s.value}">Apply ${s.value > 0 ? formatFloor(s.value) : 'no minimum'}</button>`,
   );
   parts.push('</div>');

@@ -18,7 +18,8 @@ Writes, from every archive combined:
   archive after this and records live traffic from there, so nothing is
   counted twice.
 
-Run: python3 verification/street-intel/build_analytics_seed.py [--archive PATH ...] [--since YYYY-MM-DD]
+Run: python3 verification/street-intel/build_analytics_seed.py [--archive PATH ...] [--since YYYY-MM-DD] [--card-days N] [--out PATH]
+(`--out` elsewhere for offline checks, e.g. verify_min_card_suggestion.py.)
 """
 
 import argparse
@@ -49,6 +50,7 @@ def main():
     add_archives_arg(parser)
     parser.add_argument("--since", default="2026-10-01", help="first game day of attempts to include")
     parser.add_argument("--card-days", type=int, default=10, help="days of board history to include")
+    parser.add_argument("--out", default=OUT, help="where to write (default: the bundled seed)")
     args = parser.parse_args()
 
     rows = load_endpoint_records(resolve_archive_paths(args), ["street_intel", "POST /actions/shops_v2.php"])
@@ -121,10 +123,10 @@ def main():
         "scoutStamina": dict(sorted(scout_stamina.items())),
         "prices": dict(sorted(prices.items())),
     }
-    with open(OUT, "w") as f:
+    with open(args.out, "w") as f:
         json.dump(seed, f, separators=(",", ":"))
     print(f"cutoff {cutoff} ({datetime.datetime.fromtimestamp(cutoff / 1000, datetime.UTC).isoformat()})")
-    print(f"{len(seed['attempts'])} attempts since {args.since}, {len(card_rows)} cards, {len(prices)} prices, {os.path.getsize(OUT):,} bytes -> {os.path.normpath(OUT)}")
+    print(f"{len(seed['attempts'])} attempts since {args.since}, {len(card_rows)} cards, {len(prices)} prices, {os.path.getsize(args.out):,} bytes -> {os.path.normpath(args.out)}")
 
 
 if __name__ == "__main__":
