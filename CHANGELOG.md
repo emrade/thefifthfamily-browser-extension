@@ -9,6 +9,30 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.61.0] - 2026-11-09
+
+### Changed
+- **The suggested minimum card value now checks whether a higher minimum earns
+  more.** Before, it took the highest $50k step at which enough cards still
+  came along to use your Stamina, assuming higher always pays. On Nov 8 that
+  said $850k from $800k, which only cut a $849,850 card paying the same per
+  Stamina as the cards just above it ($56.6k against $56.0k). Now it raises
+  only when the cards it would cut paid clearly less per Stamina over the last
+  30 days than the cards their Stamina would go to: at least 10% less, beyond
+  what chance explains, with 30+ attempts each. Otherwise it says **keep**,
+  and it still suggests **lowering** when too few cards come along at your
+  minimum. Suggested amounts sit between card values seen on the board in the
+  last week, and the Analytics tab explains each result with the numbers
+  behind it. Checked by replaying the archive through the real code at past
+  dates (`verification/street-intel/verify_min_card_suggestion.py`): from
+  $800k it says keep on every date checked (Oct 22 – Nov 8); from $500k or
+  none it raises to $700k (Oct 22) or about $850k (Nov).
+- **Go blind is a regular scouting mode now, not a test.** Nov 1-8, 468 blind
+  attempts made $92.8k per Stamina against $82.4k for scouted cards of the
+  same size in late October, with no drop in wins. The "Go blind test"
+  section is gone from the popup and the in-page panel, and the mode is
+  labeled "Go blind". It no longer keeps its blind-vs-scouted counts.
+
 ## [0.60.2] - 2026-11-07
 
 ### Fixed
