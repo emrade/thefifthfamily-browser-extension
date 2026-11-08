@@ -657,6 +657,16 @@ Don't count on a success bonus or a gold bonus from it until more attempts are
 in; expect drop value to swing a lot from week to week regardless. `StreetIntelAutoStatus.oddsCheck` keeps tracking the first; re-check at
 about 500 blind attempts.
 
+**Update (2026-11-08): test ended, Go blind kept as a regular mode.** 468
+blind attempts Nov 1-8 made $92.8k per Stamina at a 69.7% win rate, against
+$82.4k and 61.8% for scouted cards worth $800k+ in Oct 15-31 (518 attempts,
+same average card, ~$1.83M midpoint). The second half held up: Nov 5-8, 237
+attempts, $93.9k per Stamina. The success bonus is still unexplained and
+not separated from other changes, but no penalty shows. `oddsCheck` and its
+"Go blind test" display in the popup and in-page panel were removed; the
+mode is labeled "Go blind". `analyze_blind_vs_scouted.py` still answers the
+question from the archive.
+
 **Keeping it current.** `verification/street-intel/build_intel_tables.py`
 rebuilds the catalog and the condition table and re-runs the 99% check
 (refusing to write below 98%). Rerun it when `wiki.py diff intel` shows a

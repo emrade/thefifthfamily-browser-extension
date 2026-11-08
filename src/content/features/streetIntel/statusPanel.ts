@@ -168,9 +168,6 @@ const PANEL_CSS = `
 .ff-sip-meta { color: ${C.muted}; }
 .ff-sip-empty { font-size: 12px; color: ${C.muted}; line-height: 1.5; }
 
-.ff-sip-test { margin-top: 14px; padding-top: 12px; border-top: 1px solid ${C.line}; font-size: 12px; line-height: 1.5; color: ${C.text}; }
-.ff-sip-test-row { display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }
-.ff-sip-test-note { margin-top: 4px; font-size: 11px; color: ${C.muted}; }
 
 #${CONTAINER_ID} .ff-sip-run {
   display: block !important; width: 100% !important; margin: 18px 0 0 !important; padding: 9px 12px !important;
@@ -343,18 +340,6 @@ function renderOverview(): string {
       </div>`);
   } else {
     parts.push('<div class="ff-sip-empty">No attempts yet.</div>');
-  }
-
-  const check = status?.oddsCheck;
-  if (config.scoutMode === 'blind' || (check && check.blind.attempts > 0)) {
-    const line = (s: number, e: number) => `${s} of ${e.toFixed(1)} expected${e > 0 ? ` (${Math.round((s / e) * 100)}%)` : ''}`;
-    parts.push(`
-      <div class="ff-sip-test">
-        <div class="ff-sip-section-title" style="margin-top:0">Go blind test</div>
-        <div class="ff-sip-test-row"><span>Blind · ${check?.blind.attempts ?? 0}</span><span>${check ? line(check.blind.successes, check.blind.expected) : '—'}</span></div>
-        <div class="ff-sip-test-row"><span>Scouted · ${check?.scouted.attempts ?? 0}</span><span>${check ? line(check.scouted.successes, check.scouted.expected) : '—'}</span></div>
-        <div class="ff-sip-test-note">Successes against the odds worked out before scouting. A couple of hundred blind attempts are needed before a small difference means anything.</div>
-      </div>`);
   }
 
   return parts.join('');

@@ -34,11 +34,6 @@ function modeTallyLabel(key: string): string {
   return `${SCOUT_MODE_LABEL[scout] ?? scout} · ${COMPLICATION_MODE_LABEL[complication] ?? complication}${flags.includes('big') ? ' · card minimum' : ''}`;
 }
 
-/** "15 of 15.9 expected (94%)" — how attempts landed against their odds. */
-function oddsCheckLine(successes: number, expected: number): string {
-  return `${successes} of ${expected.toFixed(1)} expected${expected > 0 ? ` (${Math.round((successes / expected) * 100)}%)` : ''}`;
-}
-
 function riskLabel(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
@@ -351,22 +346,6 @@ export function StreetIntelAutoHome() {
 
       {waitingLine && <div class="ff-auto-row">{waitingLine}</div>}
 
-      {status?.oddsCheck && status.oddsCheck.blind.attempts > 0 && (
-        <>
-          <div class="ff-field__hint">
-            Do blind attempts land as often as scouted ones? Both are judged by the same odds worked out before scouting,
-            since {new Date(status.oddsCheck.since).toLocaleDateString()}. A success is a Success or Critical Success; it
-            takes a couple of hundred blind attempts before a small difference means anything.
-          </div>
-          <div class="ff-auto-row">
-            Blind: {status.oddsCheck.blind.attempts} attempts · {oddsCheckLine(status.oddsCheck.blind.successes, status.oddsCheck.blind.expected)}
-          </div>
-          <div class="ff-auto-row">
-            Scouted: {status.oddsCheck.scouted.attempts} attempts · {oddsCheckLine(status.oddsCheck.scouted.successes, status.oddsCheck.scouted.expected)}
-            {status.oddsCheck.scouted.attempts > 0 && ` · game showed ${status.oddsCheck.scouted.shown.toFixed(1)}`}
-          </div>
-        </>
-      )}
 
 
       {!status?.lastAttempt && !nextRunAt && <div class="ff-empty">No attempts run yet.</div>}

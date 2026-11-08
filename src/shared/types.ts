@@ -946,12 +946,12 @@ export interface StreetIntelAutoConfig {
    *  that can't be predicted falls back to the bound. Replayed for October
    *  (verification/street-intel/simulate_scout_modes.py): $41.32M/day vs
    *  smart $41.21M, 43.7 vs 45.3 scout Stamina.
-   *  'blind' (test): no scout — attempts the best-EV card whose predicted
+   *  'blind': no scout — attempts the best-EV card whose predicted
    *  odds clear `minSuccessPct`, sending the game's own Go Blind request
    *  (`scouted=0`, otherwise identical). When no card can be predicted or
-   *  none clears, that cycle runs as 'exact'. Exists to find out whether a
-   *  blind attempt rolls at the same odds: see
-   *  `StreetIntelAutoStatus.oddsCheck`. */
+   *  none clears, that cycle runs as 'exact'. Blind attempts were found to
+   *  land at least as often as scouted ones (docs/street-intel-plan.md,
+   *  "Go blind: first live results"). */
   scoutMode: StreetIntelScoutMode;
   /** 'reuse' (default): reuse the attempt's own approach, `steel_yourself`
    *  falling back to the best overall fallback win rate — the original
@@ -999,27 +999,6 @@ export interface StreetIntelModeTally {
   cashLost: number;
   complications: number;
   complicationWins: number;
-}
-
-/** One side of `StreetIntelOddsCheck`. `expected` is the sum of predicted
- *  odds (as fractions), so `successes / expected` near 1 means attempts land
- *  as predicted. */
-export interface StreetIntelOddsCheckBucket {
-  attempts: number;
-  expected: number;
-  successes: number;
-}
-
-/** Whether going blind changes the roll. Every automated attempt whose card
- *  could be predicted before scouting is counted, blind or scouted, against
- *  the same prediction — so the two are compared like for like. `shown` sums
- *  the game's own scouted odds for the scouted side (they run ~4% above real
- *  results on their own: 1,193 vs 1,247 expected over 1,663 attempts). A
- *  success is a Success or Critical Success. */
-export interface StreetIntelOddsCheck {
-  since: number;
-  blind: StreetIntelOddsCheckBucket;
-  scouted: StreetIntelOddsCheckBucket & { shown: number };
 }
 
 /** What one automated attempt (+ its complication, if one came up) actually
@@ -1206,9 +1185,6 @@ export interface StreetIntelAutoStatus {
   /** Keyed `${scoutMode}+${complicationMode}` — see `StreetIntelModeTally`.
    *  Optional for pre-existing statuses. */
   modeTallies?: Record<string, StreetIntelModeTally>;
-  /** Blind vs scouted, judged by the same pre-scout prediction — see
-   *  `StreetIntelOddsCheck`. Optional for pre-existing statuses. */
-  oddsCheck?: StreetIntelOddsCheck;
   /** Why the last check didn't attempt anything; null after an attempt.
    *  Optional for pre-existing statuses. */
   waiting?: StreetIntelAutoWaiting | null;

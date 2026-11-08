@@ -32,7 +32,6 @@ import type {
   StreetIntelAutoStatus,
   StreetIntelAutoWaiting,
   StreetIntelModeTally,
-  StreetIntelOddsCheck,
 } from '@/shared/types';
 import { runQueued } from '../../automationQueue';
 
@@ -173,41 +172,6 @@ function bumpModeTally(
   const next = { ...prior };
   for (const [field, value] of Object.entries(delta) as [keyof typeof delta, number][]) next[field] += value;
   return { ...base, [key]: next };
-}
-
-/** Folds one attempt into `StreetIntelOddsCheck`. Counted only when the card
- *  had a pre-scout prediction for the approach actually used (`predictedPct`),
- *  so blind and scouted are judged by the same yardstick; the scouted side
- *  also needs the game's own shown odds (`shownPct`). */
-function bumpOddsCheck(
-  prev: StreetIntelOddsCheck | undefined,
-  blind: boolean,
-  predictedPct: number | null,
-  shownPct: number | null,
-  outcomeBand: string,
-): StreetIntelOddsCheck {
-  const check: StreetIntelOddsCheck = prev ?? {
-    since: Date.now(),
-    blind: { attempts: 0, expected: 0, successes: 0 },
-    scouted: { attempts: 0, expected: 0, successes: 0, shown: 0 },
-  };
-  if (predictedPct === null || (!blind && shownPct === null)) return check;
-  const success = outcomeBand === 'success' || outcomeBand === 'critical_success' ? 1 : 0;
-  if (blind) {
-    return {
-      ...check,
-      blind: { attempts: check.blind.attempts + 1, expected: check.blind.expected + predictedPct / 100, successes: check.blind.successes + success },
-    };
-  }
-  return {
-    ...check,
-    scouted: {
-      attempts: check.scouted.attempts + 1,
-      expected: check.scouted.expected + predictedPct / 100,
-      successes: check.scouted.successes + success,
-      shown: check.scouted.shown + shownPct! / 100,
-    },
-  };
 }
 
 async function pause(message: string): Promise<void> {
@@ -765,9 +729,8 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   // those modes behave like 'revealed'/'topPayout' for this cycle (see
   // `findScoutedCandidate`'s doc comment).
   // Also what pre-scout predictions are made from (with the player's own
-  // Street Intel modifiers, kept current by ./playerMods.ts). Predictions are
-  // always worked out, for `oddsCheck`'s record, but only 'exact' and 'blind'
-  // decide anything with them.
+  // Street Intel modifiers, kept current by ./playerMods.ts). Only 'exact' and
+  // 'blind' decide anything with them.
   const rawStats = await storage.getLatestStats();
   const playerMods = await storage.getStreetIntelPlayerMods();
   rememberBoard(panel.opportunities);
@@ -983,13 +946,6 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       complicationTypeStats,
       lastCycleSkipped: skipped,
       waiting: null,
-      oddsCheck: bumpOddsCheck(
-        previousStatus?.oddsCheck,
-        blind !== null,
-        predicted.get(choice.opportunity.id)?.key === choice.approach ? predicted.get(choice.opportunity.id)!.pct : null,
-        choice.pctSource === 'real' ? choice.estimatePct : null,
-        String(attemptResp.outcome_band ?? ''),
-      ),
       modeTallies: bumpModeTally(cycleTallies, tallyKey, {
         attempts: 1,
         attemptStamina: choice.opportunity.staminaCost,
