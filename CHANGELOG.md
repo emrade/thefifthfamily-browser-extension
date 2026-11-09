@@ -9,6 +9,28 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.64.0] - 2026-11-09
+
+### Added
+- **Stats → Advisor → Pet: real pet stats.** The game only shows a pet's stats while
+  it's the active one, so the extension now remembers each pet's real stats (training
+  and growth included) whenever it reads your Menagerie Care tab, and the advisor uses
+  them instead of the wiki's base stats. Each pet row says which it shows.
+- **Read all pets' stats.** One button sets each pet active for a few seconds (a random
+  4-7 s apart), reads its real stats, and puts your active pet back, also after Stop or
+  an error. Spends nothing.
+- **Pet points planner.** Choose per pet how to spend its stat points (best combat stat,
+  even split, or one stat), set several at once, see each pet's next courier milestone
+  and what the spend adds in combat, then confirm. Every point counts toward courier
+  milestones whatever the stat. Spends at most 6 points per request, like your own
+  clicks, and never more than a pet has.
+- **"Plan point spending for all pets"** on the in-game Menagerie Assistant panel opens
+  the planner on the Dashboard.
+
+### Changed
+- Pet Couriers skip their turn while the Stats page is switching pets (the active pet
+  can't do courier runs), and a pet run won't start during a courier run.
+
 ## [0.63.0] - 2026-11-09
 
 ### Added
