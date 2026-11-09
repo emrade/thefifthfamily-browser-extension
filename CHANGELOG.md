@@ -9,6 +9,29 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.63.0] - 2026-11-09
+
+### Added
+- **Dashboard → Stats.** Where each of your four combat stats comes from, read from
+  the game's own pages: the Gym's totals, your trained stats, every equipped item (forge
+  levels included), your car, your active pet, V2 Vigilantes, and what your percentage
+  bonuses add on top. Each stat card shows what it buys right now (block, dodge or crit
+  chance, and how many points to the next %), the Arena's locked value for the season,
+  and a bar with its parts written out. The percentage bonuses are listed by origin
+  (Bloodline, Career, Academy, Family, Vault, Estate) from the Arena's season lock-in.
+  A Refresh button reads the Gym, Inventory, Menagerie, Chop Shop, Academy, Bloodline
+  and Careers pages once; the page also updates whenever you open them in the game.
+- **Stats → Advisor**, in three tabs, each opening with a one-line verdict:
+  - **Car:** every car you own or can buy, ranked by what it would add after your
+    bonuses, with racing stats beside each and a warning on cars missing parts.
+  - **Pet:** your pets ranked against the active one (base stats from the game's
+    wiki), pets you could buy, and where to put the active pet's spare stat points.
+  - **Bonuses:** the next Academy course in each combat lane (cost and time), Bloodline
+    tiers you can take or that unlock with your level, and Career rank rewards, sortable
+    by fewest shifts or biggest gain.
+  Gains are estimates; fight-only bonuses (damage, block, crit damage) are marked as
+  such.
+
 ## [0.62.0] - 2026-11-09
 
 ### Added
