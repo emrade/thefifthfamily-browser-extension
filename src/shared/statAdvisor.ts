@@ -125,7 +125,8 @@ export function parseEffects(text: string): Effect[] {
     else if (/^all pet stats?$/.test(l)) out.push({ kind: 'stat', target: 'pet', stats: [...STAT_KEYS], pct, label: label.trim() });
     else if ((g = /^gear (str|def|agi|dex)$/.exec(l))) out.push({ kind: 'stat', target: 'gear', stats: [STAT_WORD[g[1]]], pct, label: label.trim() });
     else if ((g = /^pet (str|def|agi|dex)$/.exec(l))) out.push({ kind: 'stat', target: 'pet', stats: [STAT_WORD[g[1]]], pct, label: label.trim() });
-    else if (FIGHT_WORDS.test(l)) out.push({ kind: 'fight', pct, label: label.trim() });
+    // "Vitality Regen" is health over time, not a fight bonus.
+    else if (FIGHT_WORDS.test(l) && !/regen/.test(l)) out.push({ kind: 'fight', pct, label: label.trim() });
   }
   return out;
 }
@@ -172,6 +173,9 @@ export interface Gain {
   /** Careers only: the reward comes with your next rank there, so its
    *  shift count is known. Later ranks' thresholds aren't shown by the game. */
   nextRank?: boolean;
+  /** Careers only: shifts still needed, when the reward comes with the next
+   *  rank (null when it's further away: those thresholds aren't shown). */
+  shiftsLeft?: number | null;
 }
 
 const money = (v: number) => (v >= 1e6 ? `$${Number((v / 1e6).toFixed(1))}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}k` : `$${v}`);
@@ -271,6 +275,7 @@ export function bonusGains(src: StatSources, b: Breakdown): Gain[] {
             : `Rank ${reward.rank}, you're rank ${rankNow} (${job.rankName})`,
       cost: null,
       nextRank: !tooLow && !!isNext,
+      shiftsLeft: !tooLow && isNext ? Math.max(0, job.next!.need - job.next!.done) : null,
     });
   }
 
@@ -278,6 +283,27 @@ export function bonusGains(src: StatSources, b: Breakdown): Gain[] {
   return gains.sort(
     (x, y) => order[x.status] - order[y.status] || Number(!!y.nextRank) - Number(!!x.nextRank) || (y.power ?? -1) - (x.power ?? -1),
   );
+}
+
+export type CareerSort = 'shifts' | 'gain';
+
+/** Careers in the order the player picked. Jobs above their level go last
+ *  either way (they can't be worked yet). "shifts": known shift counts
+ *  first, fewest first; rewards at later ranks (count not shown by the game)
+ *  after them, biggest first. "gain": biggest estimated power first. */
+export function sortCareers(gains: Gain[], by: CareerSort): Gain[] {
+  const locked = (g: Gain) => (g.status === 'later' ? 1 : 0);
+  const power = (g: Gain) => g.power ?? -1;
+  return [...gains].sort((x, y) => {
+    if (locked(x) !== locked(y)) return locked(x) - locked(y);
+    if (by === 'gain') return power(y) - power(x) || (x.shiftsLeft ?? 1e9) - (y.shiftsLeft ?? 1e9);
+    const xs = x.shiftsLeft ?? null;
+    const ys = y.shiftsLeft ?? null;
+    if (xs !== null && ys !== null) return xs - ys || power(y) - power(x);
+    if (xs !== null) return -1;
+    if (ys !== null) return 1;
+    return power(y) - power(x);
+  });
 }
 
 // ── Pets ───────────────────────────────────────────────────────────────

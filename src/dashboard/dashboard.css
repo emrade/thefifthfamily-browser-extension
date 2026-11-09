@@ -573,3 +573,15 @@ html, body {
 .st-gain__status--later { color: var(--ff-ink-faint); }
 .st-choices { list-style: none; margin-top: 8px; padding: 6px 10px; border-left: 2px solid var(--ff-border-strong); }
 .st-choices li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; color: var(--ff-ink-muted); }
+
+/* Group header with controls on the right (Careers sort) */
+.st-group__head { justify-content: space-between; align-items: flex-end; gap: 10px 16px; }
+.st-group__text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; min-width: 0; flex: 1 1 320px; }
+.st-seg-switch { display: inline-flex; padding: 3px; gap: 2px; background: var(--ff-bg); border: 1px solid var(--ff-border-strong); border-radius: 999px; flex-shrink: 0; }
+.st-seg-switch button {
+  padding: 5px 12px; font: 600 12.5px var(--font-body); color: var(--ff-ink-muted);
+  background: none; border: none; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.st-seg-switch button:hover { color: var(--ff-ink); }
+.st-seg-switch button.is-on { color: var(--ff-bg); background: var(--ff-gold); }
+.st-seg-switch button:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 1px; }

@@ -16,7 +16,7 @@ import {
   type StatSources,
 } from '@/shared/statBreakdown';
 import type { StatRefreshResult } from '@/background/features/statSources';
-import { bonusGains, bonusRates, petOptions, vehicleOptions, type Gain, type GainStatus, type PetOption, type VehicleOption } from '@/shared/statAdvisor';
+import { bonusGains, bonusRates, petOptions, sortCareers, vehicleOptions, type CareerSort, type Gain, type GainStatus, type PetOption, type VehicleOption } from '@/shared/statAdvisor';
 
 /**
  * Dashboard → Stats: where each of the four combat stats comes from, read
@@ -830,14 +830,31 @@ function GainRow({ g }: { g: Gain }) {
   );
 }
 
-function GainGroup({ title, note, gains, limit, empty }: { title: string; note: string; gains: Gain[]; limit?: number; empty: ComponentChildren }) {
+function GainGroup({
+  title,
+  note,
+  gains,
+  limit,
+  empty,
+  controls,
+}: {
+  title: string;
+  note: string;
+  gains: Gain[];
+  limit?: number;
+  empty: ComponentChildren;
+  controls?: ComponentChildren;
+}) {
   const [all, setAll] = useState(false);
   const shown = limit && !all ? gains.slice(0, limit) : gains;
   return (
     <section class="st-group">
       <header class="st-group__head">
-        <h3 class="st-group__title">{title}</h3>
-        <p class="st-group__note">{note}</p>
+        <div class="st-group__text">
+          <h3 class="st-group__title">{title}</h3>
+          <p class="st-group__note">{note}</p>
+        </div>
+        {controls}
       </header>
       {gains.length === 0 ? (
         <p class="db-empty">{empty}</p>
@@ -857,7 +874,46 @@ function GainGroup({ title, note, gains, limit, empty }: { title: string; note: 
   );
 }
 
+const CAREER_SORT_KEY = 'ff-stats-career-sort';
+
+/** Sort switch for the Careers list; the choice is remembered per browser. */
+function useCareerSort(): [CareerSort, (s: CareerSort) => void] {
+  const [sort, setSort] = useState<CareerSort>(() => {
+    try {
+      return localStorage.getItem(CAREER_SORT_KEY) === 'gain' ? 'gain' : 'shifts';
+    } catch {
+      return 'shifts';
+    }
+  });
+  const pick = (v: CareerSort) => {
+    setSort(v);
+    try {
+      localStorage.setItem(CAREER_SORT_KEY, v);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
+  return [sort, pick];
+}
+
+function SortSwitch({ value, onChange }: { value: CareerSort; onChange: (v: CareerSort) => void }) {
+  const opts: { id: CareerSort; label: string }[] = [
+    { id: 'shifts', label: 'Fewest shifts' },
+    { id: 'gain', label: 'Biggest gain' },
+  ];
+  return (
+    <div class="st-seg-switch" role="radiogroup" aria-label="Sort careers by">
+      {opts.map((o) => (
+        <button key={o.id} type="button" role="radio" aria-checked={value === o.id} class={value === o.id ? 'is-on' : ''} onClick={() => onChange(o.id)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function BonusAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
+  const [careerSort, setCareerSort] = useCareerSort();
   if (!src.academy && !src.bloodline && !src.careers) return <NeedsSource what="the Academy, Bloodline and Careers pages" />;
   const gains = bonusGains(src, b);
   const by = (source: Gain['source']) => gains.filter((g) => g.source === source);
@@ -892,8 +948,13 @@ function BonusAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
         />
         <GainGroup
           title="Careers"
-          note="Combat rewards from career ranks. Ones that come with your next rank (shift count known) are listed first."
-          gains={by('Career')}
+          note={
+            careerSort === 'shifts'
+              ? 'Combat rewards from career ranks, fewest shifts first. The game only shows the count to your next rank, so rewards further up come after.'
+              : 'Combat rewards from career ranks, biggest gain first.'
+          }
+          controls={<SortSwitch value={careerSort} onChange={setCareerSort} />}
+          gains={sortCareers(by('Career'), careerSort)}
           limit={CAREER_ROWS}
           empty={src.careers ? 'No combat rewards left in your careers.' : 'Open the Careers page or press Refresh.'}
         />
