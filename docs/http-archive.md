@@ -263,6 +263,12 @@ export never deserializes a row body.
 Archive exports are gzipped **NDJSON** — one JSON object per line. Line 1 is a header
 recording the filter that produced the file; every subsequent line is one request.
 
+Since 0.62.0 the header also carries `stopLog`: every time an automation switched itself
+off, as `{at, feature, message}` (`src/shared/stopLog.ts`). It's the whole log, not just
+the export's span, because a feature's own stop message is erased when the player switches
+it back on. `scripts/merge-archives.py` keeps it, each monthly file holding that month's
+entries.
+
 NDJSON rather than a single JSON array for two reasons that both matter at this size: it
 can be produced incrementally, so an export never holds the whole decompressed archive in
 memory, and it can be *consumed* incrementally.

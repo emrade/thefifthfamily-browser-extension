@@ -56,6 +56,9 @@ Gzipped NDJSON. **Line 1 is a header**, every other line one request:
 - Merged headers: `rows`, `oldestTimestamp`/`newestTimestamp`, `repeatsDropped`, and
   `coverage` — the spans full exports vouched for. Raw export headers: `archiveStats`
   (archive-wide), `filter` (incl. `afterId`/`gapBefore` for incremental ones).
+- `stopLog` (headers since 0.62.0, both kinds): when and why an automation switched itself
+  off, `{at, feature, message}`. Check it first for "why did X stop?" — the requests alone
+  show *when* it went quiet, not why.
 
 ## Caveats that change answers
 

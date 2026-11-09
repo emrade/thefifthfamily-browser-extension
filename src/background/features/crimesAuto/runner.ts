@@ -2,7 +2,8 @@ import { ALARM_NAMES, CRIMES_AUTO_FALLBACK_INTERVAL_MS, CRIMES_AUTO_IMMEDIATE_CH
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
-import { loggedFetch } from '@/shared/requestLog/loggedFetch';
+import { recordStop } from '@/shared/stopLog';
+import { isNetworkFailure, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, blockedRecheckAt, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { parseCrimesCatalog } from './crimesPanelParser';
@@ -44,6 +45,18 @@ function scheduleRetry(): void {
   scheduleAt(Date.now() + CRIMES_AUTO_RETRY_DELAY_MS);
 }
 
+/** `fetchLiveStatus`, but a lost connection or timeout reads as "couldn't
+ *  read it" (null) instead of throwing out of the cycle, which used to leave
+ *  nothing scheduled and the runner silently idle. */
+async function readLiveStatus(): Promise<LiveStatus | null> {
+  try {
+    return await fetchLiveStatus();
+  } catch (err) {
+    if (isNetworkFailure(err)) return null;
+    throw err;
+  }
+}
+
 /**
  * Exact moment Nerve should reach `needed`, computed from `stats.php`'s own
  * `timers.nerve` (seconds to the *next* point) and `regen_rates.nerve`
@@ -83,6 +96,7 @@ export function onConfigChanged(config: CrimesAutoConfig): void {
  *  doesn't know how to react to), never for an ordinary "not ready yet"
  *  condition. Mirrors `careerAuto/runner.ts`'s own `pause`. */
 async function pause(message: string): Promise<void> {
+  await recordStop('crimes-auto', message);
   const config = await storage.getCrimesAutoConfig();
   await storage.setCrimesAutoConfig({ ...config, enabled: false });
 
@@ -119,6 +133,7 @@ async function withdrawShortfall(neededCash: number, cashOnHand: number): Promis
     if (resp?.ok === true) return { ok: true, withdrawn: shortfall };
     return { ok: false, message: typeof resp?.error === 'string' ? resp.error : 'Withdrawal was rejected.' };
   } catch (err) {
+    if (isNetworkFailure(err)) throw err; // payBribe reports it as transient
     return { ok: false, message: err instanceof SystemicActionError ? err.message : String(err) };
   }
 }
@@ -147,7 +162,9 @@ async function payBail(cashBefore: number): Promise<MoneyActionResult> {
     }
     return { kind: 'rejected', message: typeof resp?.error === 'string' ? resp.error : 'Bail request was rejected.' };
   } catch (err) {
-    if (err instanceof SystemicActionError && err.kind === 'status-blocked') return { kind: 'blocked' };
+    // Jailed/hospitalized right now, or no answer at all (lost connection,
+    // timeout): both pass, so the caller tries again later.
+    if ((err instanceof SystemicActionError && err.kind === 'status-blocked') || isNetworkFailure(err)) return { kind: 'blocked' };
     return { kind: 'error', message: err instanceof SystemicActionError ? err.message : String(err) };
   }
 }
@@ -183,7 +200,9 @@ async function payBribe(cashBefore: number): Promise<MoneyActionResult> {
     }
     return { kind: 'rejected', message: typeof resp?.error === 'string' ? resp.error : 'Bribe request was rejected.' };
   } catch (err) {
-    if (err instanceof SystemicActionError && err.kind === 'status-blocked') return { kind: 'blocked' };
+    // Jailed/hospitalized right now, or no answer at all (lost connection,
+    // timeout): both pass, so the caller tries again later.
+    if ((err instanceof SystemicActionError && err.kind === 'status-blocked') || isNetworkFailure(err)) return { kind: 'blocked' };
     return { kind: 'error', message: err instanceof SystemicActionError ? err.message : String(err) };
   }
 }
@@ -215,7 +234,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   const config = await storage.getCrimesAutoConfig();
   if (!config.enabled && !force) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
 
-  const liveStatus = await fetchLiveStatus();
+  const liveStatus = await readLiveStatus();
   if (!liveStatus) {
     scheduleFallback(); // couldn't read live state — try again on the fallback cadence rather than going dormant
     return;
@@ -272,6 +291,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
     await storage.setCrimesAutoConfig({ ...config, enabled: false });
     const status = await getStatus();
     await storage.setCrimesAutoStatus({ ...status, districtMasteredAt: Date.now(), pausedReason: null, pausedMessage: null, pausedAt: null });
+    await recordStop('crimes-auto', 'Every crime in this district is Mastered.');
     chrome.alarms.clear(ALARM_NAMES.CRIMES_AUTO);
     await notify('crimesAutoDistrictMastered', {
       type: 'basic',
@@ -305,7 +325,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       // A race between the pre-flight gate above and this call — e.g.
       // hospitalized mid-cycle by something unrelated. Re-read live state
       // rather than guess which status it was.
-      const freshStatus = await fetchLiveStatus();
+      const freshStatus = await readLiveStatus();
       if (freshStatus?.jailed) {
         const result = await payBail(freshStatus.cash);
         if (result.kind === 'ok') {
@@ -314,6 +334,17 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
         }
       }
       scheduleAt(blockedRecheckAt(freshStatus, CRIMES_AUTO_FALLBACK_INTERVAL_MS));
+      return;
+    }
+    // No answer from the game (the connection dropped, or the computer went
+    // back to sleep mid-request while closed): not a sign anything changed,
+    // so try again later instead of switching off. If the crime did go
+    // through, the retry just commits the next one; it only spends Nerve.
+    // Confirmed real: 2026-11-09 04:57 UTC a commit never reached the game
+    // and this used to pause the runner for the rest of the night.
+    if (isNetworkFailure(err)) {
+      console.warn(LOG_PREFIX, 'crimes auto-runner commit got no answer, trying again later', err);
+      scheduleFallback();
       return;
     }
     // A repeated rejection is a well-formed response the game kept giving,

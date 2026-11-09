@@ -773,6 +773,16 @@ export interface AutomationQueueLogEntry {
   tookOverStale?: AutomationQueueFeature;
 }
 
+/** One time an automation switched itself off (or paused itself) without
+ *  the player asking, kept so the reason survives switching it back on.
+ *  Written by `shared/stopLog.ts`; shown on Dashboard → Automations and
+ *  copied into every HTTP-archive export header (`stopLog`). */
+export interface AutomationStopLogEntry {
+  at: number;
+  feature: AutomationQueueFeature;
+  message: string;
+}
+
 /**
  * One job listed on the Careers panel, as read from the live page — see
  * `careersPanelParser.ts`. `otEnergyCost`/`otAvailable` reflect a real quirk

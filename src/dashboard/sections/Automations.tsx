@@ -4,7 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { AUTOMATION_FEATURE_LABELS } from '@/shared/automationLabels';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationScheduleSnapshot } from '@/shared/types';
+import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationScheduleSnapshot, AutomationStopLogEntry } from '@/shared/types';
 
 /**
  * Dashboard → Automations: what the background automations are doing and,
@@ -14,6 +14,7 @@ import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationSchedul
 
 const SCHEDULE_REFRESH_MS = 2_000;
 const RECENT_ROWS = 60;
+const STOP_ROWS = 100;
 const HOUR_MS = 3_600_000;
 
 /** The game day starts 23:00 UTC (player midnight, WAT). */
@@ -88,6 +89,59 @@ function useQueueLog(): AutomationQueueLogEntry[] {
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
   return log;
+}
+
+function useStopLog(): AutomationStopLogEntry[] {
+  const [log, setLog] = useState<AutomationStopLogEntry[]>([]);
+  useEffect(() => {
+    storage.getAutomationStopLog().then(setLog);
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && STORAGE_KEYS.AUTOMATION_STOP_LOG in changes) {
+        setLog((changes[STORAGE_KEYS.AUTOMATION_STOP_LOG].newValue as AutomationStopLogEntry[] | undefined) ?? []);
+      }
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
+  return log;
+}
+
+function dateTime(at: number): string {
+  return new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+/** Every time an automation switched itself off, with the reason — kept
+ *  after it's switched back on (see shared/stopLog.ts). */
+function Stops({ log }: { log: AutomationStopLogEntry[] }) {
+  const rows = log.slice(-STOP_ROWS).reverse();
+  return (
+    <section class="db-card db-card--wide">
+      <h2 class="db-h">Stopped by itself</h2>
+      {rows.length === 0 ? (
+        <p class="db-empty">No automation has switched itself off since this list started.</p>
+      ) : (
+        <table class="db-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Automation</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((e, i) => (
+              <tr key={`${e.at}-${i}`}>
+                <td class="db-mono">{dateTime(e.at)}</td>
+                <td>{AUTOMATION_FEATURE_LABELS[e.feature] ?? e.feature}</td>
+                <td>{e.message}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p class="db-note">Kept after you switch it back on. Your own switch-offs aren't listed. Also saved in every HTTP Archive download.</p>
+    </section>
+  );
 }
 
 /** Ticks once a second so "in 2m 10s" counts down between refreshes. */
@@ -218,6 +272,7 @@ function Recent({ log }: { log: AutomationQueueLogEntry[] }) {
 export function AutomationsSection() {
   const snap = useSchedule();
   const log = useQueueLog();
+  const stops = useStopLog();
   const now = useNow();
 
   if (!snap) return <p class="db-empty">Loading…</p>;
@@ -227,6 +282,7 @@ export function AutomationsSection() {
       <div class="db-grid">
         <ComingUp snap={snap} now={now} />
         <TodayStats log={log} now={now} />
+        <Stops log={stops} />
         <Recent log={log} />
       </div>
     </>

@@ -12,6 +12,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
+import { recordStop } from '@/shared/stopLog';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { goldRunHoldsStamina } from '../goldRun';
 import { SystemicActionError, depositCashOnHand, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
@@ -175,6 +176,7 @@ function bumpModeTally(
 }
 
 async function pause(message: string): Promise<void> {
+  await recordStop('street-intel', message);
   const config = await storage.getStreetIntelAutoConfig();
   await storage.setStreetIntelAutoConfig({ ...config, enabled: false });
 

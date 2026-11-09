@@ -42,6 +42,21 @@ export function isRequestTimeout(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'TimeoutError';
 }
 
+/** True when a request never got an answer: it timed out (see
+ *  `REQUEST_TIMEOUT_MS`) or the connection failed outright. `fetch` rejects
+ *  with a `TypeError` for the latter ("NetworkError when attempting to fetch
+ *  resource." in Firefox, "Failed to fetch" in Chrome); matched by message so
+ *  a `TypeError` from a bug in our own code isn't mistaken for one.
+ *
+ *  Typical cause: the computer going back to sleep mid-request while closed.
+ *  On 2026-11-09 04:57 UTC a Crimes Auto commit was lost that way (the game
+ *  never received it: no Nerve was spent) and the runner switched itself off
+ *  for the rest of the night. Callers treat this as "try again later". */
+export function isNetworkFailure(err: unknown): boolean {
+  if (isRequestTimeout(err)) return true;
+  return err instanceof TypeError && /networkerror|failed to fetch|load failed|network connection/i.test(err.message);
+}
+
 export async function loggedFetch(url: string, init?: RequestInit): Promise<Response> {
   const startedAt = Date.now();
   const response = await fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS) });

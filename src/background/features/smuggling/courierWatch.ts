@@ -2,6 +2,7 @@ import { ALARM_NAMES, COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS, COURIER_DEST_POLL_B
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
+import { recordStop } from '@/shared/stopLog';
 import { getRoster } from '@/shared/petRoster';
 import { SystemicActionError, blockedRecheckAt, fetchLiveStatus } from '../../gameAction';
 import { REQUEST_TIMEOUT_MS, isRequestTimeout } from '@/shared/requestLog/loggedFetch';
@@ -324,6 +325,7 @@ async function noteTimeout(alarmName: string): Promise<boolean> {
  *  misrepresent that as still-active. Mirrors `careerAuto/runner.ts`'s and
  *  `streetIntel/actionRunner.ts`'s `pause()`. */
 async function disableAutoWatch(message: string): Promise<void> {
+  await recordStop('pet-courier', message);
   // Saved first, so the panels already have the reason when the config
   // change below makes them re-render as paused.
   await storage.setCourierWatchState({ ...(await storage.getCourierWatchState()), pausedMessage: message, pausedAt: Date.now() });

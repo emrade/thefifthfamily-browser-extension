@@ -4,6 +4,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { db } from '@/shared/db';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
+import { recordStop } from '@/shared/stopLog';
 import type { StockPricePoint, StockRumorRecord } from '@/shared/types';
 import { runQueued, skipIfQueueBusy } from '../../automationQueue';
 
@@ -238,6 +239,7 @@ export async function pollNow(): Promise<void> {
  *  guarded against ever happening again on its own. */
 async function pause(message: string): Promise<void> {
   console.error(LOG_PREFIX, 'stock market tracker pausing —', message);
+  await recordStop('stock-market', message);
   await storage.setStockMarketPollStatus({ lastPollAt: (await storage.getStockMarketPollStatus()).lastPollAt, lastError: message, paused: true });
   await notify('stockMarketTrackerPaused', {
     type: 'basic',

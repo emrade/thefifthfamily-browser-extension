@@ -10,6 +10,7 @@ import {
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
+import { recordStop } from '@/shared/stopLog';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { hoursSinceCollected } from '@/shared/realEstateVaults';
 import { SystemicActionError, blockedRecheckAt, depositCashOnHand, fetchLiveStatus, postAction } from '../../gameAction';
@@ -92,6 +93,7 @@ function dueAt(vaults: RealEstateVaultState['vaults'], intervalHours: number): n
 class UnexpectedResponse extends Error {}
 
 async function pause(status: RealEstateAutoStatus, message: string): Promise<void> {
+  await recordStop('real-estate-auto', message);
   const config = await storage.getRealEstateAutoConfig();
   await storage.setRealEstateAutoConfig({ ...config, enabled: false });
   chrome.alarms.clear(ALARM_NAMES.REAL_ESTATE_AUTO);

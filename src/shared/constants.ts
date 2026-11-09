@@ -52,6 +52,7 @@ export const STORAGE_KEYS = {
   STALE_GAME_TABS: 'ff_stale_game_tabs',
   AUTOMATION_QUEUE_CONFIG: 'ff_automation_queue_config',
   AUTOMATION_QUEUE_LOG: 'ff_automation_queue_log',
+  AUTOMATION_STOP_LOG: 'ff_automation_stop_log',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack

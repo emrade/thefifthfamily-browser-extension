@@ -1,6 +1,7 @@
 import type {
   AutomationQueueConfig,
   AutomationQueueLogEntry,
+  AutomationStopLogEntry,
   StaleGameTabs,
   StreetIntelAnalyticsSeedState,
   RealEstateVaultState,
@@ -363,6 +364,9 @@ export const storage = {
 
   getAutomationQueueLog: () => get<AutomationQueueLogEntry[]>(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, []),
   setAutomationQueueLog: (v: AutomationQueueLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, v),
+
+  getAutomationStopLog: () => get<AutomationStopLogEntry[]>(STORAGE_KEYS.AUTOMATION_STOP_LOG, []),
+  setAutomationStopLog: (v: AutomationStopLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_STOP_LOG, v),
 
   getRealEstateAutoConfig: async (): Promise<RealEstateAutoConfig> => {
     const stored = await get<Partial<RealEstateAutoConfig>>(STORAGE_KEYS.REAL_ESTATE_AUTO_CONFIG, {});

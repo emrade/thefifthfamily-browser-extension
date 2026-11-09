@@ -205,6 +205,9 @@ def main() -> int:
     spans: list[tuple[int, int]] = []
     carried_coverage: list[tuple[int, int]] = []
     gap_notes: list[str] = []
+    # Automation stop log (header `stopLog`, extension 0.62.0+): every export
+    # carries the whole log, merged files the entries for their month.
+    stops: dict[tuple, dict] = {}
     total_rows = 0
     in_bytes = 0
 
@@ -219,6 +222,9 @@ def main() -> int:
                         spans.append(span)
                     for lo, hi in header.get("coverage", []):
                         carried_coverage.append((lo, hi))
+                    for e in header.get("stopLog") or []:
+                        if isinstance(e, dict) and isinstance(e.get("at"), int):
+                            stops[(e["at"], e.get("feature"), e.get("message"))] = e
                     if (header.get("filter") or {}).get("gapBefore"):
                         gap_notes.append(f"{path.name}: rows were evicted before this export's first row (exported too late after the previous one)")
                     continue
@@ -309,6 +315,7 @@ def main() -> int:
                     "oldestTimestamp": lo,
                     "newestTimestamp": hi,
                     "coverage": month_cov,
+                    "stopLog": sorted((e for e in stops.values() if month_start <= e["at"] < month_end), key=lambda e: e["at"]),
                 }
                 out.write(json.dumps(header) + "\n")
                 with open(body, "r", encoding="utf-8") as bf:

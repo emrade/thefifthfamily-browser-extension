@@ -22,6 +22,7 @@ import type { ExtensionMessage } from '@/shared/messaging';
 import { notify } from '@/shared/notify';
 import { isRequestTimeout, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
+import { recordStop } from '@/shared/stopLog';
 import type { GoldRunConfig, GoldRunFightResult, GoldRunLogEntry, GoldRunPauseKind, GoldRunState, GoldRunTarget } from '@/shared/types';
 import { runQueued } from '../../automationQueue';
 import { SystemicActionError, fetchLiveStatus, postAction, sleep } from '../../gameAction';
@@ -328,7 +329,10 @@ async function pauseRun(kind: GoldRunPauseKind, message: string): Promise<void> 
   const now = Date.now();
   await update((s) => ({ ...s, run: 'paused', pauseKind: kind, pausedAt: now, notice: message, busy: false }));
   chrome.alarms.create(ALARM_NAMES.GOLD_RUN_PAUSE_EXPIRY, { when: now + GOLD_RUN_PAUSE_TTL_MS });
-  if (kind !== 'player') await tellPlayer('Gold Run paused', message);
+  if (kind !== 'player') {
+    await recordStop('gold-run', message);
+    await tellPlayer('Gold Run paused', message);
+  }
 }
 
 async function tellPlayer(title: string, message: string): Promise<void> {

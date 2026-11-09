@@ -1,4 +1,5 @@
 import { db } from '@/shared/db';
+import { storage } from '@/shared/storage';
 import { decompressText } from './compress';
 import { readStats } from './stats';
 import type { EndpointProfile, StructuralEvent } from './types';
@@ -132,6 +133,8 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
         headerSent = true;
         keys = await resolveKeys(filter);
         const stats = await readStats();
+        // A missing stop log must never cost the player their export.
+        const stopLog = await storage.getAutomationStopLog().catch(() => []);
         // Retention or the byte budget can evict rows before they're ever
         // exported. When the oldest surviving row isn't the one right after the
         // cursor, something in between was lost — recorded so a merged history
@@ -154,6 +157,10 @@ export function streamArchiveNdjson(filter: ArchiveFilter = {}): ReadableStream<
               // Describes the archive as a whole, not this export's subset — a
               // filtered export should still say what it was drawn from.
               archiveStats: stats,
+              // Every time an automation switched itself off, with the reason
+              // (shared/stopLog.ts) — the whole log, not just this export's
+              // span, so any single download carries it.
+              stopLog,
             }) + '\n',
           ),
         );

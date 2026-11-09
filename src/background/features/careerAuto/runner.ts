@@ -2,7 +2,8 @@ import { ALARM_NAMES, CAREER_AUTO_BUFFER_MS, CAREER_AUTO_FALLBACK_INTERVAL_MS, C
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
-import { loggedFetch } from '@/shared/requestLog/loggedFetch';
+import { recordStop } from '@/shared/stopLog';
+import { isNetworkFailure, loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { recordParseFailure, recordParseSuccess } from '@/shared/featureHealth';
 import { SystemicActionError, fetchLiveStatus, postAction, type LiveStatus } from '../../gameAction';
 import { careerRequiredLevel, isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
@@ -23,6 +24,18 @@ const FEATURE_KEY = 'careerAuto';
 export function scheduleNextCheck(nextEligibleAt: number | null): void {
   const when = nextEligibleAt !== null ? nextEligibleAt + CAREER_AUTO_BUFFER_MS : Date.now() + CAREER_AUTO_FALLBACK_INTERVAL_MS;
   chrome.alarms.create(ALARM_NAMES.CAREER_AUTO, { when });
+}
+
+/** `fetchLiveStatus`, but a lost connection or timeout reads as "couldn't
+ *  read it" (null) instead of throwing out of the cycle and leaving nothing
+ *  scheduled. Same helper as crimesAuto/runner.ts. */
+async function readLiveStatus(): Promise<LiveStatus | null> {
+  try {
+    return await fetchLiveStatus();
+  } catch (err) {
+    if (isNetworkFailure(err)) return null;
+    throw err;
+  }
 }
 
 export async function handleAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
@@ -117,6 +130,7 @@ function energyReadyAt(status: LiveStatus, need: number): number | null {
 }
 
 async function pause(reason: 'fired' | 'error', message: string): Promise<void> {
+  await recordStop('career-auto', message);
   const config = await storage.getCareerAutoConfig();
   await storage.setCareerAutoConfig({ ...config, enabled: false });
 
@@ -173,7 +187,7 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   if (config.careerId == null) return; // no job picked — nothing to run
   if (!config.enabled && !force) return; // toggled off since the alarm was scheduled — nothing to do, and nothing to reschedule
 
-  const status = await fetchLiveStatus();
+  const status = await readLiveStatus();
   if (!status) {
     scheduleNextCheck(null); // couldn't read live state — try again on the fallback cadence rather than going dormant
     return;
@@ -282,8 +296,17 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
       // an unrecognized response shape does. See gameAction.ts's
       // SystemicActionError doc for the confirmed real incident this fixes.
       // Polled like the pre-flight gate above, not held until release.
-      const freshStatus = await fetchLiveStatus();
+      const freshStatus = await readLiveStatus();
       if (freshStatus && (freshStatus.travelling || freshStatus.jailed || freshStatus.hospitalized)) await recordWaiting(blockedWaiting(freshStatus));
+      scheduleNextCheck(null);
+      return;
+    }
+    // No answer from the game (lost connection, or the computer went back to
+    // sleep mid-request): try again later instead of switching off, same as
+    // Crimes Auto. A shift that did go through puts the job on break, which
+    // the next check reads from the careers page before sending another.
+    if (isNetworkFailure(err)) {
+      console.warn(LOG_PREFIX, 'career auto-runner shift got no answer, trying again later', err);
       scheduleNextCheck(null);
       return;
     }
