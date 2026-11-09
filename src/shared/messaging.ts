@@ -219,11 +219,11 @@ export type ExtensionMessage =
   // cached, since both the Bulk Buy total and the Strip/Delete selection
   // lists need the player's real current state before anything is confirmed.
   | { type: 'garage-catalog-requested' }
-  // Dashboard → Stats' Refresh button: reads the Gym, inventory, Menagerie
+  // Dashboard → Combat Stats' Refresh button: reads the Gym, inventory, Menagerie
   // care tab and Chop Shop once (read-only) and stores what they show. Replies
   // with `StatRefreshResult` (background/features/statSources.ts).
   | { type: 'stat-sources-refresh-requested' }
-  // Stats → Advisor → Pet: set each pet active for a moment to read its real
+  // Combat Stats → Advisor → Pet: set each pet active for a moment to read its real
   // stats, then put the original back (background/features/petStatScan.ts).
   // Start replies { started } at once; progress is in storage.
   | { type: 'pet-scan-start-requested' }

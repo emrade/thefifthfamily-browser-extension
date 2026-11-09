@@ -3,7 +3,7 @@ import { BLOODLINE_NODES, nodeKey } from './statAdvisorSources';
 import petCatalog from './data/petCatalog.json';
 
 /**
- * Dashboard → Stats → Advisor. Estimates what a change would do to the
+ * Dashboard → Combat Stats → Advisor. Estimates what a change would do to the
  * player's totals.
  *
  * The estimate: a change of X flat points in a stat changes the total by

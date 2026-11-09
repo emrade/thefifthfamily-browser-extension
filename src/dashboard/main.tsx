@@ -7,7 +7,7 @@ import type { ExtensionMessage } from '@/shared/messaging';
 import { isDashboardSection, type DashboardSection } from '@/shared/dashboardSections';
 import { AutomationsSection } from './sections/Automations';
 import { ArenaSection } from './sections/Arena';
-import { StatsSection } from './sections/Stats';
+import { CombatStatsSection } from './sections/CombatStats';
 import { LiveStats } from '../popup/views/LiveStats';
 import { HealthAlert } from '../popup/views/HealthAlert';
 import { ExportDueBanner } from '../popup/views/ExportDueBanner';
@@ -47,7 +47,7 @@ const MENU: MenuItem[] = [
   { id: 'automations/career-auto', label: 'Career Auto', sub: true },
   { id: 'automations/crimes-auto', label: 'Crimes Auto', sub: true },
   { id: 'automations/real-estate-auto', label: 'Real Estate Auto-Collect', sub: true },
-  { id: 'stats', label: 'Stats' },
+  { id: 'combat-stats', label: 'Combat Stats' },
   { id: 'arena', label: 'Arena' },
   { id: 'fight-club', label: 'Fight Club' },
   { id: 'http-archive', label: 'HTTP Archive' },
@@ -55,7 +55,7 @@ const MENU: MenuItem[] = [
 ];
 
 function sectionFromHash(): DashboardSection {
-  // "#/stats?pet-planner": the part after "?" is for the section itself.
+  // "#/combat-stats?pet-planner": the part after "?" is for the section itself.
   const s = location.hash.replace(/^#\/?/, '').split('?')[0];
   return isDashboardSection(s) ? s : 'overview';
 }
@@ -103,8 +103,8 @@ function Content({ section }: { section: DashboardSection }) {
       return <Narrow><CrimesAutoHome /></Narrow>;
     case 'automations/real-estate-auto':
       return <Narrow><RealEstateAutoHome /></Narrow>;
-    case 'stats':
-      return <StatsSection />;
+    case 'combat-stats':
+      return <CombatStatsSection />;
     case 'arena':
       return <ArenaSection />;
     case 'fight-club':

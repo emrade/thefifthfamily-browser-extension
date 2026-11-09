@@ -440,7 +440,7 @@ function runLeftCashOnHand(summary: CourierRunSummary): boolean {
  *  it — only avoided by not running it concurrently. */
 async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promise<CourierRunSummary>, tabId: number | undefined): Promise<CourierRunSummary> {
   if (isSwitchingPets()) {
-    return skippedRunSummary('Your pets are being switched on the Stats page (the active pet can\'t do courier runs), so this run waits for the next check.');
+    return skippedRunSummary('Your pets are being switched on the Combat Stats page (the active pet can\'t do courier runs), so this run waits for the next check.');
   }
   if (activeRun) {
     const info = activeRunInfo;

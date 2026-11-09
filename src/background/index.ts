@@ -344,7 +344,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Sent by the Bulk Buy tab both right after the player says they've
   // withdrawn and again immediately before a confirmed batch starts
   // spending — see 'garage-cash-requested''s own doc.
-  // Dashboard → Stats' Refresh button. One turn in the automation queue
+  // Dashboard → Combat Stats' Refresh button. One turn in the automation queue
   // (a no-op when that's off) so it never reads pages mid-automation.
   if (msg.type === 'stat-sources-refresh-requested') {
     return runQueued('stats-refresh', refreshStatSources, LINGER);

@@ -371,7 +371,7 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-men-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-men-summary"></div>
-      <button class="ff-men-plan" type="button" title="Opens Dashboard → Stats → Advisor → Pet with the planner open">
+      <button class="ff-men-plan" type="button" title="Opens Dashboard → Combat Stats → Advisor → Pet with the planner open">
         Plan point spending for all pets
       </button>
       <div class="ff-men-rows"></div>
@@ -383,7 +383,7 @@ function buildPanel(): HTMLDivElement {
   // The planner itself lives on the Dashboard (a full table doesn't fit this
   // panel); this opens it there. This panel still never spends anything.
   el.querySelector('.ff-men-plan')?.addEventListener('click', () => {
-    const msg: ExtensionMessage = { type: 'dashboard-open-requested', section: 'stats', focus: 'pet-planner' };
+    const msg: ExtensionMessage = { type: 'dashboard-open-requested', section: 'combat-stats', focus: 'pet-planner' };
     chrome.runtime.sendMessage(msg).catch((err) => console.error(LOG_PREFIX, 'could not open the Dashboard', err));
   });
 

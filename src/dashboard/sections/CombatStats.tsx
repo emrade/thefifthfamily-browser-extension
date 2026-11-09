@@ -24,7 +24,7 @@ import {
 import { getRoster } from '@/shared/petRoster';
 
 /**
- * Dashboard → Stats: where each of the four combat stats comes from, read
+ * Dashboard → Combat Stats: where each of the four combat stats comes from, read
  * from the game's own pages (see shared/statBreakdown.ts). The Refresh button
  * reads those pages once; otherwise it updates as the player opens them.
  */
@@ -1211,7 +1211,7 @@ function GainGroup({
   );
 }
 
-const CAREER_SORT_KEY = 'ff-stats-career-sort';
+const CAREER_SORT_KEY = 'ff-combat-stats-career-sort';
 
 /** Sort switch for the Careers list; the choice is remembered per browser. */
 function useCareerSort(): [CareerSort, (s: CareerSort) => void] {
@@ -1310,7 +1310,7 @@ function Advisor({ b, src, focus }: { b: Breakdown; src: StatSources; focus: str
   const [tab, setTab] = useState<AdvisorTab>(() => {
     if (focus === 'pet-planner') return 'pet';
     try {
-      const v = localStorage.getItem('ff-stats-advisor-tab');
+      const v = localStorage.getItem('ff-combat-stats-advisor-tab');
       return v === 'pet' || v === 'bonuses' ? v : 'car';
     } catch {
       return 'car';
@@ -1319,7 +1319,7 @@ function Advisor({ b, src, focus }: { b: Breakdown; src: StatSources; focus: str
   const pick = (t: AdvisorTab) => {
     setTab(t);
     try {
-      localStorage.setItem('ff-stats-advisor-tab', t);
+      localStorage.setItem('ff-combat-stats-advisor-tab', t);
     } catch {
       /* per-viewer convenience only */
     }
@@ -1348,7 +1348,7 @@ function Advisor({ b, src, focus }: { b: Breakdown; src: StatSources; focus: str
 
 type View = 'breakdown' | 'advisor';
 
-/** "#/stats?pet-planner" (the Menagerie Assistant's link): open Advisor → Pet
+/** "#/combat-stats?pet-planner" (the Menagerie Assistant's link): open Advisor → Pet
  *  with the points planner open. The hint is then removed from the address
  *  (a reload shouldn't reopen it); the counter makes a second click reopen the
  *  planner even if the player closed it in between. */
@@ -1372,7 +1372,7 @@ function useFocusRequest(): { name: string | null; n: number } {
   return focus;
 }
 
-export function StatsSection() {
+export function CombatStatsSection() {
   const src = useSources();
   const now = useNow();
   const focus = useFocusRequest();
@@ -1381,7 +1381,7 @@ export function StatsSection() {
   }, [focus.n]);
   const [view, setView] = useState<View>(() => {
     try {
-      return (localStorage.getItem('ff-stats-view') as View) === 'advisor' ? 'advisor' : 'breakdown';
+      return (localStorage.getItem('ff-combat-stats-view') as View) === 'advisor' ? 'advisor' : 'breakdown';
     } catch {
       return 'breakdown';
     }
@@ -1389,7 +1389,7 @@ export function StatsSection() {
   const pick = (v: View) => {
     setView(v);
     try {
-      localStorage.setItem('ff-stats-view', v);
+      localStorage.setItem('ff-combat-stats-view', v);
     } catch {
       /* per-viewer convenience only */
     }

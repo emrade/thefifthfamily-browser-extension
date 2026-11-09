@@ -1,5 +1,5 @@
 /**
- * Readers for the game pages behind Dashboard → Stats → Advisor's Pet and
+ * Readers for the game pages behind Dashboard → Combat Stats → Advisor's Pet and
  * Bonuses tabs: the Menagerie care tab's other pets, the Academy, the
  * Bloodline and the Careers page. Each keys off the page's own classes where
  * it has them; the Bloodline page has none (inline styles only), so it's

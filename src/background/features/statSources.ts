@@ -8,7 +8,7 @@ import { postAction } from '../gameAction';
 import { getCsrfToken } from '../csrfToken';
 
 /**
- * Dashboard → Stats' Refresh button: reads the four pages the stat breakdown
+ * Dashboard → Combat Stats' Refresh button: reads the four pages the stat breakdown
  * needs, once, when the player presses it. Nothing here runs on a timer.
  *
  * All four are reads the game's own client makes when the player opens those

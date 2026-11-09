@@ -12,7 +12,7 @@ import { setSwitchingPets } from '../petSwitchLock';
 import { getActiveCourierRun } from './smuggling/petCourier';
 
 /**
- * Dashboard → Stats → Advisor → Pet: two player-started runs that need each
+ * Dashboard → Combat Stats → Advisor → Pet: two player-started runs that need each
  * pet to be the active one for a moment (the game only shows, and only lets
  * you spend on, the active pet):
  *

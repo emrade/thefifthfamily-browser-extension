@@ -328,7 +328,7 @@ html, body {
 .db-setting__more:focus-visible { outline: 2px solid var(--ff-gold); outline-offset: 1px; }
 .db-setting-action { margin-bottom: 8px; }
 
-/* ── Stats section (sections/Stats.tsx) ───────────────────────────────
+/* ── Combat Stats section (sections/CombatStats.tsx) ───────────────────────────────
    Stat colours are the game's own (inventory totals); source colours are
    one per source, the same in every bar, swatch and legend. The bonus part
    is striped because it's worked out as the remainder, not read. */

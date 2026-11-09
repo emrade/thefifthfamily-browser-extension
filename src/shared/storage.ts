@@ -371,7 +371,7 @@ export const storage = {
   getAutomationStopLog: () => get<AutomationStopLogEntry[]>(STORAGE_KEYS.AUTOMATION_STOP_LOG, []),
   setAutomationStopLog: (v: AutomationStopLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_STOP_LOG, v),
 
-  // Dashboard → Stats sources; each null until its page has been read.
+  // Dashboard → Combat Stats sources; each null until its page has been read.
   getStatSources: async (): Promise<StatSources> => ({
     gym: await get<GymSnapshot | null>(STORAGE_KEYS.STAT_SRC_GYM, null),
     gear: await get<GearSnapshot | null>(STORAGE_KEYS.STAT_SRC_GEAR, null),

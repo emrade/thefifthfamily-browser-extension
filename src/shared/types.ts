@@ -775,9 +775,9 @@ export interface AutomationQueueLogEntry {
   tookOverStale?: AutomationQueueFeature;
 }
 
-/** Progress of Stats → Advisor → Pet's "Read all pets' stats"
+/** Progress of Combat Stats → Advisor → Pet's "Read all pets' stats"
  *  (background/features/petStatScan.ts). */
-/** One pet's share of a confirmed points plan (Stats → Pet planner). */
+/** One pet's share of a confirmed points plan (Combat Stats → Pet planner). */
 export interface PetSpendPlanEntry {
   petId: number;
   name: string;

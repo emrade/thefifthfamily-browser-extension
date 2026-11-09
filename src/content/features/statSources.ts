@@ -5,7 +5,7 @@ import { panelHtml, parseActivePet, parseEquippedCar, parseGear, parseGym, parse
 import { parseAcademy, parseBloodline, parseCareers, parsePetRoster } from '@/shared/statAdvisorSources';
 
 /**
- * Keeps Dashboard → Stats current from the pages the player opens: the Gym,
+ * Keeps Dashboard → Combat Stats current from the pages the player opens: the Gym,
  * the inventory, the Menagerie care tab, the Chop Shop and the Arena's season
  * lock-in. Read-only: it only parses replies the game already sent. The
  * Dashboard's Refresh button reads the same pages from the background

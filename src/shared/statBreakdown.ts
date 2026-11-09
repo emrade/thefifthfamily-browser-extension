@@ -1,6 +1,6 @@
 /**
  * Where the player's four combat stats come from, read from the game's own
- * pages. Feeds Dashboard → Stats.
+ * pages. Feeds Dashboard → Combat Stats.
  *
  * Sources (each stored on its own, with the time it was read):
  * - Gym page (`panel.php?type=gym`): the game's own totals ("after gym, gear,
