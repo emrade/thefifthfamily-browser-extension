@@ -9,6 +9,27 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.62.0] - 2026-11-09
+
+### Added
+- **Stop history.** Every time an automation switches itself off (Crimes, Career,
+  Street Intel, Pet Couriers, Real Estate Auto-Collect, the Stock Market tracker, Gold
+  Run), the time, automation and reason are kept in a lasting log. Previously the reason
+  was erased the moment you switched the feature back on, so a stop found in the morning
+  couldn't be explained. Shown on Dashboard → Automations ("Stopped by itself"), and
+  saved in every HTTP Archive download (header field `stopLog`, kept through
+  `scripts/merge-archives.py`).
+
+### Fixed
+- **Crimes Auto and Career Auto no longer switch off when a request gets no answer.**
+  A lost connection or a 30-second timeout, typically the closed laptop going back to
+  sleep mid-request, now means "try again later" (Crimes in a minute, Career on its
+  usual 2-minute check). On 2026-11-09 a crime commit that never reached the game
+  switched Crimes Auto off for the rest of the night while Nerve filled to the top.
+  A reply the extension doesn't recognise still switches the feature off as before.
+- Crimes Auto and Career Auto could also go quietly idle (still showing on, nothing
+  scheduled) when reading your status got no answer. They now try again.
+
 ## [0.61.0] - 2026-11-09
 
 ### Changed
