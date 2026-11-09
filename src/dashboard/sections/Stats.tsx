@@ -1,4 +1,4 @@
-import { Fragment } from 'preact';
+import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
@@ -30,12 +30,12 @@ const DAY_MS = 86_400_000;
 
 type PartKey = FlatPart['key'] | 'bonus';
 const PART_HINT: Record<PartKey, string> = {
-  trained: 'What you have trained at the Gym.',
-  gear: 'Your 7 equipped items, forge levels included.',
-  car: 'Your equipped car adds the same amount to every stat.',
-  pet: 'Only your active pet counts, with its own bonuses applied.',
-  vigilantes: 'Flat points from V2 Vigilantes, from the Arena lock-in.',
-  bonus: 'What your percentage bonuses add on top: the game total minus everything above.',
+  trained: 'trained at the Gym',
+  gear: 'your 7 equipped items',
+  car: 'your equipped car',
+  pet: 'your active pet',
+  vigilantes: 'V2 Vigilantes',
+  bonus: 'your % bonuses (the rest of the total)',
 };
 
 const n = (v: number) => Math.round(v).toLocaleString();
@@ -119,36 +119,91 @@ function Toolbar({ src, now }: { src: StatSources; now: number }) {
         {SOURCE_ROWS.map((row) => {
           const snap = src[row.key];
           const err = result && REFRESHABLE[row.key] ? result.errors[REFRESHABLE[row.key]!] : undefined;
-          const state = err ? 'error' : !snap ? 'missing' : row.key !== 'loadout' && now - snap.at > DAY_MS ? 'stale' : 'ok';
+          // A failed refresh keeps the earlier reading: say so, and keep the
+          // reason for the hover rather than shouting it.
+          const state = err ? (snap ? 'stale' : 'error') : !snap ? 'missing' : row.key !== 'loadout' && now - snap.at > DAY_MS ? 'stale' : 'ok';
+          const when = err ? (snap ? `kept from ${ago(snap.at, now)}` : err) : snap ? ago(snap.at, now) : 'not read yet';
+          const title = err ? `Not updated: ${err}${snap ? `. Showing the reading from ${stamp(snap.at)}.` : ''}` : snap ? `Read ${stamp(snap.at)}` : `Open ${row.where} to fill this in`;
           return (
-            <li key={row.key} class={`st-source st-source--${state}`} title={snap ? `Read ${stamp(snap.at)}` : `Open ${row.where} to fill this in`}>
+            <li key={row.key} class={`st-source st-source--${state}`} title={title}>
               <span class="st-source__dot" aria-hidden="true" />
               <span class="st-source__name">{row.label}</span>
-              <span class="st-source__when">{err ? err : snap ? ago(snap.at, now) : 'not read yet'}</span>
+              <span class="st-source__when">{when}</span>
             </li>
           );
         })}
       </ul>
       {failed && <p class="db-warn">Refresh failed: {failed}</p>}
+      {result && Object.keys(result.errors).length > 0 && (
+        <ul class="st-refresh-notes">
+          {SOURCE_ROWS.filter((r) => REFRESHABLE[r.key] && result.errors[REFRESHABLE[r.key]!]).map((r) => (
+            <li key={r.key}>
+              <b>{r.label}:</b> {result.errors[REFRESHABLE[r.key]!]}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
 
 // ── Stat cards ─────────────────────────────────────────────────────────
 
+interface Seg {
+  key: PartKey;
+  label: string;
+  value: number;
+}
+
+function segments(b: Breakdown, k: StatKey): Seg[] {
+  return [
+    ...b.parts.map((p) => ({ key: p.key as PartKey, label: SEG_LABEL[p.key], value: p.values[k] })),
+    { key: 'bonus' as const, label: SEG_LABEL.bonus, value: b.bonus[k] },
+  ].filter((x) => x.value > 0);
+}
+
+const SEG_LABEL: Record<PartKey, string> = { trained: 'Trained', gear: 'Gear', car: 'Car', pet: 'Pet', vigilantes: 'Vigilantes', bonus: 'Bonuses' };
+
+/** The bar plus its parts written out underneath, so it reads without a
+ *  hover: colours alone said nothing (player feedback, 2026-11-09). */
 function Composition({ b, k }: { b: Breakdown; k: StatKey }) {
-  const segs: { key: PartKey; label: string; value: number }[] = [
-    ...b.parts.map((p) => ({ key: p.key as PartKey, label: p.label, value: p.values[k] })),
-    { key: 'bonus' as const, label: 'Bonuses', value: b.bonus[k] },
-  ].filter((s) => s.value > 0);
-  const total = segs.reduce((s, x) => s + x.value, 0) || 1;
-  const label = segs.map((s) => `${s.label} ${n(s.value)}`).join(', ');
+  const segs = segments(b, k);
+  const total = segs.reduce((acc, x) => acc + x.value, 0) || 1;
+  const share = (v: number) => Math.round((v / total) * 100);
+  const ordered = [...segs].sort((x, y) => y.value - x.value);
   return (
-    <div class="st-bar" role="img" aria-label={`${STAT_LABEL[k]}: ${label}`}>
-      {segs.map((s) => (
-        <span key={s.key} class={`st-seg st-seg--${s.key}`} style={{ width: `${(s.value / total) * 100}%` }} title={`${s.label}: ${n(s.value)} (${Math.round((s.value / total) * 100)}%)`} />
-      ))}
+    <div class="st-mixwrap">
+      <div class="st-bar" aria-hidden="true">
+        {segs.map((x) => (
+          <span key={x.key} class={`st-seg st-seg--${x.key}`} style={{ width: `${(x.value / total) * 100}%` }} title={`${x.label}: ${n(x.value)} (${share(x.value)}%)`} />
+        ))}
+      </div>
+      <ul class="st-mix" aria-label={`Where ${STAT_LABEL[k]} comes from`}>
+        {ordered.map((x) => (
+          <li key={x.key} title={`${x.label}: ${n(x.value)}`}>
+            <span class={`st-swatch st-seg--${x.key}`} aria-hidden="true" />
+            <span class="st-mix__l">{x.label}</span>
+            <span class="st-mix__v">{share(x.value) < 1 ? '<1' : share(x.value)}%</span>
+          </li>
+        ))}
+      </ul>
     </div>
+  );
+}
+
+/** One key for every bar and table swatch on the page. */
+function Legend({ b }: { b: Breakdown }) {
+  const keys: PartKey[] = [...b.parts.map((p) => p.key as PartKey), 'bonus'];
+  return (
+    <ul class="st-legend" aria-label="Colour key">
+      {keys.map((key) => (
+        <li key={key} title={PART_HINT[key]}>
+          <span class={`st-swatch st-seg--${key}`} aria-hidden="true" />
+          <span>{SEG_LABEL[key]}</span>
+          <span class="st-legend__hint">{PART_HINT[key]}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -165,12 +220,12 @@ function effect(src: StatSources, k: StatKey): { line: string; next: string | nu
 function StatCards({ b, src }: { b: Breakdown; src: StatSources }) {
   const locked = src.loadout?.fighting;
   return (
-    <div class="st-cards">
+    <div class="st-cards" role="list">
       {STAT_KEYS.map((k) => {
         const fx = effect(src, k);
         const diff = locked ? b.total[k] - locked[k] : 0;
         return (
-          <article key={k} class={`st-card st-card--${k}`} aria-label={STAT_LABEL[k]}>
+          <article key={k} role="listitem" class={`st-card st-card--${k}`} aria-label={STAT_LABEL[k]}>
             <header class="st-card__head">
               <span class="st-card__name">{STAT_LABEL[k]}</span>
               <span class="st-card__short">{STAT_SHORT[k]}</span>
@@ -183,7 +238,7 @@ function StatCards({ b, src }: { b: Breakdown; src: StatSources }) {
                   {diff !== 0 && <span class="st-card__diff">{diff > 0 ? `+${n(diff)}` : n(diff)} since lock-in</span>}
                 </>
               ) : (
-                'Arena value appears at the next season lock-in'
+                'Arena value: set when the next season starts'
               )}
             </div>
             <Composition b={b} k={k} />
@@ -202,17 +257,30 @@ function StatCards({ b, src }: { b: Breakdown; src: StatSources }) {
 
 // ── Sources table ──────────────────────────────────────────────────────
 
-function Cells({ q, cls }: { q: Quad; cls?: string }) {
+function Cells({ q }: { q: Quad }) {
   return (
     <>
       {STAT_KEYS.map((k) => (
-        <td key={k} class={`db-mono st-num ${cls ?? ''}`}>{n(q[k])}</td>
+        <td key={k} class="st-num">{n(q[k])}</td>
       ))}
     </>
   );
 }
 
-function SourcesTable({ b, src, now }: { b: Breakdown; src: StatSources; now: number }) {
+/** One row label. The cell itself stays a plain table cell (a flex `<th>`
+ *  drops out of table layout and its row drifts off the number columns). */
+function RowHead({ swatch, children, sub }: { swatch?: PartKey; children: ComponentChildren; sub?: boolean }) {
+  return (
+    <th scope="row" class={sub ? 'st-rowhead st-rowhead--sub' : 'st-rowhead'}>
+      <div class="st-rowhead__in">
+        {swatch ? <span class={`st-swatch st-seg--${swatch}`} aria-hidden="true" /> : !sub && <span class="st-swatch st-swatch--none" aria-hidden="true" />}
+        {children}
+      </div>
+    </th>
+  );
+}
+
+function SourcesTable({ b, src }: { b: Breakdown; src: StatSources }) {
   const [openGear, setOpenGear] = useState(false);
   const flat: Quad = { str: 0, def: 0, agi: 0, dex: 0 };
   for (const p of b.parts) for (const k of STAT_KEYS) flat[k] += p.values[k];
@@ -221,10 +289,16 @@ function SourcesTable({ b, src, now }: { b: Breakdown; src: StatSources; now: nu
     <section class="db-card db-card--wide">
       <h2 class="db-h">Where your stats come from</h2>
       <div class="st-table-wrap">
-        <table class="db-table st-table">
+        <table class="st-table">
+          <colgroup>
+            <col />
+            {STAT_KEYS.map((k) => (
+              <col key={k} class="st-col-num" />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th scope="col">Source</th>
+              <th scope="col" class="st-rowhead">Source</th>
               {STAT_KEYS.map((k) => (
                 <th key={k} scope="col" class={`st-num st-th--${k}`}>{STAT_SHORT[k]}</th>
               ))}
@@ -233,37 +307,38 @@ function SourcesTable({ b, src, now }: { b: Breakdown; src: StatSources; now: nu
           <tbody>
             {b.parts.map((p) => (
               <Fragment key={p.key}>
-                <tr>
-                  <th scope="row" class="st-src">
-                    <span class={`st-swatch st-seg--${p.key}`} aria-hidden="true" />
-                    <span class="st-src__text">
-                      {p.key === 'gear' ? (
-                        <button type="button" class="st-expand" aria-expanded={openGear} onClick={() => setOpenGear(!openGear)}>
-                          <span class="st-caret" aria-hidden="true">{openGear ? '▾' : '▸'}</span> {p.label} ({src.gear?.items.length ?? 0} items)
-                        </button>
-                      ) : (
-                        p.label
-                      )}
-                      <span class="st-src__hint">{PART_HINT[p.key]} <span class="st-src__when">Read {ago(p.at, now)}.</span></span>
-                    </span>
-                  </th>
+                <tr title={PART_HINT[p.key]}>
+                  <RowHead swatch={p.key}>
+                    {p.key === 'gear' ? (
+                      <button type="button" class="st-expand" aria-expanded={openGear} onClick={() => setOpenGear(!openGear)}>
+                        {p.label}
+                        <span class="st-muted"> · {src.gear?.items.length ?? 0} items</span>
+                        <span class="st-caret" aria-hidden="true">{openGear ? '▴' : '▾'}</span>
+                      </button>
+                    ) : (
+                      <span>{p.label}</span>
+                    )}
+                  </RowHead>
                   <Cells q={p.values} />
                 </tr>
                 {p.key === 'gear' && openGear && src.gear && (
                   <>
                     {src.gear.items.map((it) => (
                       <tr key={it.name} class="st-sub">
-                        <th scope="row" class="st-src st-src--sub">
-                          {it.name} <span class="st-enh">+{it.enhancement}</span> <span class="st-slot">{it.slot}</span>
-                        </th>
+                        <RowHead sub>
+                          <span>{it.name}</span>
+                          <span class="st-enh">+{it.enhancement}</span>
+                          <span class="st-muted">{it.slot}</span>
+                        </RowHead>
                         <Cells q={it.stats} />
                       </tr>
                     ))}
                     {src.gear.shownExtra && (
-                      <tr class="st-sub">
-                        <th scope="row" class="st-src st-src--sub">
-                          Gear bonus shown on the inventory page <span class="st-slot">source not labelled by the game</span>
-                        </th>
+                      <tr class="st-sub" title="The inventory page adds this to your gear totals without naming where it comes from.">
+                        <RowHead sub>
+                          <span>Extra gear bonus</span>
+                          <span class="st-muted">not named by the game</span>
+                        </RowHead>
                         <Cells q={src.gear.shownExtra} />
                       </tr>
                     )}
@@ -272,36 +347,36 @@ function SourcesTable({ b, src, now }: { b: Breakdown; src: StatSources; now: nu
               </Fragment>
             ))}
             <tr class="st-subtotal">
-              <th scope="row" class="st-src">Before percentage bonuses</th>
+              <RowHead>
+                <span>Before percentage bonuses</span>
+              </RowHead>
               <Cells q={flat} />
             </tr>
-            <tr>
-              <th scope="row" class="st-src">
-                <span class="st-swatch st-seg--bonus" aria-hidden="true" />
-                <span class="st-src__text">
-                  Percentage bonuses
-                  <span class="st-src__hint">{PART_HINT.bonus}</span>
-                </span>
-              </th>
+            <tr title={PART_HINT.bonus}>
+              <RowHead swatch="bonus">
+                <span>Percentage bonuses</span>
+              </RowHead>
               {STAT_KEYS.map((k) => (
-                <td key={k} class="db-mono st-num">
+                <td key={k} class="st-num">
                   +{n(b.bonus[k])}
                   {flat[k] > 0 && <span class="st-pctof">+{Math.round((b.bonus[k] / flat[k]) * 100)}%</span>}
                 </td>
               ))}
             </tr>
             <tr class="st-total">
-              <th scope="row" class="st-src">Total (Gym page)</th>
+              <RowHead>
+                <span>Total</span>
+              </RowHead>
               <Cells q={b.total} />
             </tr>
           </tbody>
         </table>
       </div>
-      {b.missing.length > 0 && (
-        <p class="db-warn">
-          Not read yet: {b.missing.join(', ')}. Until then their share is counted in "Percentage bonuses".
-        </p>
-      )}
+      <p class="db-note">
+        Total is the game's own figure from the Gym page. Percentage bonuses are what's left of it after the sources above, so they also hold
+        anything not read yet.
+      </p>
+      {b.missing.length > 0 && <p class="st-missing">Still to read: {b.missing.join(', ')}. Press Refresh, or open those pages in the game.</p>}
     </section>
   );
 }
@@ -437,9 +512,10 @@ export function StatsSection() {
         </section>
       ) : (
         <>
+          <Legend b={b} />
           <StatCards b={b} src={src} />
           <div class="db-grid">
-            <SourcesTable b={b} src={src} now={now} />
+            <SourcesTable b={b} src={src} />
             <PercentBonuses b={b} src={src} />
             <FightBonuses src={src} />
             <HowItWorks />

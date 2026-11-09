@@ -4,6 +4,7 @@ import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { panelHtml, parseActivePet, parseEquippedCar, parseGear, parseGym } from '@/shared/statBreakdown';
 import { postAction } from '../gameAction';
+import { getCsrfToken } from '../csrfToken';
 
 /**
  * Dashboard → Stats' Refresh button: reads the four pages the stat breakdown
@@ -62,12 +63,23 @@ export async function refreshStatSources(): Promise<StatRefreshResult> {
     return null;
   });
   await step('pet', async () => {
-    const pet = parseActivePet(await readPanel('type=menagerie&men_tab=care'), Date.now());
-    if (!pet) return "couldn't find an active pet on the Menagerie care tab";
+    const html = await readPanel('type=menagerie&men_tab=care');
+    const pet = parseActivePet(html, Date.now());
+    if (!pet) {
+      // Say which tab came back, so a wrong tab reads differently from a
+      // changed page.
+      const tab = /class="men-tab[^"]*\bmen-on\b[^"]*"[^>]*data-tab="men:(\w+)"/.exec(html)?.[1];
+      return tab && tab !== 'care' ? `the game returned the Menagerie ${tab} tab instead of Care` : "couldn't find an active pet on the Menagerie care tab";
+    }
     await storage.setStatSourcePet(pet);
     return null;
   });
   await step('car', async () => {
+    // The catalog is a POST, which needs the game's token. The extension
+    // learns it from the game's own requests, so right after the extension
+    // (re)loads there may be none yet: ask the player rather than send a
+    // request bound to be refused.
+    if (!(await getCsrfToken())) return 'needs the game open: click anything there, then Refresh';
     const resp = await postAction('/api/chop_shop_proto.php', { action: 'catalog' });
     if (resp?.ok !== true) return typeof resp?.error === 'string' ? resp.error : 'the Chop Shop refused the read';
     const car = parseEquippedCar(resp, Date.now());

@@ -223,16 +223,29 @@ export function parseGear(html: string, at: number): GearSnapshot | undefined {
 
 // ── Menagerie (care tab) ────────────────────────────────────────────────
 
-const RARITIES = 'Fifth Family Mythic|Crowned Legendary|Underworld Epic|Infamous Rare|Legendary|Uncommon|Common|Rare|Epic|Mythic';
-
+/** The active pet, from the care tab's own classes (`men-active-name`,
+ *  `men-statline`, `men-buffed-row`). The wording around it (the Feed/Train
+ *  buttons) changes with what's been done that day, so it isn't relied on:
+ *  the first version keyed off "+180 pts" and failed once the pets were
+ *  trained (2026-11-09). */
 export function parseActivePet(html: string, at: number): PetSnapshot | null {
-  const text = pageText(html);
-  const head = new RegExp(`pts ([^·]+?) (${RARITIES}) Total: ?\\d+`).exec(text);
-  const trained = /STR (\d+) \d+ base \+?\d+ trained DEF (\d+) \d+ base \+?\d+ trained AGI (\d+) \d+ base \+?\d+ trained DEX (\d+) \d+ base \+?\d+ trained/.exec(text);
-  const combat = /In Combat[\s\S]*?STR \d+ (\d+) [+-]?\d+ bonus DEF \d+ (\d+) [+-]?\d+ bonus AGI \d+ (\d+) [+-]?\d+ bonus DEX \d+ (\d+)/.exec(text);
-  if (!head || !combat) return null;
-  const q = (m: RegExpExecArray): Quad => ({ str: Number(m[1]), def: Number(m[2]), agi: Number(m[3]), dex: Number(m[4]) });
-  return { at, name: head[1].trim(), rarity: head[2], trained: trained ? q(trained) : q(combat), inCombat: q(combat) };
+  const name = /class="men-active-name"[^>]*>([^<]+)</.exec(html);
+  if (!name) return null;
+  const rarity = /class="men-active-rarity"[^>]*>([^<]+)</.exec(html);
+  const trained: Partial<Quad> = {};
+  for (const m of html.matchAll(/men-statline-name"[^>]*>\s*(STR|DEF|AGI|DEX)\s*<[\s\S]*?men-statline-nums"[^>]*>\s*([\d,]+)/g)) {
+    trained[SHORT[m[1]]] ??= num(m[2]);
+  }
+  const combat: Partial<Quad> = {};
+  for (const m of html.matchAll(/men-buffed-lbl"[^>]*>\s*(STR|DEF|AGI|DEX)\s*<\/div>([\s\S]*?)<\/div>\s*<\/div>/g)) {
+    // With no bonus the row may show only one number.
+    const val = /men-buffed-val"[^>]*>\s*([\d,]+)/.exec(m[2]) ?? /men-buffed-raw"[^>]*>\s*([\d,]+)/.exec(m[2]);
+    if (val) combat[SHORT[m[1]]] ??= num(val[1]);
+  }
+  const full = (q: Partial<Quad>): Quad | null => (STAT_KEYS.every((k) => typeof q[k] === 'number') ? (q as Quad) : null);
+  const inCombat = full(combat) ?? full(trained);
+  if (!inCombat) return null;
+  return { at, name: decodeEntities(name[1]).trim(), rarity: rarity ? decodeEntities(rarity[1]).trim() : '', trained: full(trained) ?? inCombat, inCombat };
 }
 
 // ── Chop Shop catalog ───────────────────────────────────────────────────
