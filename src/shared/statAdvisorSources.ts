@@ -20,6 +20,8 @@ function decode(s: string): string {
 // ── Pets (care tab: points and the other pets) ──────────────────────────
 
 export interface OtherPet {
+  /** The game's id for the pet (from its "Set Active" button). */
+  id: number | null;
   name: string;
   rarity: string;
   grownPct: number | null;
@@ -29,6 +31,8 @@ export interface OtherPet {
 }
 
 export interface PetRoster {
+  /** The active pet's id (from its own Feed button), null if not found. */
+  activeId: number | null;
   activePoints: number | null;
   activeStatPointsReady: number | null;
   others: OtherPet[];
@@ -51,7 +55,9 @@ export function parsePetRoster(html: string): PetRoster {
     const grown = /([\d.]+)% grown/.exec(subText);
     const pts = /([\d,]+) pts/.exec(subText);
     const perk = /men-other-passive"[^>]*>([\s\S]*?)<\/div>/.exec(chunk);
+    const id = /menSetActive\((\d+)\)/.exec(chunk);
     others.push({
+      id: id ? Number(id[1]) : null,
       name: decode(name[1]),
       rarity: parts[0] ?? '',
       grownPct: grown ? Number(grown[1]) : null,
@@ -59,7 +65,11 @@ export function parsePetRoster(html: string): PetRoster {
       perk: perk ? decode(perk[1]) || null : null,
     });
   }
-  return { activePoints: pick(/PET POINTS/i), activeStatPointsReady: pick(/STAT POINTS/i), others };
+  // The active pet's own Feed button (menFeed(id)) comes before the list of
+  // other pets, which each have one too.
+  const listAt = html.indexOf('class="men-other-list"');
+  const activeFeed = /menFeed\((\d+)\)/.exec(listAt === -1 ? html : html.slice(0, listAt));
+  return { activeId: activeFeed ? Number(activeFeed[1]) : null, activePoints: pick(/PET POINTS/i), activeStatPointsReady: pick(/STAT POINTS/i), others };
 }
 
 // ── Academy ─────────────────────────────────────────────────────────────

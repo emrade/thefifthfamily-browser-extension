@@ -79,6 +79,19 @@ export interface PetSnapshot {
   roster?: PetRoster;
 }
 
+/** A pet's real stats as last seen while it was the active one (the care
+ *  tab only shows the active pet's). Keyed by lower-cased name in storage.
+ *  Includes growth and every point spent on it; stays right until more points
+ *  are spent, which the game only allows while the pet is active, so the next
+ *  reading replaces it. */
+export interface PetMemoryEntry {
+  name: string;
+  rarity: string;
+  trained: Quad;
+  inCombat: Quad;
+  at: number;
+}
+
 export interface CarRace {
   speed: number;
   accel: number;
@@ -141,6 +154,7 @@ export interface StatSources {
   academy: AcademySnapshot | null;
   bloodline: BloodlineSnapshot | null;
   careers: CareersSnapshot | null;
+  petMemory: Record<string, PetMemoryEntry>;
 }
 
 // ── Page text ───────────────────────────────────────────────────────────

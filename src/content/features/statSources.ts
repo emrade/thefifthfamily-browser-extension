@@ -37,7 +37,10 @@ export function handleCapturedRequest(req: CapturedRequest): void {
       const pet = html && parseActivePet(html, at);
       if (pet && html) {
         pet.roster = parsePetRoster(html);
-        run(() => storage.setStatSourcePet(pet));
+        run(async () => {
+          await storage.setStatSourcePet(pet);
+          await storage.rememberActivePet(pet);
+        });
       }
     } else if (type === 'academy') {
       const html = panelHtml(req.responseText);

@@ -2,6 +2,7 @@ import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
 import type { CourierStatus, PetRosterEntry } from '@/shared/types';
+import type { ExtensionMessage } from '@/shared/messaging';
 
 /**
  * Menagerie Assistant — an overlay on the live Menagerie "Care" tab that answers
@@ -99,6 +100,13 @@ const STYLE = `
 .ff-men-summary { margin: 4px 0 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 11.5px; color: #9199a8; line-height: 1.5; }
 .ff-men-summary b { color: #e4e4e7; }
 
+.ff-men-plan {
+  display: block; width: 100%; margin: 0 0 12px; padding: 8px 10px;
+  font: 700 11.5px 'Inter', system-ui, sans-serif; color: #fbbf24; text-align: left;
+  background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.35); border-radius: 8px; cursor: pointer;
+}
+.ff-men-plan:hover { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.6); }
+.ff-men-plan:focus-visible { outline: 2px solid #fbbf24; outline-offset: 2px; }
 .ff-men-rows { display: flex; flex-direction: column; gap: 8px; }
 .ff-men-row {
   padding: 10px 11px;
@@ -363,12 +371,21 @@ function buildPanel(): HTMLDivElement {
         <button class="ff-men-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-men-summary"></div>
+      <button class="ff-men-plan" type="button" title="Opens Dashboard → Stats → Advisor → Pet with the planner open">
+        Plan point spending for all pets
+      </button>
       <div class="ff-men-rows"></div>
     </div>
   `;
 
   el.querySelector('.ff-men-badge')?.addEventListener('click', () => setExpanded(true));
   el.querySelector('.ff-men-close')?.addEventListener('click', () => setExpanded(false));
+  // The planner itself lives on the Dashboard (a full table doesn't fit this
+  // panel); this opens it there. This panel still never spends anything.
+  el.querySelector('.ff-men-plan')?.addEventListener('click', () => {
+    const msg: ExtensionMessage = { type: 'dashboard-open-requested', section: 'stats', focus: 'pet-planner' };
+    chrome.runtime.sendMessage(msg).catch((err) => console.error(LOG_PREFIX, 'could not open the Dashboard', err));
+  });
 
   return el;
 }

@@ -2,6 +2,7 @@ import type {
   AutomationQueueConfig,
   AutomationQueueLogEntry,
   AutomationStopLogEntry,
+  PetScanState,
   StaleGameTabs,
   StreetIntelAnalyticsSeedState,
   RealEstateVaultState,
@@ -35,7 +36,7 @@ import type {
   StreetIntelAutoStatus,
   StreetRacingStatus,
 } from './types';
-import type { CarSnapshot, GearSnapshot, GymSnapshot, LoadoutSnapshot, PetSnapshot, StatSources } from './statBreakdown';
+import type { CarSnapshot, GearSnapshot, GymSnapshot, LoadoutSnapshot, PetMemoryEntry, PetSnapshot, StatSources } from './statBreakdown';
 import type { AcademySnapshot, BloodlineSnapshot, CareersSnapshot } from './statAdvisorSources';
 import {
   CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
@@ -380,7 +381,21 @@ export const storage = {
     academy: await get<AcademySnapshot | null>(STORAGE_KEYS.STAT_SRC_ACADEMY, null),
     bloodline: await get<BloodlineSnapshot | null>(STORAGE_KEYS.STAT_SRC_BLOODLINE, null),
     careers: await get<CareersSnapshot | null>(STORAGE_KEYS.STAT_SRC_CAREERS, null),
+    petMemory: await get<Record<string, PetMemoryEntry>>(STORAGE_KEYS.STAT_PET_MEMORY, {}),
   }),
+  /** Remembers the active pet's real stats (see PetMemoryEntry). Read and
+   *  merged so other pets' entries are kept; an older reading never replaces
+   *  a newer one. */
+  rememberActivePet: async (pet: PetSnapshot): Promise<void> => {
+    const memory = await get<Record<string, PetMemoryEntry>>(STORAGE_KEYS.STAT_PET_MEMORY, {});
+    const key = pet.name.toLowerCase();
+    if (memory[key] && memory[key].at > pet.at) return;
+    memory[key] = { name: pet.name, rarity: pet.rarity, trained: pet.trained, inCombat: pet.inCombat, at: pet.at };
+    await set(STORAGE_KEYS.STAT_PET_MEMORY, memory);
+  },
+  getPetScanState: () =>
+    get<PetScanState>(STORAGE_KEYS.PET_SCAN_STATE, { mode: 'read', running: false, startedAt: null, finishedAt: null, total: 0, done: 0, current: null, read: [], spent: [], skipped: [], error: null, restored: null, stopRequested: false }),
+  setPetScanState: (v: PetScanState) => set(STORAGE_KEYS.PET_SCAN_STATE, v),
   setStatSourceAcademy: (v: AcademySnapshot) => set(STORAGE_KEYS.STAT_SRC_ACADEMY, v),
   setStatSourceBloodline: (v: BloodlineSnapshot) => set(STORAGE_KEYS.STAT_SRC_BLOODLINE, v),
   setStatSourceCareers: (v: CareersSnapshot) => set(STORAGE_KEYS.STAT_SRC_CAREERS, v),

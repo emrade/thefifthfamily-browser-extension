@@ -55,7 +55,8 @@ const MENU: MenuItem[] = [
 ];
 
 function sectionFromHash(): DashboardSection {
-  const s = location.hash.replace(/^#\/?/, '');
+  // "#/stats?pet-planner": the part after "?" is for the section itself.
+  const s = location.hash.replace(/^#\/?/, '').split('?')[0];
   return isDashboardSection(s) ? s : 'overview';
 }
 

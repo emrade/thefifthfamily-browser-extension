@@ -82,9 +82,11 @@ async function findOpenDashboard(): Promise<{ tabId: number; windowId: number } 
 /** Switches to the Dashboard if a tab already shows it (moving it to
  *  `section` when given), otherwise opens it. Finding it this way avoids
  *  asking for the "tabs" permission. */
-export async function openDashboard(section?: DashboardSection): Promise<void> {
+export async function openDashboard(section?: DashboardSection, focus?: string): Promise<void> {
   const base = chrome.runtime.getURL(DASHBOARD_PATH);
-  const url = section ? `${base}#/${section}` : base;
+  // `#/stats?pet-planner`: the part after "?" asks the section to open
+  // something in particular; a hash-only change still reaches an open tab.
+  const url = section ? `${base}#/${section}${focus ? `?${focus}` : ''}` : base;
   const open = await findOpenDashboard();
   if (open) {
     try {

@@ -63,6 +63,8 @@ export const STORAGE_KEYS = {
   STAT_SRC_ACADEMY: 'ff_stat_src_academy',
   STAT_SRC_BLOODLINE: 'ff_stat_src_bloodline',
   STAT_SRC_CAREERS: 'ff_stat_src_careers',
+  STAT_PET_MEMORY: 'ff_stat_pet_memory',
+  PET_SCAN_STATE: 'ff_pet_scan_state',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack

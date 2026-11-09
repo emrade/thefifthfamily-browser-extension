@@ -15,4 +15,5 @@ export const AUTOMATION_FEATURE_LABELS: Record<AutomationQueueFeature, string> =
   achievements: 'Achievement claims',
   'gold-run': 'Gold Run',
   'stats-refresh': 'Stats refresh',
+  'pet-scan': 'Pet stats read',
 };

@@ -1,4 +1,4 @@
-import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, GoldRunFightResult, PetRosterEntry, RawStatsPayload, RealEstateVault } from './types';
+import type { ComplicationChoiceKey, CourierProgressEvent, CourierRunSummary, District, FightClubHeroStats, GoldRunFightResult, PetRosterEntry, RawStatsPayload, RealEstateVault, PetSpendPlanEntry } from './types';
 import { LOG_PREFIX } from './log';
 import type { DashboardSection } from './dashboardSections';
 
@@ -143,7 +143,8 @@ export type ExtensionMessage =
   // From the popup and the "Up next" chip: open the Dashboard, at `section`
   // when given (content scripts can't open extension pages themselves, and the
   // background is the one place that finds an already-open Dashboard tab).
-  | { type: 'dashboard-open-requested'; section?: DashboardSection }
+  // `focus` asks the section to open a particular part (Stats: 'pet-planner').
+  | { type: 'dashboard-open-requested'; section?: DashboardSection; focus?: 'pet-planner' }
   // Background -> an open Dashboard tab: "are you there?". The Dashboard
   // answers with its own tab (`tabs.getCurrent()` needs no permission), so the
   // background can switch to it instead of opening another one, without the
@@ -222,6 +223,13 @@ export type ExtensionMessage =
   // care tab and Chop Shop once (read-only) and stores what they show. Replies
   // with `StatRefreshResult` (background/features/statSources.ts).
   | { type: 'stat-sources-refresh-requested' }
+  // Stats → Advisor → Pet: set each pet active for a moment to read its real
+  // stats, then put the original back (background/features/petStatScan.ts).
+  // Start replies { started } at once; progress is in storage.
+  | { type: 'pet-scan-start-requested' }
+  | { type: 'pet-scan-stop-requested' }
+  // The points planner's confirm button: spends per pet as planned.
+  | { type: 'pet-spend-start-requested'; plan: PetSpendPlanEntry[] }
   // Sent when the Bulk Delete tab needs a real payout number for a vehicle
   // before it can total up a confirm price — `bodyQuicksell` isn't on the
   // catalog's own car list (see `GarageCarState`'s own doc for why this

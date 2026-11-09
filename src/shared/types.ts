@@ -740,7 +740,8 @@ export type AutomationQueueFeature =
   | 'inventory'
   | 'achievements'
   | 'gold-run'
-  | 'stats-refresh';
+  | 'stats-refresh'
+  | 'pet-scan';
 
 export interface AutomationScheduleItem {
   feature: AutomationQueueFeature;
@@ -772,6 +773,35 @@ export interface AutomationQueueLogEntry {
   outcome: 'ok' | 'error' | 'forced-wait' | 'skipped';
   /** A previous holder was treated as gone after the maximum hold time. */
   tookOverStale?: AutomationQueueFeature;
+}
+
+/** Progress of Stats → Advisor → Pet's "Read all pets' stats"
+ *  (background/features/petStatScan.ts). */
+/** One pet's share of a confirmed points plan (Stats → Pet planner). */
+export interface PetSpendPlanEntry {
+  petId: number;
+  name: string;
+  alloc: { str: number; def: number; agi: number; dex: number };
+}
+
+export interface PetScanState {
+  /** 'read' = Read all pets' stats; 'spend' = the points planner. */
+  mode: 'read' | 'spend';
+  running: boolean;
+  startedAt: number | null;
+  finishedAt: number | null;
+  /** Pets to visit (not counting the one active at the start). */
+  total: number;
+  done: number;
+  current: string | null;
+  read: string[];
+  /** Spend mode: what was spent on each pet, e.g. "+8 DEX". */
+  spent: { name: string; text: string }[];
+  skipped: { name: string; reason: string }[];
+  error: string | null;
+  /** The pet put back at the end, null when it couldn't be. */
+  restored: string | null;
+  stopRequested: boolean;
 }
 
 /** One time an automation switched itself off (or paused itself) without

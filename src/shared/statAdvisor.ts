@@ -333,6 +333,10 @@ export interface PetOption {
   perk: string | null;
   price: number | null;
   group: string | null;
+  /** Where `combat` comes from: read live (the active pet), remembered from
+   *  when the pet was last active, or the wiki's base stats. */
+  source: 'live' | 'remembered' | 'wiki' | null;
+  seenAt: number | null;
 }
 
 /** Pet bonus per stat: the active pet's "In Combat" over its own stats. */
@@ -352,25 +356,36 @@ export function petOptions(src: StatSources, b: Breakdown): { options: PetOption
   const rate = bonusRates(b);
   const pr = petRates(src);
   const find = (name: string) => PET_CATALOG.find((c) => c.name.toLowerCase() === name.toLowerCase());
-  const build = (o: Omit<PetOption, 'delta' | 'powerDelta'>): PetOption => {
-    if (!o.combat || o.status === 'active') return { ...o, delta: null, powerDelta: null };
+  const build = (o: Omit<PetOption, 'delta' | 'powerDelta' | 'source' | 'seenAt'> & Partial<Pick<PetOption, 'source' | 'seenAt'>>): PetOption => {
+    const full = { source: null, seenAt: null, ...o };
+    if (!full.combat || full.status === 'active') return { ...full, delta: null, powerDelta: null };
     const delta: Quad = { str: 0, def: 0, agi: 0, dex: 0 };
-    for (const k of STAT_KEYS) delta[k] = (o.combat[k] - pet.inCombat[k]) * rate[k];
-    return { ...o, delta, powerDelta: STAT_KEYS.reduce((s, k) => s + delta[k], 0) };
+    for (const k of STAT_KEYS) delta[k] = (full.combat[k] - pet.inCombat[k]) * rate[k];
+    return { ...full, delta, powerDelta: STAT_KEYS.reduce((s, k) => s + delta[k], 0) };
   };
   const scaled = (q: Quad): Quad => ({ str: q.str * pr.str, def: q.def * pr.def, agi: q.agi * pr.agi, dex: q.dex * pr.dex });
 
   const options: PetOption[] = [];
   const activeCat = find(pet.name);
-  options.push(build({ name: pet.name, rarity: pet.rarity, status: 'active', combat: pet.inCombat, points: pet.roster?.activePoints ?? null, grownPct: null, perk: null, price: null, group: activeCat?.group ?? null }));
+  options.push(build({ name: pet.name, rarity: pet.rarity, status: 'active', combat: pet.inCombat, points: pet.roster?.activePoints ?? null, grownPct: null, perk: null, price: null, group: activeCat?.group ?? null, source: 'live', seenAt: pet.at }));
   for (const o of pet.roster?.others ?? []) {
     const c = find(o.name);
-    options.push(build({ name: o.name, rarity: o.rarity, status: 'owned', combat: c ? scaled(c.stats) : null, points: o.points, grownPct: o.grownPct, perk: o.perk, price: null, group: c?.group ?? null }));
+    // A pet's real stats from when it was last active beat the wiki's base
+    // stats: they include its growth and every point spent on it.
+    const seen = src.petMemory?.[o.name.toLowerCase()];
+    options.push(
+      build({
+        name: o.name, rarity: o.rarity, status: 'owned',
+        combat: seen ? seen.inCombat : c ? scaled(c.stats) : null,
+        points: o.points, grownPct: o.grownPct, perk: o.perk, price: null, group: c?.group ?? null,
+        source: seen ? 'remembered' : c ? 'wiki' : null, seenAt: seen?.at ?? null,
+      }),
+    );
   }
   const owned = new Set(options.map((o) => o.name.toLowerCase()));
   for (const c of PET_CATALOG) {
     if (owned.has(c.name.toLowerCase()) || !c.price) continue;
-    options.push(build({ name: c.name, rarity: c.rarity, status: 'shop', combat: scaled(c.stats), points: null, grownPct: null, perk: null, price: c.price, group: c.group }));
+    options.push(build({ name: c.name, rarity: c.rarity, status: 'shop', combat: scaled(c.stats), points: null, grownPct: null, perk: null, price: c.price, group: c.group, source: 'wiki' }));
   }
 
   // Spare stat points on the active pet: best stat is the one your bonuses
@@ -379,4 +394,42 @@ export function petOptions(src: StatSources, b: Breakdown): { options: PetOption
   const bestStat = STAT_KEYS.reduce((best, k) => (pr[k] * rate[k] > pr[best] * rate[best] ? k : best), 'str' as StatKey);
   const spend = ready > 0 ? { points: ready, stat: bestStat, power: ready * pr[bestStat] * rate[bestStat] } : null;
   return { options, spend };
+}
+
+// ── Spending pet points ────────────────────────────────────────────────
+
+/** How a pet's ready stat points are spent: all into the best combat stat,
+ *  spread evenly, all into one chosen stat, or not at all. Courier milestones
+ *  count any mix (docs/pet-training.md), so the choice only matters for
+ *  combat, i.e. if the pet is ever the active one. */
+export type PetStrategy = 'best' | 'even' | 'skip' | StatKey;
+
+/** The stat where one pet stat point adds the most Combat Power: the pet
+ *  bonus for that stat times your own bonus rate. Same for every pet, as both
+ *  are account-wide. */
+export function bestPetStat(src: StatSources, b: Breakdown): { stat: StatKey; perPoint: Quad } {
+  const rate = bonusRates(b);
+  const pr = petRates(src);
+  const perPoint: Quad = { str: pr.str * rate.str, def: pr.def * rate.def, agi: pr.agi * rate.agi, dex: pr.dex * rate.dex };
+  const stat = STAT_KEYS.reduce((best, k) => (perPoint[k] > perPoint[best] ? k : best), 'str' as StatKey);
+  return { stat, perPoint };
+}
+
+/** Points per stat for one pet. Even split hands the remainder out in the
+ *  game's own tie-break order, STR > DEF > AGI > DEX (wiki, Forge). */
+export function petPointPlan(strategy: PetStrategy, points: number, best: StatKey): Quad {
+  const q: Quad = { str: 0, def: 0, agi: 0, dex: 0 };
+  const n = Math.max(0, Math.floor(points));
+  if (strategy === 'skip' || n === 0) return q;
+  if (strategy === 'even') {
+    const each = Math.floor(n / 4);
+    STAT_KEYS.forEach((k, i) => (q[k] = each + (i < n % 4 ? 1 : 0)));
+    return q;
+  }
+  q[strategy === 'best' ? best : strategy] = n;
+  return q;
+}
+
+export function planPower(plan: Quad, perPoint: Quad): number {
+  return STAT_KEYS.reduce((s, k) => s + plan[k] * perPoint[k], 0);
 }

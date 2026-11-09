@@ -74,6 +74,7 @@ export async function refreshStatSources(): Promise<StatRefreshResult> {
     }
     pet.roster = parsePetRoster(html);
     await storage.setStatSourcePet(pet);
+    await storage.rememberActivePet(pet);
     return null;
   });
   await step('academy', async () => {

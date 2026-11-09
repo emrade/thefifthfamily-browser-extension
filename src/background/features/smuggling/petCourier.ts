@@ -9,6 +9,7 @@ import { parseSmugglingV2PanelRegex } from './smugglingPanelRegexParser';
 import type { BlackMarketItem, CourierActiveRun, CourierProgressEvent, CourierRunSummary, FleetEntry, LaunchPet, SmugglingV2Snapshot } from '@/shared/types';
 import { formatCourierMoney } from '@/shared/courierDisplay';
 import { runQueued } from '../../automationQueue';
+import { isSwitchingPets } from '../../petSwitchLock';
 
 /**
  * Set for the duration of one run, to the tab that asked for it — see
@@ -438,6 +439,9 @@ function runLeftCashOnHand(summary: CourierRunSummary): boolean {
  *  alarm, or the next manual click), so there's nothing lost by not queuing
  *  it — only avoided by not running it concurrently. */
 async function runExclusive(kind: CourierActiveRun['kind'], execute: () => Promise<CourierRunSummary>, tabId: number | undefined): Promise<CourierRunSummary> {
+  if (isSwitchingPets()) {
+    return skippedRunSummary('Your pets are being switched on the Stats page (the active pet can\'t do courier runs), so this run waits for the next check.');
+  }
   if (activeRun) {
     const info = activeRunInfo;
     const detail = info ? ` (started ${new Date(info.startedAt).toLocaleTimeString()}, now ${info.step})` : '';

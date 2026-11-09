@@ -1,5 +1,5 @@
 import { Fragment, type ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { STORAGE_KEYS } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import type { ExtensionMessage } from '@/shared/messaging';
@@ -16,7 +16,12 @@ import {
   type StatSources,
 } from '@/shared/statBreakdown';
 import type { StatRefreshResult } from '@/background/features/statSources';
-import { bonusGains, bonusRates, petOptions, sortCareers, vehicleOptions, type CareerSort, type Gain, type GainStatus, type PetOption, type VehicleOption } from '@/shared/statAdvisor';
+import type { PetRosterEntry, PetScanState, PetSpendPlanEntry } from '@/shared/types';
+import {
+  bestPetStat, bonusGains, bonusRates, petOptions, petPointPlan, planPower, sortCareers, vehicleOptions,
+  type CareerSort, type Gain, type GainStatus, type PetOption, type PetStrategy, type VehicleOption,
+} from '@/shared/statAdvisor';
+import { getRoster } from '@/shared/petRoster';
 
 /**
  * Dashboard → Stats: where each of the four combat stats comes from, read
@@ -84,7 +89,9 @@ function useNow(): number {
 
 // ── Toolbar ────────────────────────────────────────────────────────────
 
-const SOURCE_ROWS: { key: keyof StatSources; label: string; where: string }[] = [
+type SourceKey = Exclude<keyof StatSources, 'petMemory'>;
+
+const SOURCE_ROWS: { key: SourceKey; label: string; where: string }[] = [
   { key: 'gym', label: 'Gym', where: 'the Gym' },
   { key: 'gear', label: 'Inventory', where: 'your Inventory' },
   { key: 'pet', label: 'Menagerie', where: 'the Menagerie → Care tab' },
@@ -94,7 +101,7 @@ const SOURCE_ROWS: { key: keyof StatSources; label: string; where: string }[] = 
   { key: 'careers', label: 'Careers', where: 'the Careers page' },
   { key: 'loadout', label: 'Arena lock-in', where: 'the Arena at the start of a season' },
 ];
-const REFRESHABLE: Partial<Record<keyof StatSources, keyof StatRefreshResult['errors']>> = {
+const REFRESHABLE: Partial<Record<SourceKey, keyof StatRefreshResult['errors']>> = {
   gym: 'gym', gear: 'gear', pet: 'pet', car: 'car', academy: 'academy', bloodline: 'bloodline', careers: 'careers',
 };
 
@@ -687,6 +694,18 @@ function PetRow({ o, active, rate }: { o: PetOption; active?: boolean; rate: Qua
               .filter(Boolean)
               .join(', ')}
           </span>
+          {o.status === 'owned' && (
+            <span
+              class={`st-adv__source${o.source === 'remembered' ? ' is-real' : ''}`}
+              title={
+                o.source === 'remembered'
+                  ? 'Its real stats from the last time it was your active pet, training included.'
+                  : "It hasn't been your active pet since the extension started remembering, so these are its base stats from the game's wiki, without your training."
+              }
+            >
+              {o.source === 'remembered' && o.seenAt ? `Real stats from ${stamp(o.seenAt)}` : o.source === 'wiki' ? 'Wiki base stats, training not included' : 'Not in the wiki'}
+            </span>
+          )}
           {(o.perk || (active && (o.points ?? 0) >= 5)) && (
             <span class="st-adv__notes">
               {o.perk && <span class="st-tag st-tag--info">{o.perk}</span>}
@@ -719,7 +738,313 @@ function PetHead({ label }: { label: string }) {
   );
 }
 
-function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
+function usePetScan(): PetScanState | null {
+  const [state, setState] = useState<PetScanState | null>(null);
+  useEffect(() => {
+    storage.getPetScanState().then(setState);
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && STORAGE_KEYS.PET_SCAN_STATE in changes) setState(changes[STORAGE_KEYS.PET_SCAN_STATE].newValue as PetScanState);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
+  return state;
+}
+
+/** "Read all pets' stats": sets each pet active for a moment so the game
+ *  shows its real stats, then puts the original back. */
+function PetScanBar({ estimated, total, active }: { estimated: number; total: number; active: string }) {
+  const state = usePetScan();
+  const [failed, setFailed] = useState<string | null>(null);
+  const send = async (msg: ExtensionMessage) => {
+    setFailed(null);
+    try {
+      const r = await chrome.runtime.sendMessage(msg);
+      const res = r as { started?: boolean; reason?: string } | undefined;
+      if (res && res.started === false) setFailed(res.reason ?? 'A pet run is already going.');
+    } catch (err) {
+      setFailed(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const minutes = Math.max(1, Math.round((total * 5.5 + 10) / 60));
+  if (state?.running) {
+    const pctDone = state.total ? Math.round((state.done / state.total) * 100) : 0;
+    return (
+      <div class="st-scan is-running" role="status" aria-live="polite">
+        <div class="st-scan__text">
+          <b>{state.stopRequested ? `Stopping, putting ${active} back…` : state.current ? `${state.mode === 'spend' ? 'Spending points on' : 'Reading'} ${state.current}` : 'Starting…'}</b>
+          <span>
+            {state.done} of {state.total} pets
+          </span>
+          <div class="st-scan__track" aria-hidden="true">
+            <i style={{ width: `${pctDone}%` }} />
+          </div>
+        </div>
+        <button type="button" class="db-btn" onClick={() => send({ type: 'pet-scan-stop-requested' })} disabled={state.stopRequested}>
+          Stop
+        </button>
+      </div>
+    );
+  }
+  const last = state?.finishedAt && state.mode !== 'spend' ? state : null;
+  return (
+    <div class="st-scan">
+      <div class="st-scan__text">
+        <b>{estimated > 0 ? `${estimated} of your pets use wiki estimates` : 'Every pet has real stats'}</b>
+        <span>
+          Reads each pet's real stats by setting it active for a few seconds, then puts {active} back. Nothing is spent. About {minutes} min.
+        </span>
+        {last && (
+          <span class={last.error ? 'st-scan__result is-warn' : 'st-scan__result'}>
+            {last.error
+              ? last.error
+              : `Read ${last.read.length} pets ${ago(last.finishedAt!, Date.now())}${last.restored ? `, ${last.restored} is active again` : ''}.`}
+            {last.skipped.length > 0 && ` Skipped: ${last.skipped.map((x) => `${x.name} (${x.reason})`).join(', ')}.`}
+          </span>
+        )}
+        {failed && <span class="st-scan__result is-warn">{failed}</span>}
+      </div>
+      <button type="button" class={estimated > 0 ? 'db-btn db-btn--primary' : 'db-btn'} onClick={() => send({ type: 'pet-scan-start-requested' })}>
+        {estimated > 0 ? "Read all pets' stats" : 'Read again'}
+      </button>
+    </div>
+  );
+}
+
+const STRATEGY_LABEL: Record<Exclude<PetStrategy, StatKey>, string> = { best: 'Best combat stat', even: 'Even split', skip: "Don't spend" };
+
+function useRosterMilestones(): Map<string, PetRosterEntry> {
+  const [map, setMap] = useState<Map<string, PetRosterEntry>>(new Map());
+  useEffect(() => {
+    getRoster()
+      .then((rows) => setMap(new Map(rows.map((r) => [r.name.toLowerCase(), r]))))
+      .catch(() => setMap(new Map()));
+  }, []);
+  return map;
+}
+
+/** Spend pet points: per pet, best combat stat, even split or one stat, with
+ *  advice per row; then a preview and an explicit confirm (permanent). */
+function PetPointsPlanner({ b, src, startOpen }: { b: Breakdown; src: StatSources; startOpen?: boolean }) {
+  const scan = usePetScan();
+  const milestones = useRosterMilestones();
+  const [open, setOpen] = useState(!!startOpen);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!startOpen) return;
+    setOpen(true);
+    // Bring it into view once it has rendered open.
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }, [startOpen]);
+  const [strategy, setStrategy] = useState<Record<number, PetStrategy>>({});
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const pet = src.pet;
+  const roster = pet?.roster;
+  if (!pet || !roster) return null;
+  const { stat: best, perPoint } = bestPetStat(src, b);
+
+  // Readings saved before pet ids were read have none: never let a missing
+  // id through (every pet would share it, and one tick would select them all).
+  const hasId = (id: unknown): id is number => typeof id === 'number' && Number.isInteger(id);
+  const rows = [
+    ...(hasId(roster.activeId) ? [{ id: roster.activeId, name: pet.name, rarity: pet.rarity, ready: roster.activeStatPointsReady ?? 0, active: true }] : []),
+    ...roster.others.filter((o) => hasId(o.id)).map((o) => ({ id: o.id as number, name: o.name, rarity: o.rarity, ready: Math.floor((o.points ?? 0) / 5), active: false })),
+  ].filter((r) => r.ready > 0);
+  const needsRefresh = !hasId(roster.activeId) && !roster.others.some((o) => hasId(o.id));
+  const stratOf = (id: number): PetStrategy => strategy[id] ?? 'best';
+  const planOf = (r: (typeof rows)[number]) => petPointPlan(stratOf(r.id), r.ready, best);
+  const planText = (q: Quad) =>
+    STAT_KEYS.filter((k) => q[k] > 0)
+      .map((k) => `+${q[k]} ${STAT_SHORT[k]}`)
+      .join(', ') || 'Nothing';
+  const totalPoints = rows.reduce((t, r) => t + (stratOf(r.id) === 'skip' ? 0 : r.ready), 0);
+  const petsToSpend = rows.filter((r) => stratOf(r.id) !== 'skip').length;
+  const running = !!scan?.running;
+  const lastSpend = scan && !scan.running && scan.mode === 'spend' && scan.finishedAt ? scan : null;
+
+  const applyTo = (ids: Iterable<number>, st: PetStrategy) => setStrategy((prev) => {
+    const next = { ...prev };
+    for (const id of ids) next[id] = st;
+    return next;
+  });
+  const toggle = (id: number) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+
+  const spend = async () => {
+    setFailed(null);
+    const plan: PetSpendPlanEntry[] = rows
+      .filter((r) => stratOf(r.id) !== 'skip')
+      .map((r) => ({ petId: r.id, name: r.name, alloc: planOf(r) }));
+    try {
+      const msg: ExtensionMessage = { type: 'pet-spend-start-requested', plan };
+      const res = (await chrome.runtime.sendMessage(msg)) as { started?: boolean; reason?: string } | undefined;
+      if (res && res.started === false) setFailed(res.reason ?? "Couldn't start.");
+      else setConfirming(false);
+    } catch (err) {
+      setFailed(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <section class="st-planner" ref={ref}>
+      <div class="st-scan">
+        <div class="st-scan__text">
+          <b>
+            {needsRefresh
+              ? 'Press Refresh to plan spending'
+              : rows.length
+                ? `${rows.length} pets have ${rows.reduce((t, r) => t + r.ready, 0)} stat points ready`
+                : 'No pet has stat points ready'}
+          </b>
+          <span>Every point spent counts toward that pet's courier milestones, whatever the stat. The stat only matters if the pet fights.</span>
+          {lastSpend && (
+            <span class={lastSpend.error ? 'st-scan__result is-warn' : 'st-scan__result'}>
+              {lastSpend.error ?? `Spent on ${lastSpend.spent.length} pets ${ago(lastSpend.finishedAt!, Date.now())}${lastSpend.restored ? `, ${lastSpend.restored} is active again` : ''}.`}
+              {lastSpend.spent.length > 0 && ` ${lastSpend.spent.map((x) => `${x.name} ${x.text}`).join('; ')}.`}
+              {lastSpend.skipped.length > 0 && ` Skipped: ${lastSpend.skipped.map((x) => `${x.name} (${x.reason})`).join(', ')}.`}
+            </span>
+          )}
+        </div>
+        {rows.length > 0 && (
+          <button type="button" class="db-btn" aria-expanded={open} onClick={() => setOpen(!open)} disabled={running}>
+            {open ? 'Close planner' : 'Plan spending'}
+          </button>
+        )}
+      </div>
+      {open && rows.length > 0 && (
+        <div class="st-plan">
+          <p class="st-plan__advice">
+            <b>Advice:</b> spend every pet's points on its best combat stat ({STAT_LABEL[best]} for you, about +{perPoint[best].toFixed(1)} Combat Power a point if
+            that pet fights). Couriers gain the same whatever you pick, so this keeps every pet a strong backup at no cost. Even split or one stat only make
+            sense if you want a pet balanced or built a certain way.
+          </p>
+          <div class="st-plan__bulk" role="group" aria-label="Set the selected pets to">
+            <label class="st-plan__check">
+              <input type="checkbox" checked={allSelected} onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))} /> Select all
+            </label>
+            <span class="st-plan__bulk-label">{selected.size ? `Set ${selected.size} selected to:` : 'Select pets to set several at once'}</span>
+            {selected.size > 0 && (
+              <span class="st-plan__bulk-btns">
+                <button type="button" class="db-btn" onClick={() => applyTo(selected, 'best')}>Best combat stat</button>
+                <button type="button" class="db-btn" onClick={() => applyTo(selected, 'even')}>Even split</button>
+                {STAT_KEYS.map((k) => (
+                  <button key={k} type="button" class="db-btn" onClick={() => applyTo(selected, k)}>
+                    All {STAT_SHORT[k]}
+                  </button>
+                ))}
+                <button type="button" class="db-btn" onClick={() => applyTo(selected, 'skip')}>Don't spend</button>
+              </span>
+            )}
+          </div>
+          <div class="st-table-wrap">
+            <table class="st-table st-adv">
+              <thead>
+                <tr>
+                  <th scope="col" class="st-plan__cb"><span class="st-sr">Select</span></th>
+                  <th scope="col" class="st-rowhead">Pet</th>
+                  <th scope="col">Courier milestone</th>
+                  <th scope="col">Spend how</th>
+                  <th scope="col">Plan</th>
+                  <th scope="col" class="st-num" title="Combat Power this adds if the pet is your active one">If it fights</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const q = planOf(r);
+                  const m = milestones.get(r.name.toLowerCase());
+                  const spentNow = stratOf(r.id) === 'skip' ? 0 : r.ready;
+                  return (
+                    <tr key={r.id} class={r.active ? 'st-adv__current' : ''}>
+                      <td class="st-plan__cb">
+                        <input type="checkbox" aria-label={`Select ${r.name}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                      </td>
+                      <th scope="row" class="st-rowhead">
+                        <div class="st-adv__item">
+                          <span class="st-adv__name">{r.name}</span>
+                          <span class="st-adv__meta">
+                            {[r.rarity, r.active ? 'Active now' : null, `${r.ready} stat points ready`].filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                      </th>
+                      <td class="st-plan__ms">
+                        {m?.pointsNeededForNextMilestone != null ? (
+                          spentNow >= m.pointsNeededForNextMilestone ? (
+                            <span class="st-up">
+                              Reaches the next one: carries {m.nextMilestoneCapacity ?? m.capacity}
+                              {m.nextMilestoneTravelPenaltyPct != null ? `, +${m.nextMilestoneTravelPenaltyPct}% travel` : ''}
+                            </span>
+                          ) : (
+                            <span>{m.pointsNeededForNextMilestone} needed for the next, this spends {spentNow}</span>
+                          )
+                        ) : (
+                          <span class="st-flat" title="Shown on the Smuggling page when no deliveries are out">Not seen yet</span>
+                        )}
+                      </td>
+                      <td>
+                        <select
+                          class="st-plan__select"
+                          aria-label={`How to spend ${r.name}'s points`}
+                          value={stratOf(r.id)}
+                          onChange={(e) => applyTo([r.id], (e.target as HTMLSelectElement).value as PetStrategy)}
+                        >
+                          <option value="best">{STRATEGY_LABEL.best} ({STAT_SHORT[best]})</option>
+                          <option value="even">{STRATEGY_LABEL.even}</option>
+                          {STAT_KEYS.map((k) => (
+                            <option key={k} value={k}>
+                              All {STAT_LABEL[k]}
+                            </option>
+                          ))}
+                          <option value="skip">{STRATEGY_LABEL.skip}</option>
+                        </select>
+                      </td>
+                      <td class="st-plan__plan">{planText(q)}</td>
+                      <td class="st-num">{stratOf(r.id) === 'skip' ? '—' : `+${n(planPower(q, perPoint))}`}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div class="st-plan__foot">
+            {!confirming ? (
+              <>
+                <span>
+                  {petsToSpend ? `Spend ${totalPoints} stat points on ${petsToSpend} pets.` : 'Nothing set to spend.'} Takes about{' '}
+                  {Math.max(1, Math.round((petsToSpend * 5.5 + totalPoints * 0.6 + 10) / 60))} min; {pet.name} is put back after.
+                </span>
+                <button type="button" class="db-btn db-btn--primary" disabled={!petsToSpend || running} onClick={() => setConfirming(true)}>
+                  Spend points
+                </button>
+              </>
+            ) : (
+              <>
+                <span class="st-plan__warn">Spending can't be undone. Spend {totalPoints} points on {petsToSpend} pets as planned?</span>
+                <span class="st-plan__confirm">
+                  <button type="button" class="db-btn" onClick={() => setConfirming(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" class="db-btn db-btn--primary" onClick={spend}>
+                    Yes, spend them
+                  </button>
+                </span>
+              </>
+            )}
+          </div>
+          {failed && <p class="db-warn">{failed}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PetAdvice({ b, src, openPlanner }: { b: Breakdown; src: StatSources; openPlanner?: boolean }) {
   const [shop, setShop] = useState(false);
   const p = petOptions(src, b);
   if (!p) return <NeedsSource what="the Menagerie's Care tab" />;
@@ -748,6 +1073,8 @@ function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
       ) : (
         <Verdict head={`${active.name} is already your best pet for combat.`} body={spend ? <>Next, {spend}</> : undefined} />
       )}
+      <PetScanBar estimated={owned.filter((o) => o.source !== 'remembered').length} total={owned.length} active={active.name} />
+      <PetPointsPlanner b={b} src={src} startOpen={openPlanner} />
       <p class="st-table-hint">
         <span class="st-table-hint__base" aria-hidden="true" /> First row: what yours adds now. Other rows: the change if you switched.
       </p>
@@ -763,8 +1090,9 @@ function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
         </table>
       </div>
       <p class="db-note">
-        Other pets use their base stats from the game's wiki, with your pet bonuses applied. Each also has unspent points (5 buy a stat point) that you can
-        spend once it's active; points already spent on a pet stay with it, so your {active.name}'s training doesn't move over. Only the active pet counts in fights.
+        The game only shows a pet's stats while it's active, so the extension remembers each pet's real stats every time it reads your Care tab. Pets it
+        hasn't seen active yet use the wiki's base stats, which leave out your training; set one active once to replace the estimate. Unspent points (5
+        buy a stat point) can only be spent while a pet is active. Only the active pet counts in fights.
       </p>
       <button type="button" class="st-linkbtn st-more" aria-expanded={shop} onClick={() => setShop(!shop)}>
         {shop ? 'Hide pets you could buy' : 'Show pets you could buy'}
@@ -978,8 +1306,9 @@ function BonusAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
 
 type AdvisorTab = 'car' | 'pet' | 'bonuses';
 
-function Advisor({ b, src }: { b: Breakdown; src: StatSources }) {
+function Advisor({ b, src, focus }: { b: Breakdown; src: StatSources; focus: string | null }) {
   const [tab, setTab] = useState<AdvisorTab>(() => {
+    if (focus === 'pet-planner') return 'pet';
     try {
       const v = localStorage.getItem('ff-stats-advisor-tab');
       return v === 'pet' || v === 'bonuses' ? v : 'car';
@@ -1011,7 +1340,7 @@ function Advisor({ b, src }: { b: Breakdown; src: StatSources }) {
         ))}
       </div>
       <div class="st-advisor__panel" id="st-adv-panel" role="tabpanel" aria-labelledby={`st-adv-${tab}`}>
-        {tab === 'car' ? <CarAdvice b={b} src={src} /> : tab === 'pet' ? <PetAdvice b={b} src={src} /> : <BonusAdvice b={b} src={src} />}
+        {tab === 'car' ? <CarAdvice b={b} src={src} /> : tab === 'pet' ? <PetAdvice b={b} src={src} openPlanner={focus === 'pet-planner'} /> : <BonusAdvice b={b} src={src} />}
       </div>
     </section>
   );
@@ -1019,9 +1348,37 @@ function Advisor({ b, src }: { b: Breakdown; src: StatSources }) {
 
 type View = 'breakdown' | 'advisor';
 
+/** "#/stats?pet-planner" (the Menagerie Assistant's link): open Advisor → Pet
+ *  with the points planner open. The hint is then removed from the address
+ *  (a reload shouldn't reopen it); the counter makes a second click reopen the
+ *  planner even if the player closed it in between. */
+function useFocusRequest(): { name: string | null; n: number } {
+  const read = () => {
+    const i = location.hash.indexOf('?');
+    return i === -1 ? null : location.hash.slice(i + 1) || null;
+  };
+  const [focus, setFocus] = useState(() => ({ name: read(), n: 0 }));
+  useEffect(() => {
+    const take = () => {
+      const name = read();
+      if (!name) return;
+      setFocus((f) => ({ name, n: f.n + 1 }));
+      history.replaceState(null, '', location.hash.split('?')[0]);
+    };
+    take();
+    window.addEventListener('hashchange', take);
+    return () => window.removeEventListener('hashchange', take);
+  }, []);
+  return focus;
+}
+
 export function StatsSection() {
   const src = useSources();
   const now = useNow();
+  const focus = useFocusRequest();
+  useEffect(() => {
+    if (focus.name === 'pet-planner') setView('advisor');
+  }, [focus.n]);
   const [view, setView] = useState<View>(() => {
     try {
       return (localStorage.getItem('ff-stats-view') as View) === 'advisor' ? 'advisor' : 'breakdown';
@@ -1068,7 +1425,7 @@ export function StatsSection() {
               </div>
             </>
           ) : (
-            <Advisor b={b} src={src} />
+            <Advisor key={`focus-${focus.n}`} b={b} src={src} focus={focus.name} />
           )}
         </>
       )}

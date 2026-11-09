@@ -86,6 +86,7 @@ import { upsertRoster, getRoster } from '@/shared/petRoster';
 import { storage } from '@/shared/storage';
 import { runQueued } from './automationQueue';
 import { refreshStatSources } from './features/statSources';
+import { initPetStatScan, startPetSpend, startPetStatScan, stopPetStatScan } from './features/petStatScan';
 import { removeLegacyFuryCatcher } from './legacyCleanup';
 import { getAutomationSchedule, openDashboard } from './automationSchedule';
 
@@ -145,6 +146,10 @@ initGoldRun().catch((err) => console.error(LOG_PREFIX, 'initGoldRun failed', err
 // Re-arms the Arena page reminder's alarm — see features/arena/index.ts's
 // init.
 initArena();
+
+// A pet-stats read can't survive a background restart: mark one that was
+// cut off as interrupted (features/petStatScan.ts).
+void initPetStatScan();
 
 // Re-arms the Real Estate vault reminder from its stored vaults — see
 // features/realEstate/vaultReminder.ts.
@@ -226,7 +231,7 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   }
 
   if (msg.type === 'dashboard-open-requested') {
-    return openDashboard(msg.section);
+    return openDashboard(msg.section, msg.focus);
   }
 
   if (msg.type === 'street-intel-next-check-requested') {
@@ -343,6 +348,16 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // (a no-op when that's off) so it never reads pages mid-automation.
   if (msg.type === 'stat-sources-refresh-requested') {
     return runQueued('stats-refresh', refreshStatSources, LINGER);
+  }
+
+  if (msg.type === 'pet-scan-start-requested') {
+    return startPetStatScan();
+  }
+  if (msg.type === 'pet-spend-start-requested') {
+    return startPetSpend(msg.plan);
+  }
+  if (msg.type === 'pet-scan-stop-requested') {
+    return stopPetStatScan().then(() => ({ ok: true }));
   }
 
   if (msg.type === 'garage-cash-requested') {
