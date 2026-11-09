@@ -9,6 +9,7 @@ export const DASHBOARD_SECTIONS = [
   'automations/career-auto',
   'automations/crimes-auto',
   'automations/real-estate-auto',
+  'stats',
   'arena',
   'fight-club',
   'http-archive',

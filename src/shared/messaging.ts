@@ -218,6 +218,10 @@ export type ExtensionMessage =
   // cached, since both the Bulk Buy total and the Strip/Delete selection
   // lists need the player's real current state before anything is confirmed.
   | { type: 'garage-catalog-requested' }
+  // Dashboard → Stats' Refresh button: reads the Gym, inventory, Menagerie
+  // care tab and Chop Shop once (read-only) and stores what they show. Replies
+  // with `StatRefreshResult` (background/features/statSources.ts).
+  | { type: 'stat-sources-refresh-requested' }
   // Sent when the Bulk Delete tab needs a real payout number for a vehicle
   // before it can total up a confirm price — `bodyQuicksell` isn't on the
   // catalog's own car list (see `GarageCarState`'s own doc for why this

@@ -115,6 +115,21 @@ For anything non-trivial, and always before `/release`, work through the
 expands these with the real misses that prompted them. For analyses that
 drive decisions, offer an independent review (`docs/agent-briefs/`).
 
+## Game mechanics: check the wiki first
+
+For any question about how the game works (stats, bonuses, odds, rewards,
+costs, item stats, what a feature does), read the game's own wiki before
+reasoning from memory or reverse-engineering from the archive. Use the
+`use-wiki` skill (`verification/wiki/wiki.py`). It's the game's own data,
+public, and doesn't touch the account. Then check it against the archive
+(`use-archives`) where the account's own numbers matter, and say which
+numbers came from which source. If the wiki doesn't cover something, say so
+before working it out from the data.
+
+This came out of a real miss: a stat-calculation question was worked from
+archive data for a long time before checking the wiki, which gave the forge
+enhancement rule (+N% of an item's base stats per level) directly.
+
 ## General
 
 - Run `npm run build` after code changes, not just a type-check — see

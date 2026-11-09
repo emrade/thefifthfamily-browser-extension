@@ -14,4 +14,5 @@ export const AUTOMATION_FEATURE_LABELS: Record<AutomationQueueFeature, string> =
   inventory: 'Inventory',
   achievements: 'Achievement claims',
   'gold-run': 'Gold Run',
+  'stats-refresh': 'Stats refresh',
 };

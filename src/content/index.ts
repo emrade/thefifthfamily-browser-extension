@@ -32,6 +32,7 @@ import { handleCapturedRequest as handleArenaMastery } from './features/arena/ma
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
 import { initInventoryAutoSell } from './features/inventory/autoSell';
 import { initCareerAutoPanel } from './features/careerAuto/panel';
+import { handleCapturedRequest as handleStatSources } from './features/statSources';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
 // captured request is simply offered to all of them — see background/index.ts for the
@@ -45,6 +46,7 @@ const handlers = [
   handleArenaMastery,
   handleInventoryQuickSell,
   handleRealEstateVaults,
+  handleStatSources,
 ];
 
 // Bridge from the MAIN-world fetch/XHR hook (mainWorldHook.ts) — that script has no

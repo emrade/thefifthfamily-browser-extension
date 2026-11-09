@@ -739,7 +739,8 @@ export type AutomationQueueFeature =
   | 'garage'
   | 'inventory'
   | 'achievements'
-  | 'gold-run';
+  | 'gold-run'
+  | 'stats-refresh';
 
 export interface AutomationScheduleItem {
   feature: AutomationQueueFeature;

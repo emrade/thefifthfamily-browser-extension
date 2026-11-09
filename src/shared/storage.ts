@@ -35,6 +35,7 @@ import type {
   StreetIntelAutoStatus,
   StreetRacingStatus,
 } from './types';
+import type { CarSnapshot, GearSnapshot, GymSnapshot, LoadoutSnapshot, PetSnapshot, StatSources } from './statBreakdown';
 import {
   CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
   REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
@@ -367,6 +368,20 @@ export const storage = {
 
   getAutomationStopLog: () => get<AutomationStopLogEntry[]>(STORAGE_KEYS.AUTOMATION_STOP_LOG, []),
   setAutomationStopLog: (v: AutomationStopLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_STOP_LOG, v),
+
+  // Dashboard → Stats sources; each null until its page has been read.
+  getStatSources: async (): Promise<StatSources> => ({
+    gym: await get<GymSnapshot | null>(STORAGE_KEYS.STAT_SRC_GYM, null),
+    gear: await get<GearSnapshot | null>(STORAGE_KEYS.STAT_SRC_GEAR, null),
+    pet: await get<PetSnapshot | null>(STORAGE_KEYS.STAT_SRC_PET, null),
+    car: await get<CarSnapshot | null>(STORAGE_KEYS.STAT_SRC_CAR, null),
+    loadout: await get<LoadoutSnapshot | null>(STORAGE_KEYS.STAT_SRC_LOADOUT, null),
+  }),
+  setStatSourceGym: (v: GymSnapshot) => set(STORAGE_KEYS.STAT_SRC_GYM, v),
+  setStatSourceGear: (v: GearSnapshot) => set(STORAGE_KEYS.STAT_SRC_GEAR, v),
+  setStatSourcePet: (v: PetSnapshot) => set(STORAGE_KEYS.STAT_SRC_PET, v),
+  setStatSourceCar: (v: CarSnapshot) => set(STORAGE_KEYS.STAT_SRC_CAR, v),
+  setStatSourceLoadout: (v: LoadoutSnapshot) => set(STORAGE_KEYS.STAT_SRC_LOADOUT, v),
 
   getRealEstateAutoConfig: async (): Promise<RealEstateAutoConfig> => {
     const stored = await get<Partial<RealEstateAutoConfig>>(STORAGE_KEYS.REAL_ESTATE_AUTO_CONFIG, {});

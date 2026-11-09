@@ -53,6 +53,13 @@ export const STORAGE_KEYS = {
   AUTOMATION_QUEUE_CONFIG: 'ff_automation_queue_config',
   AUTOMATION_QUEUE_LOG: 'ff_automation_queue_log',
   AUTOMATION_STOP_LOG: 'ff_automation_stop_log',
+  // Dashboard → Stats sources (shared/statBreakdown.ts), one key each: the
+  // page capture and the Refresh button both write them, never the same one.
+  STAT_SRC_GYM: 'ff_stat_src_gym',
+  STAT_SRC_GEAR: 'ff_stat_src_gear',
+  STAT_SRC_PET: 'ff_stat_src_pet',
+  STAT_SRC_CAR: 'ff_stat_src_car',
+  STAT_SRC_LOADOUT: 'ff_stat_src_loadout',
 } as const;
 
 // Storage keys and alarm names left behind by the removed Arena Auto-Attack
