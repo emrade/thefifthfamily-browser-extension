@@ -75,10 +75,43 @@ export interface PetSnapshot {
   inCombat: Quad;
 }
 
+export interface CarRace {
+  speed: number;
+  accel: number;
+  handling: number;
+}
+
+/** A car the player owns (Chop Shop `cars`). */
+export interface GarageCar {
+  name: string;
+  vehicleClass: string;
+  equipped: boolean;
+  /** All five parts fitted. Whether an unfinished car still gives its stat
+   *  bonus isn't stated anywhere (wiki or archive), so the advisor flags it. */
+  complete: boolean;
+  stats: Quad;
+  race: CarRace;
+}
+
+/** A model the dealer sells (Chop Shop `dealer`). */
+export interface DealerCar {
+  name: string;
+  vehicleClass: string;
+  stats: Quad;
+  race: CarRace;
+  priceCash: number;
+  pricePlatinum: number;
+  owned: boolean;
+}
+
 export interface CarSnapshot {
   at: number;
   name: string;
   stats: Quad;
+  /** Absent on readings stored before the advisor existed. */
+  race?: CarRace;
+  garage?: GarageCar[];
+  dealer?: DealerCar[];
 }
 
 export interface LoadoutBonus {
@@ -250,15 +283,35 @@ export function parseActivePet(html: string, at: number): PetSnapshot | null {
 
 // ── Chop Shop catalog ───────────────────────────────────────────────────
 
+const carStats = (c: any): Quad => ({ str: Number(c.bonus_str) || 0, def: Number(c.bonus_def) || 0, agi: Number(c.bonus_agl) || 0, dex: Number(c.bonus_dex) || 0 });
+
 export function parseEquippedCar(json: any, at: number): CarSnapshot | null {
   const cars: any[] = Array.isArray(json?.cars) ? json.cars : [];
   const car = cars.find((c) => Number(c?.is_equipped) === 1);
   if (!car) return null;
-  return {
-    at,
-    name: String(car.name ?? 'Car'),
-    stats: { str: Number(car.bonus_str) || 0, def: Number(car.bonus_def) || 0, agi: Number(car.bonus_agl) || 0, dex: Number(car.bonus_dex) || 0 },
-  };
+  const race = (c: any): CarRace => ({
+    speed: Number(c.race_speed ?? c.base_speed) || 0,
+    accel: Number(c.race_accel ?? c.base_accel) || 0,
+    handling: Number(c.race_handling ?? c.base_handling) || 0,
+  });
+  const garage: GarageCar[] = cars.map((c) => ({
+    name: String(c.name ?? 'Car'),
+    vehicleClass: String(c.vehicle_class ?? ''),
+    equipped: Number(c.is_equipped) === 1,
+    complete: c.complete === true || Number(c.parts_fitted) >= 5,
+    stats: carStats(c),
+    race: race(c),
+  }));
+  const dealer: DealerCar[] = (Array.isArray(json?.dealer) ? json.dealer : []).map((c: any) => ({
+    name: String(c.name ?? 'Car'),
+    vehicleClass: String(c.vehicle_class ?? ''),
+    stats: carStats(c),
+    race: { speed: Number(c.base_speed) || 0, accel: Number(c.base_accel) || 0, handling: Number(c.base_handling) || 0 },
+    priceCash: Number(c.price_cash) || 0,
+    pricePlatinum: Number(c.price_platinum) || 0,
+    owned: c.owned === true,
+  }));
+  return { at, name: String(car.name ?? 'Car'), stats: carStats(car), race: race(car), garage, dealer };
 }
 
 // ── Arena lock-in ───────────────────────────────────────────────────────

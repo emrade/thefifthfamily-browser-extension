@@ -16,6 +16,7 @@ import {
   type StatSources,
 } from '@/shared/statBreakdown';
 import type { StatRefreshResult } from '@/background/features/statSources';
+import { bonusRates, vehicleOptions, type VehicleOption } from '@/shared/statAdvisor';
 
 /**
  * Dashboard → Stats: where each of the four combat stats comes from, read
@@ -497,9 +498,170 @@ function HowItWorks() {
   );
 }
 
+// ── Advisor ────────────────────────────────────────────────────────────
+
+const VEHICLE_ROWS = 6;
+const signed = (v: number) => (Math.round(v) > 0 ? `+${n(v)}` : Math.round(v) === 0 ? '0' : `−${n(Math.abs(v))}`);
+const money = (v: number) => (v >= 1e6 ? `$${Number((v / 1e6).toFixed(1))}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}k` : `$${v}`);
+
+function Delta({ v }: { v: number }) {
+  const r = Math.round(v);
+  return <span class={r > 0 ? 'st-up' : r < 0 ? 'st-down' : 'st-flat'}>{signed(v)}</span>;
+}
+
+function verdict(opts: VehicleOption[], current: VehicleOption | undefined, power: number): { head: string; body: string } {
+  const others = opts.filter((o) => o.status !== 'equipped');
+  const best = [...others].sort((a, b) => b.powerDelta - a.powerDelta)[0];
+  const even = Math.max(10, power * 0.005);
+  const name = current?.name ?? 'Your car';
+  if (!best || best.powerDelta <= even) {
+    const close = others.filter((o) => Math.abs(o.powerDelta) <= even);
+    return {
+      head: `${name} is already your best car for combat.`,
+      body: close.length
+        ? `${close.map((o) => o.name).join(' and ')} come${close.length === 1 ? 's' : ''} out about even: the same total, spread differently across the stats.`
+        : `No car you own or can buy adds more to your stats.`,
+    };
+  }
+  return {
+    head: `${best.name} would add about ${n(best.powerDelta)} Combat Power.`,
+    body: best.status === 'dealer' ? `It costs ${money(best.priceCash)} at the dealer.` : 'You already own it.',
+  };
+}
+
+function RaceCell({ o, cur }: { o: VehicleOption; cur: VehicleOption | undefined }) {
+  const parts: [string, number, number | undefined][] = [
+    ['Speed', o.race.speed, cur?.race.speed],
+    ['Accel', o.race.accel, cur?.race.accel],
+    ['Handling', o.race.handling, cur?.race.handling],
+  ];
+  return (
+    <span class="st-race" title={parts.map(([l, v]) => `${l} ${v}`).join(' · ')}>
+      {parts.map(([l, v, c]) => (
+        <span key={l} class={c === undefined || o.status === 'equipped' || v === c ? '' : v > c ? 'st-up' : 'st-down'}>{v}</span>
+      ))}
+    </span>
+  );
+}
+
+function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
+  const [all, setAll] = useState(false);
+  const opts = vehicleOptions(src, b);
+  if (!opts) {
+    return (
+      <section class="db-card db-card--wide">
+        <h2 class="db-h">Best car for your stats</h2>
+        <p class="db-empty">Press Refresh (or open the Chop Shop in the game) to read your garage and the dealer.</p>
+      </section>
+    );
+  }
+  const current = opts.find((o) => o.status === 'equipped');
+  const power = STAT_KEYS.reduce((s, k) => s + b.total[k], 0);
+  const v = verdict(opts, current, power);
+  const rate = bonusRates(b);
+  const ranked = [current, ...opts.filter((o) => o.status !== 'equipped').sort((a, z) => z.powerDelta - a.powerDelta)].filter(Boolean) as VehicleOption[];
+  const shown = all ? ranked : ranked.slice(0, VEHICLE_ROWS);
+
+  return (
+    <section class="db-card db-card--wide">
+      <h2 class="db-h">Best car for your stats</h2>
+      <div class="st-verdict">
+        <p class="st-verdict__head">{v.head}</p>
+        <p class="st-verdict__body">{v.body}</p>
+      </div>
+      <div class="st-table-wrap">
+        <table class="st-table st-adv">
+          <thead>
+            <tr>
+              <th scope="col" class="st-rowhead">Car</th>
+              {STAT_KEYS.map((k) => (
+                <th key={k} scope="col" class={`st-num st-th--${k}`}>{STAT_SHORT[k]}</th>
+              ))}
+              <th scope="col" class="st-num">Combat Power</th>
+              <th scope="col" class="st-num" title="Racing speed, acceleration and handling">Racing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((o) => (
+              <tr key={o.name} class={o.status === 'equipped' ? 'st-adv__current' : ''}>
+                <th scope="row" class="st-rowhead">
+                  <div class="st-adv__car">
+                    <span class="st-adv__name">{o.name}</span>
+                    <span class="st-adv__meta">
+                      {o.status === 'equipped' ? 'Equipped' : o.status === 'owned' ? 'Owned' : money(o.priceCash)}
+                      {o.vehicleClass && ` · Class ${o.vehicleClass}`}
+                    </span>
+                    {(!o.complete || o.crossings.length > 0) && (
+                      <span class="st-adv__notes">
+                        {o.crossings.map((c) => (
+                          <span key={c.label} class="st-tag st-tag--up">{c.label}</span>
+                        ))}
+                        {!o.complete && <span class="st-tag st-tag--warn" title="The game doesn't say whether a car with missing parts still gives its stat bonus.">No parts fitted: bonus may not count</span>}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                {STAT_KEYS.map((k) => (
+                  <td key={k} class="st-num" title={`Car gives ${o.stats[k]} ${STAT_SHORT[k]}`}>
+                    {o.status === 'equipped' ? n(o.stats[k] * rate[k]) : <Delta v={o.delta[k]} />}
+                  </td>
+                ))}
+                <td class="st-num st-adv__power">{o.status === 'equipped' ? '—' : <Delta v={o.powerDelta} />}</td>
+                <td class="st-num"><RaceCell o={o} cur={current} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {ranked.length > VEHICLE_ROWS && (
+        <button type="button" class="db-btn st-more" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer' : `Show all ${ranked.length} cars`}
+        </button>
+      )}
+      <p class="db-note">
+        Your car's row shows what it adds now, after your bonuses. Other rows show the change if you equipped that car instead, estimated with
+        your own bonus rate for each stat (STR ×{rate.str.toFixed(2)}, DEF ×{rate.def.toFixed(2)}, AGI ×{rate.agi.toFixed(2)}, DEX ×{rate.dex.toFixed(2)}).
+        Racing shows speed, acceleration and handling, green or red against your current car. Arena only picks up a change at the next season start.
+      </p>
+    </section>
+  );
+}
+
+function ComingNext({ src }: { src: StatSources }) {
+  return (
+    <section class="db-card db-card--wide">
+      <h2 class="db-h">Coming next</h2>
+      <ul class="db-plain st-how">
+        <li><b>Pets:</b> which pet adds the most once trained, and what the active one gives up (courier and perk effects).</li>
+        <li>
+          <b>Bonuses you could still get:</b> Career ranks, Bloodline perks and Academy courses you haven't taken, and what each would add.
+          {!src.loadout && ' This needs the bonus list from the Arena lock-in.'}
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+type View = 'breakdown' | 'advisor';
+
 export function StatsSection() {
   const src = useSources();
   const now = useNow();
+  const [view, setView] = useState<View>(() => {
+    try {
+      return (localStorage.getItem('ff-stats-view') as View) === 'advisor' ? 'advisor' : 'breakdown';
+    } catch {
+      return 'breakdown';
+    }
+  });
+  const pick = (v: View) => {
+    setView(v);
+    try {
+      localStorage.setItem('ff-stats-view', v);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
   if (!src) return <p class="db-empty">Loading…</p>;
   const b = buildBreakdown(src);
   return (
@@ -512,14 +674,30 @@ export function StatsSection() {
         </section>
       ) : (
         <>
-          <Legend b={b} />
-          <StatCards b={b} src={src} />
-          <div class="db-grid">
-            <SourcesTable b={b} src={src} />
-            <PercentBonuses b={b} src={src} />
-            <FightBonuses src={src} />
-            <HowItWorks />
+          <div class="st-views" role="tablist" aria-label="Stats view">
+            {(['breakdown', 'advisor'] as View[]).map((v) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} class={`st-view${view === v ? ' is-active' : ''}`} onClick={() => pick(v)}>
+                {v === 'breakdown' ? 'Breakdown' : 'Advisor'}
+              </button>
+            ))}
           </div>
+          {view === 'breakdown' ? (
+            <>
+              <Legend b={b} />
+              <StatCards b={b} src={src} />
+              <div class="db-grid">
+                <SourcesTable b={b} src={src} />
+                <PercentBonuses b={b} src={src} />
+                <FightBonuses src={src} />
+                <HowItWorks />
+              </div>
+            </>
+          ) : (
+            <div class="db-grid">
+              <VehicleAdvisor b={b} src={src} />
+              <ComingNext src={src} />
+            </div>
+          )}
         </>
       )}
     </div>
