@@ -607,6 +607,9 @@ function CarAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
           body={close.length ? `${close.map((o) => o.name).join(' and ')} come${close.length === 1 ? 's' : ''} out about even: the same total, spread differently.` : 'Nothing you own or can buy adds more.'}
         />
       )}
+      <p class="st-table-hint">
+        <span class="st-table-hint__base" aria-hidden="true" /> First row: what yours adds now. Other rows: the change if you switched.
+      </p>
       <div class="st-table-wrap">
         <table class="st-table st-adv">
           <thead>
@@ -641,7 +644,7 @@ function CarAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
                     {o.status === 'equipped' ? n(o.stats[k] * rate[k]) : <Delta v={o.delta[k]} />}
                   </td>
                 ))}
-                <td class="st-num st-adv__power">{o.status === 'equipped' ? '—' : <Delta v={o.powerDelta} />}</td>
+                <td class="st-num st-adv__power">{o.status === 'equipped' ? n(STAT_KEYS.reduce((t, k) => t + o.stats[k] * rate[k], 0)) : <Delta v={o.powerDelta} />}</td>
                 <td class="st-num"><RaceCell o={o} cur={current} /></td>
               </tr>
             ))}
@@ -654,8 +657,8 @@ function CarAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
         </button>
       )}
       <p class="db-note">
-        Your car's row shows what it adds now. Other rows show the change if you equipped that car instead, after your bonuses (STR ×{rate.str.toFixed(2)}, DEF ×
-        {rate.def.toFixed(2)}, AGI ×{rate.agi.toFixed(2)}, DEX ×{rate.dex.toFixed(2)}). Racing is speed, acceleration and handling, against your car.
+        Both include your bonuses (STR ×{rate.str.toFixed(2)}, DEF ×{rate.def.toFixed(2)}, AGI ×{rate.agi.toFixed(2)}, DEX ×{rate.dex.toFixed(2)}). Racing is
+        speed, acceleration and handling, against your car.
       </p>
     </>
   );
@@ -673,7 +676,7 @@ function petSummary(b: Breakdown, src: StatSources): { status: string } | null {
   return { status: p.spend ? `${p.spend.points} points to spend` : 'Best already' };
 }
 
-function PetRow({ o, active }: { o: PetOption; active?: boolean }) {
+function PetRow({ o, active, rate }: { o: PetOption; active?: boolean; rate: Quad }) {
   return (
     <tr class={active ? 'st-adv__current' : ''}>
       <th scope="row" class="st-rowhead">
@@ -693,9 +696,11 @@ function PetRow({ o, active }: { o: PetOption; active?: boolean }) {
         </div>
       </th>
       {STAT_KEYS.map((k) => (
-        <td key={k} class="st-num">{!o.combat ? '—' : active ? n(o.combat[k]) : <Delta v={o.delta![k]} />}</td>
+        <td key={k} class="st-num" title={active && o.combat ? `The pet has ${n(o.combat[k])} ${STAT_SHORT[k]} in combat` : undefined}>
+          {!o.combat ? '—' : active ? n(o.combat[k] * rate[k]) : <Delta v={o.delta![k]} />}
+        </td>
       ))}
-      <td class="st-num st-adv__power">{active ? '—' : o.powerDelta === null ? <span class="st-flat" title="Not listed in the game's wiki">not in wiki</span> : <Delta v={o.powerDelta} />}</td>
+      <td class="st-num st-adv__power">{active ? (o.combat ? n(STAT_KEYS.reduce((t, k) => t + o.combat![k] * rate[k], 0)) : '—') : o.powerDelta === null ? <span class="st-flat" title="Not listed in the game's wiki">not in wiki</span> : <Delta v={o.powerDelta} />}</td>
     </tr>
   );
 }
@@ -723,6 +728,7 @@ function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
   const buy = p.options.filter((o) => o.status === 'shop').sort((x, y) => (y.powerDelta ?? 0) - (x.powerDelta ?? 0)).slice(0, PET_SHOP_ROWS);
   const best = owned[0];
   const even = evenBand(b);
+  const rate = bonusRates(b);
   const spend = p.spend && (
     <>
       put its {p.spend.points} stat points into {STAT_LABEL[p.spend.stat]} for about +{n(p.spend.power)}.
@@ -742,13 +748,16 @@ function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
       ) : (
         <Verdict head={`${active.name} is already your best pet for combat.`} body={spend ? <>Next, {spend}</> : undefined} />
       )}
+      <p class="st-table-hint">
+        <span class="st-table-hint__base" aria-hidden="true" /> First row: what yours adds now. Other rows: the change if you switched.
+      </p>
       <div class="st-table-wrap">
         <table class="st-table st-adv">
           <PetHead label="Your pets" />
           <tbody>
-            <PetRow o={active} active />
+            <PetRow o={active} active rate={rate} />
             {owned.map((o) => (
-              <PetRow key={o.name} o={o} />
+              <PetRow key={o.name} o={o} rate={rate} />
             ))}
           </tbody>
         </table>
@@ -766,7 +775,7 @@ function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
             <PetHead label="Pets you could buy" />
             <tbody>
               {buy.map((o) => (
-                <PetRow key={o.name} o={o} />
+                <PetRow key={o.name} o={o} rate={rate} />
               ))}
             </tbody>
           </table>

@@ -585,3 +585,7 @@ html, body {
 .st-seg-switch button:hover { color: var(--ff-ink); }
 .st-seg-switch button.is-on { color: var(--ff-bg); background: var(--ff-gold); }
 .st-seg-switch button:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 1px; }
+
+/* Advisor tables: names the two kinds of number (baseline row vs changes) */
+.st-table-hint { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; font-size: 12.5px; color: var(--ff-ink-muted); }
+.st-table-hint__base { width: 14px; height: 10px; border-radius: 3px; background: rgba(201, 168, 76, .14); border: 1px solid var(--ff-border-strong); }
