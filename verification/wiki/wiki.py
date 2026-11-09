@@ -47,8 +47,16 @@ VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "met
 
 # ---------------------------------------------------------------- download
 
+# Pages the wiki splits by a query parameter, stored as sections of their own.
+# The Bloodlines page shows one tree at a time (the default is Warlord).
+VARIANTS = {
+    "bloodlines-shadow": "bloodlines&tree=shadow",
+    "bloodlines-empire": "bloodlines&tree=empire",
+}
+
+
 def url_for(section):
-    return BASE if section == "index" else f"{BASE}?section={section}"
+    return BASE if section == "index" else f"{BASE}?section={VARIANTS.get(section, section)}"
 
 
 def download(section):

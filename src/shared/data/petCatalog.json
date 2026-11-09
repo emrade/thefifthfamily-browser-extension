@@ -1,0 +1,632 @@
+[
+ {
+  "name": "Gino",
+  "rarity": "Uncommon",
+  "group": "Exclusive",
+  "price": 0,
+  "stats": {
+   "str": 5,
+   "def": 3,
+   "agi": 8,
+   "dex": 10
+  },
+  "carries": 8,
+  "travel": 1.2
+ },
+ {
+  "name": "George",
+  "rarity": "Legendary",
+  "group": "Exclusive",
+  "price": 0,
+  "stats": {
+   "str": 24,
+   "def": 56,
+   "agi": 4,
+   "dex": 26
+  },
+  "carries": 60,
+  "travel": 1.3
+ },
+ {
+  "name": "Bombardier Beetle Larva",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 30,
+   "def": 73,
+   "agi": 13,
+   "dex": 17
+  },
+  "carries": 15,
+  "travel": 0.85
+ },
+ {
+  "name": "Frigatebird Chick",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 13,
+   "def": 30,
+   "agi": 73,
+   "dex": 17
+  },
+  "carries": 26,
+  "travel": 0.8
+ },
+ {
+  "name": "Leopard Cub",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 26,
+   "def": 13,
+   "agi": 43,
+   "dex": 51
+  },
+  "carries": 44,
+  "travel": 0.95
+ },
+ {
+  "name": "Ball Python",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 30,
+   "def": 38,
+   "agi": 25,
+   "dex": 53
+  },
+  "carries": 25,
+  "travel": 1.05
+ },
+ {
+  "name": "Alligator Gar Fry",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 34,
+   "def": 60,
+   "agi": 17,
+   "dex": 22
+  },
+  "carries": 60,
+  "travel": 1.2
+ },
+ {
+  "name": "Chameleon Hatchling",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 9,
+   "def": 17,
+   "agi": 52,
+   "dex": 55
+  },
+  "carries": 40,
+  "travel": 1
+ },
+ {
+  "name": "American Quarter Horse",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 46,
+   "def": 32,
+   "agi": 42,
+   "dex": 26
+  },
+  "carries": 75,
+  "travel": 0.9
+ },
+ {
+  "name": "Nigerian Dwarf Goat",
+  "rarity": "Crowned Legendary",
+  "group": "Exclusive",
+  "price": 150000000,
+  "stats": {
+   "str": 32,
+   "def": 50,
+   "agi": 34,
+   "dex": 30
+  },
+  "carries": 50,
+  "travel": 0.95
+ },
+ {
+  "name": "Bombardier Beetle",
+  "rarity": "Mythic",
+  "group": "Exclusive",
+  "price": 350000000,
+  "stats": {
+   "str": 50,
+   "def": 90,
+   "agi": 24,
+   "dex": 30
+  },
+  "carries": 24,
+  "travel": 0.8
+ },
+ {
+  "name": "Alligator Gar",
+  "rarity": "Mythic",
+  "group": "Exclusive",
+  "price": 350000000,
+  "stats": {
+   "str": 60,
+   "def": 78,
+   "agi": 24,
+   "dex": 32
+  },
+  "carries": 95,
+  "travel": 1.35
+ },
+ {
+  "name": "Leopard",
+  "rarity": "Mythic",
+  "group": "Exclusive",
+  "price": 350000000,
+  "stats": {
+   "str": 38,
+   "def": 20,
+   "agi": 60,
+   "dex": 76
+  },
+  "carries": 70,
+  "travel": 0.9
+ },
+ {
+  "name": "Frigatebird",
+  "rarity": "Mythic",
+  "group": "Exclusive",
+  "price": 350000000,
+  "stats": {
+   "str": 16,
+   "def": 32,
+   "agi": 87,
+   "dex": 59
+  },
+  "carries": 39,
+  "travel": 0.75
+ },
+ {
+  "name": "Chameleon",
+  "rarity": "Mythic",
+  "group": "Exclusive",
+  "price": 350000000,
+  "stats": {
+   "str": 28,
+   "def": 48,
+   "agi": 58,
+   "dex": 60
+  },
+  "carries": 62,
+  "travel": 1
+ },
+ {
+  "name": "Norway Rat",
+  "rarity": "Common",
+  "group": "Downtown",
+  "price": 0,
+  "stats": {
+   "str": 2,
+   "def": 4,
+   "agi": 10,
+   "dex": 8
+  },
+  "carries": 7,
+  "travel": 0.9
+ },
+ {
+  "name": "Raccoon",
+  "rarity": "Common",
+  "group": "Downtown",
+  "price": 50000,
+  "stats": {
+   "str": 1,
+   "def": 2,
+   "agi": 5,
+   "dex": 4
+  },
+  "carries": 12,
+  "travel": 1.05
+ },
+ {
+  "name": "Pigeon",
+  "rarity": "Common",
+  "group": "Downtown",
+  "price": 50000,
+  "stats": {
+   "str": 0,
+   "def": 1,
+   "agi": 7,
+   "dex": 4
+  },
+  "carries": 4,
+  "travel": 0.8
+ },
+ {
+  "name": "Ringtail",
+  "rarity": "Uncommon",
+  "group": "The Strip",
+  "price": 0,
+  "stats": {
+   "str": 4,
+   "def": 6,
+   "agi": 20,
+   "dex": 16
+  },
+  "carries": 11,
+  "travel": 0.9
+ },
+ {
+  "name": "Fox",
+  "rarity": "Uncommon",
+  "group": "The Strip",
+  "price": 300000,
+  "stats": {
+   "str": 3,
+   "def": 3,
+   "agi": 11,
+   "dex": 6
+  },
+  "carries": 9,
+  "travel": 0.85
+ },
+ {
+  "name": "House Cat",
+  "rarity": "Uncommon",
+  "group": "The Strip",
+  "price": 300000,
+  "stats": {
+   "str": 2,
+   "def": 2,
+   "agi": 11,
+   "dex": 8
+  },
+  "carries": 15,
+  "travel": 1
+ },
+ {
+  "name": "Cormorant",
+  "rarity": "Rare",
+  "group": "The Docks",
+  "price": 0,
+  "stats": {
+   "str": 10,
+   "def": 12,
+   "agi": 30,
+   "dex": 20
+  },
+  "carries": 15,
+  "travel": 0.85
+ },
+ {
+  "name": "Blue Crab",
+  "rarity": "Rare",
+  "group": "The Docks",
+  "price": 1500000,
+  "stats": {
+   "str": 9,
+   "def": 20,
+   "agi": 2,
+   "dex": 5
+  },
+  "carries": 28,
+  "travel": 1.25
+ },
+ {
+  "name": "Moray Eel",
+  "rarity": "Rare",
+  "group": "The Docks",
+  "price": 1500000,
+  "stats": {
+   "str": 7,
+   "def": 6,
+   "agi": 12,
+   "dex": 11
+  },
+  "carries": 13,
+  "travel": 0.9
+ },
+ {
+  "name": "Barn Owl",
+  "rarity": "Infamous Rare",
+  "group": "Industrial District",
+  "price": 0,
+  "stats": {
+   "str": 8,
+   "def": 12,
+   "agi": 40,
+   "dex": 28
+  },
+  "carries": 17,
+  "travel": 0.85
+ },
+ {
+  "name": "German Shepherd",
+  "rarity": "Infamous Rare",
+  "group": "Industrial District",
+  "price": 5000000,
+  "stats": {
+   "str": 12,
+   "def": 12,
+   "agi": 10,
+   "dex": 10
+  },
+  "carries": 30,
+  "travel": 1.05
+ },
+ {
+  "name": "Peregrine Falcon",
+  "rarity": "Infamous Rare",
+  "group": "Industrial District",
+  "price": 5000000,
+  "stats": {
+   "str": 4,
+   "def": 4,
+   "agi": 22,
+   "dex": 14
+  },
+  "carries": 13,
+  "travel": 0.75
+ },
+ {
+  "name": "Doberman",
+  "rarity": "Epic",
+  "group": "Arms District",
+  "price": 0,
+  "stats": {
+   "str": 40,
+   "def": 34,
+   "agi": 28,
+   "dex": 24
+  },
+  "carries": 34,
+  "travel": 1
+ },
+ {
+  "name": "Wild Boar",
+  "rarity": "Epic",
+  "group": "Arms District",
+  "price": 15000000,
+  "stats": {
+   "str": 23,
+   "def": 25,
+   "agi": 9,
+   "dex": 6
+  },
+  "carries": 46,
+  "travel": 1.3
+ },
+ {
+  "name": "Red-Tailed Hawk",
+  "rarity": "Epic",
+  "group": "Arms District",
+  "price": 15000000,
+  "stats": {
+   "str": 9,
+   "def": 6,
+   "agi": 27,
+   "dex": 21
+  },
+  "carries": 20,
+  "travel": 0.8
+ },
+ {
+  "name": "Cave Bat",
+  "rarity": "Underworld Epic",
+  "group": "The Underground",
+  "price": 0,
+  "stats": {
+   "str": 10,
+   "def": 24,
+   "agi": 62,
+   "dex": 56
+  },
+  "carries": 15,
+  "travel": 0.8
+ },
+ {
+  "name": "Black Widow Spider",
+  "rarity": "Underworld Epic",
+  "group": "The Underground",
+  "price": 30000000,
+  "stats": {
+   "str": 4,
+   "def": 14,
+   "agi": 28,
+   "dex": 30
+  },
+  "carries": 10,
+  "travel": 0.85
+ },
+ {
+  "name": "Raven",
+  "rarity": "Underworld Epic",
+  "group": "The Underground",
+  "price": 30000000,
+  "stats": {
+   "str": 6,
+   "def": 19,
+   "agi": 24,
+   "dex": 27
+  },
+  "carries": 27,
+  "travel": 0.9
+ },
+ {
+  "name": "Koi",
+  "rarity": "Legendary",
+  "group": "Diamond District",
+  "price": 0,
+  "stats": {
+   "str": 20,
+   "def": 80,
+   "agi": 68,
+   "dex": 52
+  },
+  "carries": 57,
+  "travel": 1.2
+ },
+ {
+  "name": "Peacock",
+  "rarity": "Legendary",
+  "group": "Diamond District",
+  "price": 70000000,
+  "stats": {
+   "str": 15,
+   "def": 20,
+   "agi": 40,
+   "dex": 35
+  },
+  "carries": 30,
+  "travel": 0.9
+ },
+ {
+  "name": "Capuchin Monkey",
+  "rarity": "Legendary",
+  "group": "Diamond District",
+  "price": 70000000,
+  "stats": {
+   "str": 12,
+   "def": 14,
+   "agi": 36,
+   "dex": 48
+  },
+  "carries": 42,
+  "travel": 0.95
+ },
+ {
+  "name": "Hyacinth Macaw",
+  "rarity": "Crowned Legendary",
+  "group": "The Penthouse",
+  "price": 0,
+  "stats": {
+   "str": 24,
+   "def": 46,
+   "agi": 112,
+   "dex": 84
+  },
+  "carries": 38,
+  "travel": 0.8
+ },
+ {
+  "name": "White Tiger",
+  "rarity": "Crowned Legendary",
+  "group": "The Penthouse",
+  "price": 150000000,
+  "stats": {
+   "str": 44,
+   "def": 23,
+   "agi": 35,
+   "dex": 31
+  },
+  "carries": 70,
+  "travel": 1.2
+ },
+ {
+  "name": "Crowned Crane",
+  "rarity": "Crowned Legendary",
+  "group": "The Penthouse",
+  "price": 150000000,
+  "stats": {
+   "str": 13,
+   "def": 22,
+   "agi": 56,
+   "dex": 42
+  },
+  "carries": 36,
+  "travel": 0.85
+ },
+ {
+  "name": "Sea Otter",
+  "rarity": "Mythic",
+  "group": "The Waterfront",
+  "price": 0,
+  "stats": {
+   "str": 80,
+   "def": 92,
+   "agi": 116,
+   "dex": 100
+  },
+  "carries": 65,
+  "travel": 1
+ },
+ {
+  "name": "Orca",
+  "rarity": "Mythic",
+  "group": "The Waterfront",
+  "price": 350000000,
+  "stats": {
+   "str": 75,
+   "def": 50,
+   "agi": 41,
+   "dex": 28
+  },
+  "carries": 90,
+  "travel": 1.3
+ },
+ {
+  "name": "Albatross",
+  "rarity": "Mythic",
+  "group": "The Waterfront",
+  "price": 350000000,
+  "stats": {
+   "str": 15,
+   "def": 35,
+   "agi": 85,
+   "dex": 59
+  },
+  "carries": 42,
+  "travel": 0.8
+ },
+ {
+  "name": "Sable",
+  "rarity": "Fifth Family Mythic",
+  "group": "The Syndicate",
+  "price": 0,
+  "stats": {
+   "str": 56,
+   "def": 88,
+   "agi": 172,
+   "dex": 156
+  },
+  "carries": 57,
+  "travel": 0.85
+ },
+ {
+  "name": "King Cobra",
+  "rarity": "Fifth Family Mythic",
+  "group": "The Syndicate",
+  "price": 700000000,
+  "stats": {
+   "str": 35,
+   "def": 34,
+   "agi": 77,
+   "dex": 90
+  },
+  "carries": 68,
+  "travel": 1
+ },
+ {
+  "name": "Golden Eagle",
+  "rarity": "Fifth Family Mythic",
+  "group": "The Syndicate",
+  "price": 700000000,
+  "stats": {
+   "str": 45,
+   "def": 36,
+   "agi": 85,
+   "dex": 70
+  },
+  "carries": 45,
+  "travel": 0.75
+ }
+]

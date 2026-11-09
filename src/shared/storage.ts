@@ -36,6 +36,7 @@ import type {
   StreetRacingStatus,
 } from './types';
 import type { CarSnapshot, GearSnapshot, GymSnapshot, LoadoutSnapshot, PetSnapshot, StatSources } from './statBreakdown';
+import type { AcademySnapshot, BloodlineSnapshot, CareersSnapshot } from './statAdvisorSources';
 import {
   CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
   REAL_ESTATE_AUTO_DEFAULT_INTERVAL_HOURS,
@@ -376,7 +377,13 @@ export const storage = {
     pet: await get<PetSnapshot | null>(STORAGE_KEYS.STAT_SRC_PET, null),
     car: await get<CarSnapshot | null>(STORAGE_KEYS.STAT_SRC_CAR, null),
     loadout: await get<LoadoutSnapshot | null>(STORAGE_KEYS.STAT_SRC_LOADOUT, null),
+    academy: await get<AcademySnapshot | null>(STORAGE_KEYS.STAT_SRC_ACADEMY, null),
+    bloodline: await get<BloodlineSnapshot | null>(STORAGE_KEYS.STAT_SRC_BLOODLINE, null),
+    careers: await get<CareersSnapshot | null>(STORAGE_KEYS.STAT_SRC_CAREERS, null),
   }),
+  setStatSourceAcademy: (v: AcademySnapshot) => set(STORAGE_KEYS.STAT_SRC_ACADEMY, v),
+  setStatSourceBloodline: (v: BloodlineSnapshot) => set(STORAGE_KEYS.STAT_SRC_BLOODLINE, v),
+  setStatSourceCareers: (v: CareersSnapshot) => set(STORAGE_KEYS.STAT_SRC_CAREERS, v),
   setStatSourceGym: (v: GymSnapshot) => set(STORAGE_KEYS.STAT_SRC_GYM, v),
   setStatSourceGear: (v: GearSnapshot) => set(STORAGE_KEYS.STAT_SRC_GEAR, v),
   setStatSourcePet: (v: PetSnapshot) => set(STORAGE_KEYS.STAT_SRC_PET, v),

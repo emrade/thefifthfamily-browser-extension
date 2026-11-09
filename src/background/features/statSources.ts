@@ -3,6 +3,7 @@ import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { panelHtml, parseActivePet, parseEquippedCar, parseGear, parseGym } from '@/shared/statBreakdown';
+import { parseAcademy, parseBloodline, parseCareers, parsePetRoster } from '@/shared/statAdvisorSources';
 import { postAction } from '../gameAction';
 import { getCsrfToken } from '../csrfToken';
 
@@ -19,7 +20,7 @@ import { getCsrfToken } from '../csrfToken';
  * once a season, so it's only ever captured from the page.
  */
 
-export type StatSourceName = 'gym' | 'gear' | 'pet' | 'car';
+export type StatSourceName = 'gym' | 'gear' | 'pet' | 'car' | 'academy' | 'bloodline' | 'careers';
 
 export interface StatRefreshResult {
   /** Per source: null when it was read and stored, otherwise why not. */
@@ -71,15 +72,34 @@ export async function refreshStatSources(): Promise<StatRefreshResult> {
       const tab = /class="men-tab[^"]*\bmen-on\b[^"]*"[^>]*data-tab="men:(\w+)"/.exec(html)?.[1];
       return tab && tab !== 'care' ? `the game returned the Menagerie ${tab} tab instead of Care` : "couldn't find an active pet on the Menagerie care tab";
     }
+    pet.roster = parsePetRoster(html);
     await storage.setStatSourcePet(pet);
+    return null;
+  });
+  await step('academy', async () => {
+    const academy = parseAcademy(await readPanel('type=academy'), Date.now());
+    if (!academy) return "couldn't read the courses on the Academy page";
+    await storage.setStatSourceAcademy(academy);
+    return null;
+  });
+  await step('bloodline', async () => {
+    const bloodline = parseBloodline(await readPanel('type=bloodline'), Date.now());
+    if (!bloodline) return "couldn't read the Bloodline page";
+    await storage.setStatSourceBloodline(bloodline);
+    return null;
+  });
+  await step('careers', async () => {
+    const careers = parseCareers(await readPanel('type=careers'), Date.now());
+    if (!careers) return "couldn't read the jobs on the Careers page";
+    await storage.setStatSourceCareers(careers);
     return null;
   });
   await step('car', async () => {
     // The catalog is a POST, which needs the game's token. The extension
-    // learns it from the game's own requests, so right after the extension
-    // (re)loads there may be none yet: ask the player rather than send a
-    // request bound to be refused.
-    if (!(await getCsrfToken())) return 'needs the game open: click anything there, then Refresh';
+    // learns it only from the game's own POSTs (actions, not page loads), so
+    // right after the extension (re)loads there may be none yet: ask the
+    // player rather than send a request bound to be refused.
+    if (!(await getCsrfToken())) return 'needs a game action first: do anything that changes something in the game, then Refresh';
     const resp = await postAction('/api/chop_shop_proto.php', { action: 'catalog' });
     if (resp?.ok !== true) return typeof resp?.error === 'string' ? resp.error : 'the Chop Shop refused the read';
     const car = parseEquippedCar(resp, Date.now());

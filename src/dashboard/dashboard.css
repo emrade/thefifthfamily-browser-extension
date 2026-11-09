@@ -397,7 +397,7 @@ html, body {
 .st-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .st-col-num { width: 96px; }
 .st-table th, .st-table td {
-  padding: 11px 14px 11px 0; vertical-align: middle;
+  padding: 12px 14px; vertical-align: middle;
   border-bottom: 1px solid var(--ff-border); text-align: left; font-weight: 500;
 }
 .st-table thead th {
@@ -503,7 +503,7 @@ html, body {
 .st-verdict__head { font-family: var(--font-display); font-size: 22px; line-height: 1.3; color: var(--ff-ink); }
 .st-verdict__body { margin-top: 6px; font-size: 14px; color: var(--ff-ink-muted); line-height: 1.5; max-width: 70ch; }
 .st-adv .st-rowhead { min-width: 220px; }
-.st-adv__car { display: flex; flex-direction: column; gap: 3px; }
+.st-adv__item { display: flex; flex-direction: column; gap: 3px; }
 .st-adv__name { font-weight: 600; color: var(--ff-ink); }
 .st-adv__meta { font-size: 12px; color: var(--ff-ink-faint); }
 .st-adv__notes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
@@ -517,3 +517,59 @@ html, body {
 .st-tag--up { color: var(--ff-green); border-color: color-mix(in srgb, var(--ff-green) 40%, transparent); }
 .st-tag--warn { color: var(--ff-gold-bright); border-color: color-mix(in srgb, var(--ff-gold-bright) 40%, transparent); }
 .st-more { margin-top: 12px; }
+
+/* Stats: toolbar summary */
+.st-toolbar__status { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-toolbar__line { font-size: 14px; color: var(--ff-ink); }
+.st-toolbar__lead { flex-wrap: wrap; }
+.st-linkbtn {
+  padding: 0; font: 600 13px var(--font-body); color: var(--ff-gold); background: none; border: none; cursor: pointer;
+  text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ff-gold) 40%, transparent); text-underline-offset: 3px;
+}
+.st-linkbtn:hover { color: var(--ff-gold-bright); }
+.st-linkbtn:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 3px; border-radius: 2px; }
+.st-more { margin-top: 14px; }
+.st-gap { margin-top: 12px; }
+
+/* Advisor: sub-tabs carry their status, so gains show without opening each */
+.st-advisor { padding: 0; overflow: hidden; }
+.st-subtabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--ff-border); }
+.st-subtab {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 14px 20px;
+  background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; text-align: left;
+}
+.st-subtab + .st-subtab { border-left: 1px solid var(--ff-border); }
+.st-subtab:hover { background: var(--ff-hover); }
+.st-subtab.is-active { background: var(--ff-surface-raised); border-bottom-color: var(--ff-gold-bright); }
+.st-subtab:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: -2px; }
+.st-subtab__label { font: 700 15px var(--font-body); color: var(--ff-ink); }
+.st-subtab__status { font-size: 12.5px; color: var(--ff-ink-faint); }
+.st-subtab__status.is-gain { color: var(--ff-green); }
+.st-advisor__panel { padding: 22px 24px 24px; }
+@media (max-width: 600px) { .st-subtab { padding: 12px 12px; } .st-advisor__panel { padding: 18px 16px; } }
+
+.st-tag--info { color: var(--ff-blue); border-color: color-mix(in srgb, var(--ff-blue) 40%, transparent); }
+.st-tag:not([class*="st-tag--"]) { color: var(--ff-ink-muted); border-color: var(--ff-border-strong); }
+
+/* Bonuses: one list per source */
+.st-groups { display: flex; flex-direction: column; gap: 26px; margin-top: 6px; }
+.st-group__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 8px; }
+.st-group__title { font: 700 16px var(--font-body); color: var(--ff-ink); }
+.st-group__note { font-size: 13px; color: var(--ff-ink-faint); }
+.st-gains { list-style: none; border: 1px solid var(--ff-border); border-radius: var(--radius-md); overflow: hidden; }
+.st-gain { padding: 12px 16px; border-bottom: 1px solid var(--ff-border); }
+.st-gain:last-child { border-bottom: none; }
+.st-gain--later, .st-gain--blocked { background: rgba(0, 0, 0, .15); }
+.st-gain__main { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.st-gain__what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-gain__title { font-weight: 600; color: var(--ff-ink); }
+.st-gain__effect { font-size: 13.5px; color: var(--ff-ink-muted); }
+.st-gain__value { font-family: var(--font-mono); font-size: 16px; font-weight: 700; white-space: nowrap; }
+.st-gain__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; color: var(--ff-ink-faint); }
+.st-gain__status { font-weight: 700; }
+.st-gain__status--now { color: var(--ff-green); }
+.st-gain__status--progress { color: var(--ff-blue); }
+.st-gain__status--blocked { color: var(--ff-gold-bright); }
+.st-gain__status--later { color: var(--ff-ink-faint); }
+.st-choices { list-style: none; margin-top: 8px; padding: 6px 10px; border-left: 2px solid var(--ff-border-strong); }
+.st-choices li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 13px; color: var(--ff-ink-muted); }

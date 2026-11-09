@@ -2,6 +2,7 @@ import type { CapturedRequest } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { panelHtml, parseActivePet, parseEquippedCar, parseGear, parseGym, parseLoadout } from '@/shared/statBreakdown';
+import { parseAcademy, parseBloodline, parseCareers, parsePetRoster } from '@/shared/statAdvisorSources';
 
 /**
  * Keeps Dashboard → Stats current from the pages the player opens: the Gym,
@@ -34,7 +35,24 @@ export function handleCapturedRequest(req: CapturedRequest): void {
     } else if (type === 'menagerie' && url.searchParams.get('men_tab') === 'care') {
       const html = panelHtml(req.responseText);
       const pet = html && parseActivePet(html, at);
-      if (pet) run(() => storage.setStatSourcePet(pet));
+      if (pet && html) {
+        pet.roster = parsePetRoster(html);
+        run(() => storage.setStatSourcePet(pet));
+      }
+    } else if (type === 'academy') {
+      const html = panelHtml(req.responseText);
+      const academy = html && parseAcademy(html, at);
+      if (academy) run(() => storage.setStatSourceAcademy(academy));
+    } else if (type === 'bloodline') {
+      const html = panelHtml(req.responseText);
+      const bloodline = html && parseBloodline(html, at);
+      if (bloodline) run(() => storage.setStatSourceBloodline(bloodline));
+    } else if (type === 'careers' && !req.truncated) {
+      // The page's own copy is cut at 512 KB when it's that big, which would
+      // drop jobs; the Refresh button reads it whole.
+      const html = panelHtml(req.responseText);
+      const careers = html && parseCareers(html, at);
+      if (careers) run(() => storage.setStatSourceCareers(careers));
     }
     return;
   }

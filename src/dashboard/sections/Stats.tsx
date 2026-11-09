@@ -16,7 +16,7 @@ import {
   type StatSources,
 } from '@/shared/statBreakdown';
 import type { StatRefreshResult } from '@/background/features/statSources';
-import { bonusRates, vehicleOptions, type VehicleOption } from '@/shared/statAdvisor';
+import { bonusGains, bonusRates, petOptions, vehicleOptions, type Gain, type GainStatus, type PetOption, type VehicleOption } from '@/shared/statAdvisor';
 
 /**
  * Dashboard → Stats: where each of the four combat stats comes from, read
@@ -26,7 +26,10 @@ import { bonusRates, vehicleOptions, type VehicleOption } from '@/shared/statAdv
 
 const STAT_LABEL: Record<StatKey, string> = { str: 'Strength', def: 'Defence', agi: 'Agility', dex: 'Dexterity' };
 const STAT_SHORT: Record<StatKey, string> = { str: 'STR', def: 'DEF', agi: 'AGI', dex: 'DEX' };
-const SOURCE_KEYS = [STORAGE_KEYS.STAT_SRC_GYM, STORAGE_KEYS.STAT_SRC_GEAR, STORAGE_KEYS.STAT_SRC_PET, STORAGE_KEYS.STAT_SRC_CAR, STORAGE_KEYS.STAT_SRC_LOADOUT];
+const SOURCE_KEYS = [
+  STORAGE_KEYS.STAT_SRC_GYM, STORAGE_KEYS.STAT_SRC_GEAR, STORAGE_KEYS.STAT_SRC_PET, STORAGE_KEYS.STAT_SRC_CAR, STORAGE_KEYS.STAT_SRC_LOADOUT,
+  STORAGE_KEYS.STAT_SRC_ACADEMY, STORAGE_KEYS.STAT_SRC_BLOODLINE, STORAGE_KEYS.STAT_SRC_CAREERS,
+];
 const DAY_MS = 86_400_000;
 
 type PartKey = FlatPart['key'] | 'bonus';
@@ -86,14 +89,24 @@ const SOURCE_ROWS: { key: keyof StatSources; label: string; where: string }[] = 
   { key: 'gear', label: 'Inventory', where: 'your Inventory' },
   { key: 'pet', label: 'Menagerie', where: 'the Menagerie → Care tab' },
   { key: 'car', label: 'Chop Shop', where: 'the Chop Shop' },
+  { key: 'academy', label: 'Academy', where: 'the Academy' },
+  { key: 'bloodline', label: 'Bloodline', where: 'the Bloodline page' },
+  { key: 'careers', label: 'Careers', where: 'the Careers page' },
   { key: 'loadout', label: 'Arena lock-in', where: 'the Arena at the start of a season' },
 ];
-const REFRESHABLE: Partial<Record<keyof StatSources, keyof StatRefreshResult['errors']>> = { gym: 'gym', gear: 'gear', pet: 'pet', car: 'car' };
+const REFRESHABLE: Partial<Record<keyof StatSources, keyof StatRefreshResult['errors']>> = {
+  gym: 'gym', gear: 'gear', pet: 'pet', car: 'car', academy: 'academy', bloodline: 'bloodline', careers: 'careers',
+};
 
+type SourceState = 'ok' | 'stale' | 'missing' | 'error';
+
+/** One line of status for the whole set, chips only for what needs you, and
+ *  every source behind "Show all": eight chips at once was noise. */
 function Toolbar({ src, now }: { src: StatSources; now: number }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<StatRefreshResult | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const refresh = async () => {
     setBusy(true);
@@ -108,38 +121,55 @@ function Toolbar({ src, now }: { src: StatSources; now: number }) {
     }
   };
 
+  const rows = SOURCE_ROWS.map((row) => {
+    const snap = src[row.key];
+    const err = result && REFRESHABLE[row.key] ? result.errors[REFRESHABLE[row.key]!] : undefined;
+    // A failed refresh keeps the earlier reading: say so, reason on hover.
+    const state: SourceState = err ? (snap ? 'stale' : 'error') : !snap ? 'missing' : row.key !== 'loadout' && now - snap.at > DAY_MS ? 'stale' : 'ok';
+    const when = err ? (snap ? `kept from ${ago(snap.at, now)}` : 'not read') : snap ? ago(snap.at, now) : 'not read yet';
+    const title = err ? `Not updated: ${err}${snap ? `. Showing the reading from ${stamp(snap.at)}.` : ''}` : snap ? `Read ${stamp(snap.at)}` : `Open ${row.where} to fill this in`;
+    return { ...row, snap, err, state, when, title };
+  });
+  const read = rows.filter((r) => r.snap);
+  const newest = read.length ? Math.max(...read.map((r) => r.snap!.at)) : null;
+  // The lock-in only comes once a season: not something to act on.
+  const attention = rows.filter((r) => r.state !== 'ok' && !(r.key === 'loadout' && r.state === 'missing'));
+  const shown = showAll ? rows : attention;
+
   return (
     <section class="st-toolbar" aria-label="Data sources">
       <div class="st-toolbar__lead">
         <button type="button" class="db-btn db-btn--primary st-refresh" onClick={refresh} disabled={busy} aria-busy={busy}>
           {busy ? 'Reading the game…' : 'Refresh'}
         </button>
-        <p class="st-toolbar__hint">Reads the Gym, Inventory, Menagerie and Chop Shop once. Also updates whenever you open those pages.</p>
+        <div class="st-toolbar__status">
+          <p class="st-toolbar__line">
+            {read.length} of {rows.length} sources read{newest ? `, newest ${ago(newest, now)}` : ''}.
+            {attention.length === 0 && ' Everything is up to date.'}
+          </p>
+          <p class="st-toolbar__hint">Refresh reads your Gym, Inventory, Menagerie, Chop Shop, Academy, Bloodline and Careers pages once.</p>
+        </div>
+        <button type="button" class="st-linkbtn" aria-expanded={showAll} onClick={() => setShowAll(!showAll)}>
+          {showAll ? 'Hide sources' : 'Show all sources'}
+        </button>
       </div>
-      <ul class="st-sources">
-        {SOURCE_ROWS.map((row) => {
-          const snap = src[row.key];
-          const err = result && REFRESHABLE[row.key] ? result.errors[REFRESHABLE[row.key]!] : undefined;
-          // A failed refresh keeps the earlier reading: say so, and keep the
-          // reason for the hover rather than shouting it.
-          const state = err ? (snap ? 'stale' : 'error') : !snap ? 'missing' : row.key !== 'loadout' && now - snap.at > DAY_MS ? 'stale' : 'ok';
-          const when = err ? (snap ? `kept from ${ago(snap.at, now)}` : err) : snap ? ago(snap.at, now) : 'not read yet';
-          const title = err ? `Not updated: ${err}${snap ? `. Showing the reading from ${stamp(snap.at)}.` : ''}` : snap ? `Read ${stamp(snap.at)}` : `Open ${row.where} to fill this in`;
-          return (
-            <li key={row.key} class={`st-source st-source--${state}`} title={title}>
+      {shown.length > 0 && (
+        <ul class="st-sources">
+          {shown.map((r) => (
+            <li key={r.key} class={`st-source st-source--${r.state}`} title={r.title}>
               <span class="st-source__dot" aria-hidden="true" />
-              <span class="st-source__name">{row.label}</span>
-              <span class="st-source__when">{when}</span>
+              <span class="st-source__name">{r.label}</span>
+              <span class="st-source__when">{r.when}</span>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
       {failed && <p class="db-warn">Refresh failed: {failed}</p>}
       {result && Object.keys(result.errors).length > 0 && (
         <ul class="st-refresh-notes">
-          {SOURCE_ROWS.filter((r) => REFRESHABLE[r.key] && result.errors[REFRESHABLE[r.key]!]).map((r) => (
+          {rows.filter((r) => r.err).map((r) => (
             <li key={r.key}>
-              <b>{r.label}:</b> {result.errors[REFRESHABLE[r.key]!]}
+              <b>{r.label}:</b> {r.err}
             </li>
           ))}
         </ul>
@@ -499,35 +529,39 @@ function HowItWorks() {
 }
 
 // ── Advisor ────────────────────────────────────────────────────────────
+//
+// Three sub-tabs (Car, Pet, Bonuses), each opening with its verdict in one
+// sentence, then the ranked options with the current choice pinned first as
+// the reference. Every tab label carries a short status so the player sees
+// where the gains are without opening each one.
 
-const VEHICLE_ROWS = 6;
 const signed = (v: number) => (Math.round(v) > 0 ? `+${n(v)}` : Math.round(v) === 0 ? '0' : `−${n(Math.abs(v))}`);
 const money = (v: number) => (v >= 1e6 ? `$${Number((v / 1e6).toFixed(1))}M` : v >= 1e3 ? `$${Math.round(v / 1e3)}k` : `$${v}`);
+const powerOf = (b: Breakdown) => STAT_KEYS.reduce((s, k) => s + b.total[k], 0);
+/** Under half a percent of Combat Power is "about even": inside the estimate's noise. */
+const evenBand = (b: Breakdown) => Math.max(10, powerOf(b) * 0.005);
 
 function Delta({ v }: { v: number }) {
   const r = Math.round(v);
   return <span class={r > 0 ? 'st-up' : r < 0 ? 'st-down' : 'st-flat'}>{signed(v)}</span>;
 }
 
-function verdict(opts: VehicleOption[], current: VehicleOption | undefined, power: number): { head: string; body: string } {
-  const others = opts.filter((o) => o.status !== 'equipped');
-  const best = [...others].sort((a, b) => b.powerDelta - a.powerDelta)[0];
-  const even = Math.max(10, power * 0.005);
-  const name = current?.name ?? 'Your car';
-  if (!best || best.powerDelta <= even) {
-    const close = others.filter((o) => Math.abs(o.powerDelta) <= even);
-    return {
-      head: `${name} is already your best car for combat.`,
-      body: close.length
-        ? `${close.map((o) => o.name).join(' and ')} come${close.length === 1 ? 's' : ''} out about even: the same total, spread differently across the stats.`
-        : `No car you own or can buy adds more to your stats.`,
-    };
-  }
-  return {
-    head: `${best.name} would add about ${n(best.powerDelta)} Combat Power.`,
-    body: best.status === 'dealer' ? `It costs ${money(best.priceCash)} at the dealer.` : 'You already own it.',
-  };
+function Verdict({ head, body }: { head: string; body?: ComponentChildren }) {
+  return (
+    <div class="st-verdict">
+      <p class="st-verdict__head">{head}</p>
+      {body && <p class="st-verdict__body">{body}</p>}
+    </div>
+  );
 }
+
+function NeedsSource({ what }: { what: string }) {
+  return <p class="db-empty">Press Refresh (or open {what} in the game) to fill this in.</p>;
+}
+
+// Car
+
+const CAR_ROWS = 6;
 
 function RaceCell({ o, cur }: { o: VehicleOption; cur: VehicleOption | undefined }) {
   const parts: [string, number, number | undefined][] = [
@@ -536,7 +570,7 @@ function RaceCell({ o, cur }: { o: VehicleOption; cur: VehicleOption | undefined
     ['Handling', o.race.handling, cur?.race.handling],
   ];
   return (
-    <span class="st-race" title={parts.map(([l, v]) => `${l} ${v}`).join(' · ')}>
+    <span class="st-race" title={parts.map(([l, v]) => `${l} ${v}`).join(', ')}>
       {parts.map(([l, v, c]) => (
         <span key={l} class={c === undefined || o.status === 'equipped' || v === c ? '' : v > c ? 'st-up' : 'st-down'}>{v}</span>
       ))}
@@ -544,31 +578,35 @@ function RaceCell({ o, cur }: { o: VehicleOption; cur: VehicleOption | undefined
   );
 }
 
-function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
+function carSummary(b: Breakdown, src: StatSources): { status: string; best: VehicleOption | null } | null {
+  const opts = vehicleOptions(src, b);
+  if (!opts) return null;
+  const best = opts.filter((o) => o.status !== 'equipped').sort((x, y) => y.powerDelta - x.powerDelta)[0] ?? null;
+  return { status: best && best.powerDelta > evenBand(b) ? `+${n(best.powerDelta)}` : 'Best already', best };
+}
+
+function CarAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
   const [all, setAll] = useState(false);
   const opts = vehicleOptions(src, b);
-  if (!opts) {
-    return (
-      <section class="db-card db-card--wide">
-        <h2 class="db-h">Best car for your stats</h2>
-        <p class="db-empty">Press Refresh (or open the Chop Shop in the game) to read your garage and the dealer.</p>
-      </section>
-    );
-  }
+  if (!opts) return <NeedsSource what="the Chop Shop" />;
   const current = opts.find((o) => o.status === 'equipped');
-  const power = STAT_KEYS.reduce((s, k) => s + b.total[k], 0);
-  const v = verdict(opts, current, power);
+  const others = opts.filter((o) => o.status !== 'equipped').sort((x, y) => y.powerDelta - x.powerDelta);
+  const even = evenBand(b);
+  const best = others[0];
+  const close = others.filter((o) => Math.abs(o.powerDelta) <= even);
   const rate = bonusRates(b);
-  const ranked = [current, ...opts.filter((o) => o.status !== 'equipped').sort((a, z) => z.powerDelta - a.powerDelta)].filter(Boolean) as VehicleOption[];
-  const shown = all ? ranked : ranked.slice(0, VEHICLE_ROWS);
-
+  const ranked = [current, ...others].filter(Boolean) as VehicleOption[];
+  const shown = all ? ranked : ranked.slice(0, CAR_ROWS);
   return (
-    <section class="db-card db-card--wide">
-      <h2 class="db-h">Best car for your stats</h2>
-      <div class="st-verdict">
-        <p class="st-verdict__head">{v.head}</p>
-        <p class="st-verdict__body">{v.body}</p>
-      </div>
+    <>
+      {best && best.powerDelta > even ? (
+        <Verdict head={`${best.name} would add about ${n(best.powerDelta)} Combat Power.`} body={best.status === 'dealer' ? `It costs ${money(best.priceCash)} at the dealer.` : 'You already own it.'} />
+      ) : (
+        <Verdict
+          head={`${current?.name ?? 'Your car'} is already your best car for combat.`}
+          body={close.length ? `${close.map((o) => o.name).join(' and ')} come${close.length === 1 ? 's' : ''} out about even: the same total, spread differently.` : 'Nothing you own or can buy adds more.'}
+        />
+      )}
       <div class="st-table-wrap">
         <table class="st-table st-adv">
           <thead>
@@ -577,7 +615,7 @@ function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
               {STAT_KEYS.map((k) => (
                 <th key={k} scope="col" class={`st-num st-th--${k}`}>{STAT_SHORT[k]}</th>
               ))}
-              <th scope="col" class="st-num">Combat Power</th>
+              <th scope="col" class="st-num">Power</th>
               <th scope="col" class="st-num" title="Racing speed, acceleration and handling">Racing</th>
             </tr>
           </thead>
@@ -585,12 +623,9 @@ function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
             {shown.map((o) => (
               <tr key={o.name} class={o.status === 'equipped' ? 'st-adv__current' : ''}>
                 <th scope="row" class="st-rowhead">
-                  <div class="st-adv__car">
+                  <div class="st-adv__item">
                     <span class="st-adv__name">{o.name}</span>
-                    <span class="st-adv__meta">
-                      {o.status === 'equipped' ? 'Equipped' : o.status === 'owned' ? 'Owned' : money(o.priceCash)}
-                      {o.vehicleClass && ` · Class ${o.vehicleClass}`}
-                    </span>
+                    <span class="st-adv__meta">{o.status === 'equipped' ? 'Equipped now' : o.status === 'owned' ? 'You own it' : `${money(o.priceCash)} at the dealer`}{o.vehicleClass && `, class ${o.vehicleClass}`}</span>
                     {(!o.complete || o.crossings.length > 0) && (
                       <span class="st-adv__notes">
                         {o.crossings.map((c) => (
@@ -602,7 +637,7 @@ function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
                   </div>
                 </th>
                 {STAT_KEYS.map((k) => (
-                  <td key={k} class="st-num" title={`Car gives ${o.stats[k]} ${STAT_SHORT[k]}`}>
+                  <td key={k} class="st-num" title={`The car gives ${o.stats[k]} ${STAT_SHORT[k]}`}>
                     {o.status === 'equipped' ? n(o.stats[k] * rate[k]) : <Delta v={o.delta[k]} />}
                   </td>
                 ))}
@@ -613,31 +648,301 @@ function VehicleAdvisor({ b, src }: { b: Breakdown; src: StatSources }) {
           </tbody>
         </table>
       </div>
-      {ranked.length > VEHICLE_ROWS && (
-        <button type="button" class="db-btn st-more" onClick={() => setAll(!all)}>
-          {all ? 'Show fewer' : `Show all ${ranked.length} cars`}
+      {ranked.length > CAR_ROWS && (
+        <button type="button" class="st-linkbtn st-more" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer cars' : `Show all ${ranked.length} cars`}
         </button>
       )}
       <p class="db-note">
-        Your car's row shows what it adds now, after your bonuses. Other rows show the change if you equipped that car instead, estimated with
-        your own bonus rate for each stat (STR ×{rate.str.toFixed(2)}, DEF ×{rate.def.toFixed(2)}, AGI ×{rate.agi.toFixed(2)}, DEX ×{rate.dex.toFixed(2)}).
-        Racing shows speed, acceleration and handling, green or red against your current car. Arena only picks up a change at the next season start.
+        Your car's row shows what it adds now. Other rows show the change if you equipped that car instead, after your bonuses (STR ×{rate.str.toFixed(2)}, DEF ×
+        {rate.def.toFixed(2)}, AGI ×{rate.agi.toFixed(2)}, DEX ×{rate.dex.toFixed(2)}). Racing is speed, acceleration and handling, against your car.
       </p>
+    </>
+  );
+}
+
+// Pet
+
+const PET_SHOP_ROWS = 6;
+
+function petSummary(b: Breakdown, src: StatSources): { status: string } | null {
+  const p = petOptions(src, b);
+  if (!p) return null;
+  const best = p.options.filter((o) => o.status === 'owned' && o.powerDelta !== null).sort((x, y) => y.powerDelta! - x.powerDelta!)[0];
+  if (best && best.powerDelta! > evenBand(b)) return { status: `+${n(best.powerDelta!)}` };
+  return { status: p.spend ? `${p.spend.points} points to spend` : 'Best already' };
+}
+
+function PetRow({ o, active }: { o: PetOption; active?: boolean }) {
+  return (
+    <tr class={active ? 'st-adv__current' : ''}>
+      <th scope="row" class="st-rowhead">
+        <div class="st-adv__item">
+          <span class="st-adv__name">{o.name}</span>
+          <span class="st-adv__meta">
+            {[o.rarity, active ? 'Active now' : o.status === 'shop' ? `${money(o.price ?? 0)}, ${o.group === 'Exclusive' ? 'exclusive' : `sold in ${o.group}`}` : null, o.grownPct !== null ? `${o.grownPct}% grown` : null]
+              .filter(Boolean)
+              .join(', ')}
+          </span>
+          {(o.perk || (active && (o.points ?? 0) >= 5)) && (
+            <span class="st-adv__notes">
+              {o.perk && <span class="st-tag st-tag--info">{o.perk}</span>}
+              {active && (o.points ?? 0) >= 5 && <span class="st-tag" title="5 pet points buy 1 stat point">{Math.floor(o.points! / 5)} stat points to spend</span>}
+            </span>
+          )}
+        </div>
+      </th>
+      {STAT_KEYS.map((k) => (
+        <td key={k} class="st-num">{!o.combat ? '—' : active ? n(o.combat[k]) : <Delta v={o.delta![k]} />}</td>
+      ))}
+      <td class="st-num st-adv__power">{active ? '—' : o.powerDelta === null ? <span class="st-flat" title="Not listed in the game's wiki">not in wiki</span> : <Delta v={o.powerDelta} />}</td>
+    </tr>
+  );
+}
+
+function PetHead({ label }: { label: string }) {
+  return (
+    <thead>
+      <tr>
+        <th scope="col" class="st-rowhead">{label}</th>
+        {STAT_KEYS.map((k) => (
+          <th key={k} scope="col" class={`st-num st-th--${k}`}>{STAT_SHORT[k]}</th>
+        ))}
+        <th scope="col" class="st-num">Power</th>
+      </tr>
+    </thead>
+  );
+}
+
+function PetAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
+  const [shop, setShop] = useState(false);
+  const p = petOptions(src, b);
+  if (!p) return <NeedsSource what="the Menagerie's Care tab" />;
+  const active = p.options.find((o) => o.status === 'active')!;
+  const owned = p.options.filter((o) => o.status === 'owned').sort((x, y) => (y.powerDelta ?? -1e9) - (x.powerDelta ?? -1e9));
+  const buy = p.options.filter((o) => o.status === 'shop').sort((x, y) => (y.powerDelta ?? 0) - (x.powerDelta ?? 0)).slice(0, PET_SHOP_ROWS);
+  const best = owned[0];
+  const even = evenBand(b);
+  const spend = p.spend && (
+    <>
+      put its {p.spend.points} stat points into {STAT_LABEL[p.spend.stat]} for about +{n(p.spend.power)}.
+    </>
+  );
+  return (
+    <>
+      {best && best.powerDelta !== null && best.powerDelta > even ? (
+        <Verdict
+          head={`${best.name} would add about ${n(best.powerDelta)} Combat Power over your ${active.name}.`}
+          body={
+            <>
+              Set it active on the Menagerie's Care tab. Arena counts it from the next season.{spend && <> If you keep the {active.name}, {spend}</>}
+            </>
+          }
+        />
+      ) : (
+        <Verdict head={`${active.name} is already your best pet for combat.`} body={spend ? <>Next, {spend}</> : undefined} />
+      )}
+      <div class="st-table-wrap">
+        <table class="st-table st-adv">
+          <PetHead label="Your pets" />
+          <tbody>
+            <PetRow o={active} active />
+            {owned.map((o) => (
+              <PetRow key={o.name} o={o} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="db-note">
+        Other pets use their base stats from the game's wiki, with your pet bonuses applied. Each also has unspent points (5 buy a stat point) that you can
+        spend once it's active; points already spent on a pet stay with it, so your {active.name}'s training doesn't move over. Only the active pet counts in fights.
+      </p>
+      <button type="button" class="st-linkbtn st-more" aria-expanded={shop} onClick={() => setShop(!shop)}>
+        {shop ? 'Hide pets you could buy' : 'Show pets you could buy'}
+      </button>
+      {shop && (
+        <div class="st-table-wrap st-gap">
+          <table class="st-table st-adv">
+            <PetHead label="Pets you could buy" />
+            <tbody>
+              {buy.map((o) => (
+                <PetRow key={o.name} o={o} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Bonuses
+
+const CAREER_ROWS = 8;
+const STATUS_LABEL: Record<GainStatus, string> = { now: 'Take now', progress: 'Work shifts', blocked: 'Need more', later: 'Later' };
+
+function bonusSummary(b: Breakdown, src: StatSources): { status: string } | null {
+  if (!src.academy && !src.bloodline && !src.careers) return null;
+  const now = bonusGains(src, b).filter((g) => g.status === 'now' && (g.power ?? 0) >= 1);
+  return { status: now.length ? `${now.length} to take now` : 'Nothing right now' };
+}
+
+function GainRow({ g }: { g: Gain }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li class={`st-gain st-gain--${g.status}`}>
+      <div class="st-gain__main">
+        <div class="st-gain__what">
+          <span class="st-gain__title">{g.title}</span>
+          <span class="st-gain__effect">{g.effect}</span>
+        </div>
+        <div class="st-gain__value">
+          {g.power !== null ? (
+            <span class={g.power >= 1 ? 'st-up' : 'st-flat'} title="Estimated Combat Power">+{n(g.power)}</span>
+          ) : (
+            <span class="st-tag st-tag--info" title="Changes fights, not the four stats">fight bonus</span>
+          )}
+        </div>
+      </div>
+      <div class="st-gain__meta">
+        <span class={`st-gain__status st-gain__status--${g.status}`}>{STATUS_LABEL[g.status]}</span>
+        <span>{g.when}</span>
+        {g.cost && <span>{g.cost}</span>}
+        {g.choices && g.choices.length > 1 && (
+          <button type="button" class="st-linkbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Hide choices' : `All ${g.choices.length} choices`}
+          </button>
+        )}
+      </div>
+      {open && g.choices && (
+        <ul class="st-choices">
+          {g.choices.map((c) => (
+            <li key={c.name}>
+              <span>
+                {c.name}: {c.effect}
+              </span>
+              <span>{c.power !== null ? `+${n(c.power)}` : '—'}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+function GainGroup({ title, note, gains, limit, empty }: { title: string; note: string; gains: Gain[]; limit?: number; empty: ComponentChildren }) {
+  const [all, setAll] = useState(false);
+  const shown = limit && !all ? gains.slice(0, limit) : gains;
+  return (
+    <section class="st-group">
+      <header class="st-group__head">
+        <h3 class="st-group__title">{title}</h3>
+        <p class="st-group__note">{note}</p>
+      </header>
+      {gains.length === 0 ? (
+        <p class="db-empty">{empty}</p>
+      ) : (
+        <ul class="st-gains">
+          {shown.map((g) => (
+            <GainRow key={`${g.source}-${g.title}`} g={g} />
+          ))}
+        </ul>
+      )}
+      {limit && gains.length > limit && (
+        <button type="button" class="st-linkbtn st-more" onClick={() => setAll(!all)}>
+          {all ? 'Show fewer' : `Show all ${gains.length}`}
+        </button>
+      )}
     </section>
   );
 }
 
-function ComingNext({ src }: { src: StatSources }) {
+function BonusAdvice({ b, src }: { b: Breakdown; src: StatSources }) {
+  if (!src.academy && !src.bloodline && !src.careers) return <NeedsSource what="the Academy, Bloodline and Careers pages" />;
+  const gains = bonusGains(src, b);
+  const by = (source: Gain['source']) => gains.filter((g) => g.source === source);
+  const academy = by('Academy');
+  const takeNow = academy.filter((g) => g.status === 'now' && (g.power ?? 0) >= 1);
+  const top = takeNow[0];
+  const careerNear = by('Career').filter((g) => g.nextRank);
   return (
-    <section class="db-card db-card--wide">
-      <h2 class="db-h">Coming next</h2>
-      <ul class="db-plain st-how">
-        <li><b>Pets:</b> which pet adds the most once trained, and what the active one gives up (courier and perk effects).</li>
-        <li>
-          <b>Bonuses you could still get:</b> Career ranks, Bloodline perks and Academy courses you haven't taken, and what each would add.
-          {!src.loadout && ' This needs the bonus list from the Arena lock-in.'}
-        </li>
-      </ul>
+    <>
+      {top ? (
+        <Verdict
+          head={`Start ${top.title.split(': ')[1] ?? top.title} at the Academy: about +${n(top.power ?? 0)} Combat Power.`}
+          body={`${top.effect} for ${top.cost ?? 'its tuition'}. ${takeNow.length > 1 ? `${takeNow.length - 1} more combat courses are open after it.` : ''}`}
+        />
+      ) : careerNear[0] ? (
+        <Verdict head={`${careerNear[0].title} is your closest combat reward: about +${n(careerNear[0].power ?? 0)}.`} body={careerNear[0].when} />
+      ) : (
+        <Verdict head="No combat bonus is ready to take right now." body="The lists below show what opens next." />
+      )}
+      <div class="st-groups">
+        <GainGroup
+          title="Academy"
+          note="The next course in each combat lane."
+          gains={academy}
+          empty={src.academy ? 'Every combat course is done.' : 'Open the Academy or press Refresh.'}
+        />
+        <GainGroup
+          title="Bloodline"
+          note={`Tiers you haven't taken, plus the next ones your level unlocks.${src.bloodline?.lpAvailable !== null && src.bloodline?.lpAvailable !== undefined ? ` You have ${src.bloodline.lpAvailable} LP.` : ''}`}
+          gains={by('Bloodline')}
+          empty={src.bloodline ? 'No combat nodes left to take for now.' : 'Open the Bloodline page or press Refresh.'}
+        />
+        <GainGroup
+          title="Careers"
+          note="Combat rewards from career ranks. Ones that come with your next rank (shift count known) are listed first."
+          gains={by('Career')}
+          limit={CAREER_ROWS}
+          empty={src.careers ? 'No combat rewards left in your careers.' : 'Open the Careers page or press Refresh.'}
+        />
+      </div>
+      <p class="db-note">
+        Power is an estimate: a "+X% Strength" bonus adds about X% of your Strength before percentage bonuses; gear and pet % bonuses add to that source only.
+        Fight bonuses (damage, block, crit damage...) change fights, not the four stats. Arena picks up changes at the next season start.
+      </p>
+    </>
+  );
+}
+
+type AdvisorTab = 'car' | 'pet' | 'bonuses';
+
+function Advisor({ b, src }: { b: Breakdown; src: StatSources }) {
+  const [tab, setTab] = useState<AdvisorTab>(() => {
+    try {
+      const v = localStorage.getItem('ff-stats-advisor-tab');
+      return v === 'pet' || v === 'bonuses' ? v : 'car';
+    } catch {
+      return 'car';
+    }
+  });
+  const pick = (t: AdvisorTab) => {
+    setTab(t);
+    try {
+      localStorage.setItem('ff-stats-advisor-tab', t);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
+  const tabs: { id: AdvisorTab; label: string; status: string | null }[] = [
+    { id: 'car', label: 'Car', status: carSummary(b, src)?.status ?? null },
+    { id: 'pet', label: 'Pet', status: petSummary(b, src)?.status ?? null },
+    { id: 'bonuses', label: 'Bonuses', status: bonusSummary(b, src)?.status ?? null },
+  ];
+  return (
+    <section class="db-card st-advisor">
+      <div class="st-subtabs" role="tablist" aria-label="Advice">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" id={`st-adv-${t.id}`} aria-selected={tab === t.id} aria-controls="st-adv-panel" class={`st-subtab${tab === t.id ? ' is-active' : ''}`} onClick={() => pick(t.id)}>
+            <span class="st-subtab__label">{t.label}</span>
+            <span class={`st-subtab__status${t.status?.startsWith('+') || /to take|to spend/.test(t.status ?? '') ? ' is-gain' : ''}`}>{t.status ?? 'Not read yet'}</span>
+          </button>
+        ))}
+      </div>
+      <div class="st-advisor__panel" id="st-adv-panel" role="tabpanel" aria-labelledby={`st-adv-${tab}`}>
+        {tab === 'car' ? <CarAdvice b={b} src={src} /> : tab === 'pet' ? <PetAdvice b={b} src={src} /> : <BonusAdvice b={b} src={src} />}
+      </div>
     </section>
   );
 }
@@ -693,10 +998,7 @@ export function StatsSection() {
               </div>
             </>
           ) : (
-            <div class="db-grid">
-              <VehicleAdvisor b={b} src={src} />
-              <ComingNext src={src} />
-            </div>
+            <Advisor b={b} src={src} />
           )}
         </>
       )}

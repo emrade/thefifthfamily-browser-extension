@@ -27,6 +27,8 @@
  * don't explain as "bonuses", instead of computing a total of its own.
  */
 
+import type { AcademySnapshot, BloodlineSnapshot, CareersSnapshot, PetRoster } from './statAdvisorSources';
+
 export type StatKey = 'str' | 'def' | 'agi' | 'dex';
 export const STAT_KEYS: StatKey[] = ['str', 'def', 'agi', 'dex'];
 export type Quad = Record<StatKey, number>;
@@ -73,6 +75,8 @@ export interface PetSnapshot {
   rarity: string;
   trained: Quad;
   inCombat: Quad;
+  /** The care tab's point counts and other pets (statAdvisorSources.ts). */
+  roster?: PetRoster;
 }
 
 export interface CarRace {
@@ -134,6 +138,9 @@ export interface StatSources {
   pet: PetSnapshot | null;
   car: CarSnapshot | null;
   loadout: LoadoutSnapshot | null;
+  academy: AcademySnapshot | null;
+  bloodline: BloodlineSnapshot | null;
+  careers: CareersSnapshot | null;
 }
 
 // ── Page text ───────────────────────────────────────────────────────────
