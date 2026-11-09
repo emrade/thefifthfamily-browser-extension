@@ -9,6 +9,15 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.64.1] - 2026-11-09
+
+### Changed
+- **Dashboard → Stats is now Combat Stats**, named for what it shows (your four combat
+  stats, where they come from and how to raise them). Its address is now
+  `#/combat-stats`, leaving "stats" free for a general stats page later; the Menagerie
+  Assistant's planner link points to the new address. An old `#/stats` bookmark opens
+  the Overview, and the page forgets its last-opened tab and sort once.
+
 ## [0.64.0] - 2026-11-09
 
 ### Added
