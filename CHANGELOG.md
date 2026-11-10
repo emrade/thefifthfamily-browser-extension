@@ -9,6 +9,43 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.65.0] - 2026-11-11
+
+### Added
+- **Career Auto → Advisor tab.** Dashboard → Career Auto now has two tabs: Auto-Run
+  (as before) and Advisor, read from your Careers page:
+  - **Perk finder**: pick perks (e.g. Crime Success) and see every job that gives them,
+    with the rank it comes at, your progress, shifts and energy still needed, time on
+    energy regen and the fastest time, and the other perks you'd get on the way. Sort
+    any column, hide earned perks or jobs above your level, filter by family; add a
+    goal or switch Career Auto to the job (asks first).
+  - **Perk totals**: per perk, what your careers give now, what's reachable at your
+    level, the total across all jobs, and the cap on all sources combined (from the
+    game's wiki: e.g. Property Income 75%, Passive Income 90%, Crime Success 150).
+  - **Goals**: an ordered list of "job → rank". With **Goal mode** on (off by default)
+    Career Auto works the first unfinished goal with normal shifts, moves on when the
+    perk is earned, and notifies you. Goals above your level wait (told once). When
+    the list is done it keeps running the last job and reminds you every 4 hours until
+    you add a goal, pick a job or press Keep running.
+  - Ranks unlock at 1, 10, 35, 85 and 185 total shifts (checked on every shift in the
+    request history).
+- **Career Auto energy top-ups** (each off by default): when a shift is ready but
+  energy is short, use **energy items** (Energy Drinks, Boosters, Adrenaline Shots:
+  just enough for that shift, smallest first, never past max energy, keeping 50 Energy
+  Drinks by default) and/or the **free daily energy refill**. Works for any job Career
+  Auto runs; tops up to the Overtime cost in Overtime mode. Today's use is shown on
+  the Auto-Run tab.
+- Two notifications under Settings → Crime & Jobs: Career Goal Reached and Career
+  Goals All Done.
+
+### Fixed
+- **Crimes Auto no longer switches itself off when you travel.** The Crime Alley page
+  shows the district you're standing in, so visiting a district you'd already finished
+  read as "district mastered" and turned Auto-Run off for good (it happened on
+  2026-11-10 and wasted ~10 hours of Nerve). It now waits, checking every 5 minutes,
+  and carries on by itself once unfinished crimes show up again; the notification
+  fires once per stay.
+
 ## [0.64.1] - 2026-11-09
 
 ### Changed
