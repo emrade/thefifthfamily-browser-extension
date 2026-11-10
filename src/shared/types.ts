@@ -710,9 +710,11 @@ export interface CrimesAutoStatus {
   /** Same idea as the bail pair above, for heat-cap bribes. */
   bribesPaid: number;
   bribeCashSpent: number;
-  /** Epoch ms the current district's crimes were all confirmed `maxed` —
-   *  `null` until that happens. Automation disables itself the moment this
-   *  is set (see `runner.ts`), so the player knows to go challenge the boss. */
+  /** Epoch ms the Crime Alley page (the district the player is standing in)
+   *  was first seen with every crime `maxed` — `null` otherwise. The runner
+   *  keeps checking while this is set and clears it once unfinished crimes
+   *  show up again (see `runner.ts`). Older versions also switched
+   *  Auto-Run off here, so old stored data can have this set with it off. */
   districtMasteredAt: number | null;
   pausedReason: 'error' | null;
   /** Same reasoning as `CareerAutoStatus.pausedMessage` — the notification

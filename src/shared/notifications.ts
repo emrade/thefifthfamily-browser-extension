@@ -54,7 +54,7 @@ export const NOTIFICATION_DEFINITIONS = [
   {
     id: 'crimesAutoDistrictMastered',
     label: 'Crimes Auto District Mastered',
-    description: 'Notify when every crime in your current district reaches Mastered, so you know to go challenge the boss.',
+    description: "Notify when every crime in the district you're in is Mastered (once per stay). Auto-Run keeps waiting and carries on when unfinished crimes show up.",
   },
   {
     id: 'crimesAutoStopped',

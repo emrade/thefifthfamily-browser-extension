@@ -1,4 +1,4 @@
-import { ALARM_NAMES, CRIMES_AUTO_FALLBACK_INTERVAL_MS, CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS, CRIMES_AUTO_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
+import { ALARM_NAMES, CRIMES_AUTO_ALL_MASTERED_RECHECK_MS, CRIMES_AUTO_FALLBACK_INTERVAL_MS, CRIMES_AUTO_IMMEDIATE_CHECK_DELAY_MS, CRIMES_AUTO_RETRY_DELAY_MS, GAME_ORIGIN } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { notify } from '@/shared/notify';
 import { storage } from '@/shared/storage';
@@ -285,21 +285,32 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
 
   const remaining = entries.filter((e) => !e.maxed);
   if (remaining.length === 0) {
-    // Every crime on the page is Mastered — nothing left to do until the
-    // player beats this district's boss and the next district's crimes
-    // appear, which is a manual step this feature deliberately leaves alone.
-    await storage.setCrimesAutoConfig({ ...config, enabled: false });
+    // Every crime on the page is Mastered. The page shows the district the
+    // player is standing in, not their newest one, so this is either a visit
+    // to a finished district or their newest district before its boss is
+    // beaten. Either way, wait rather than switch off: carry on once
+    // unfinished crimes show up again (back home, or the next district
+    // unlocked). Notify once per stretch, not on every recheck.
     const status = await getStatus();
-    await storage.setCrimesAutoStatus({ ...status, districtMasteredAt: Date.now(), pausedReason: null, pausedMessage: null, pausedAt: null });
-    await recordStop('crimes-auto', 'Every crime in this district is Mastered.');
-    chrome.alarms.clear(ALARM_NAMES.CRIMES_AUTO);
-    await notify('crimesAutoDistrictMastered', {
-      type: 'basic',
-      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
-      title: 'Crime Alley — district mastered!',
-      message: 'Every crime here is Mastered. Automation stopped — go challenge the boss.',
-    });
+    if (status.districtMasteredAt === null) {
+      await storage.setCrimesAutoStatus({ ...status, districtMasteredAt: Date.now() });
+      await notify('crimesAutoDistrictMastered', {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+        title: 'Crime Alley — nothing left here',
+        message:
+          "Every crime in this district is Mastered. Auto-Run stays on and carries on once you're back in a district with unfinished crimes. If this is your newest district, go challenge the boss.",
+      });
+    }
+    scheduleAt(Date.now() + CRIMES_AUTO_ALL_MASTERED_RECHECK_MS);
     return;
+  }
+
+  // Unfinished crimes again (back from a finished district, or the next
+  // district unlocked): clear the "all Mastered" mark so the next one notifies.
+  {
+    const status = await getStatus();
+    if (status.districtMasteredAt !== null) await storage.setCrimesAutoStatus({ ...status, districtMasteredAt: null });
   }
 
   // Always the first not-yet-Mastered card, in the page's own order — see

@@ -357,6 +357,16 @@ export const COURIER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // Nerve yet" and for the "nothing this feature can do" travel/hospital gate.
 export const CRIMES_AUTO_FALLBACK_INTERVAL_MS = 60_000;
 
+// When every crime on the Crime Alley page is already Mastered. The page
+// shows the district the player is standing in, so this is usually a visit to
+// a district they finished earlier (confirmed 2026-11-10: a taxi to The
+// Underground switched the runner off for the rest of the day). The runner
+// keeps checking at this slower pace instead of switching off, and carries
+// on once unfinished crimes show up again. Slower than the 1-min fallback
+// because the crimes page is a ~0.5 MB read and nothing is due here; a taxi
+// back takes ~10 min, so 5 min loses little Nerve.
+export const CRIMES_AUTO_ALL_MASTERED_RECHECK_MS = 5 * 60_000;
+
 // After an attempt that resolved one way or another (a success, a bust
 // resolved by an immediate bail, or heat cleared by an immediate bribe), the
 // account is immediately eligible again — this is just a short breather

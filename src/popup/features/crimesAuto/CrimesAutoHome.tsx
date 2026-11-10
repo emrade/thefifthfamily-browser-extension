@@ -164,10 +164,13 @@ export function CrimesAutoHome() {
 
       {!status?.pausedReason && status?.districtMasteredAt && (
         <div class="ff-health-alert" style={{ borderColor: 'var(--ff-gold)' }}>
-          <strong>District mastered!</strong>
+          <strong>Nothing left in this district</strong>
           <span class="ff-health-alert__hint">
-            Every crime here reached Mastered on {new Date(status.districtMasteredAt).toLocaleString()}. Go challenge
-            the boss — once the next district's crimes appear, flip Auto-Run back on to keep going.
+            Every crime in the district you're in has been Mastered since{' '}
+            {new Date(status.districtMasteredAt).toLocaleString()}.{' '}
+            {config.enabled
+              ? "Auto-Run is still on: it checks every 5 minutes and carries on by itself once you're back in a district with unfinished crimes. If this is your newest district, go challenge the boss."
+              : 'Auto-Run is off. Flip it back on above when you\'re in a district with unfinished crimes.'}
           </span>
         </div>
       )}
