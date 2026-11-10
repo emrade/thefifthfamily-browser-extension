@@ -203,6 +203,13 @@ export interface CareerJob {
   rankName: string;
   next: { rankName: string; done: number; need: number } | null;
   rewards: CareerReward[];
+  /** For the Career Advisor. Optional: snapshots stored before 2026-11-11
+   *  don't have them. `family` is the card's "<Family> Favor" label without
+   *  " Favor"; `cooldownMin` is the card's "11m CD" pill. */
+  family?: string;
+  energy?: number;
+  otEnergy?: number | null;
+  cooldownMin?: number | null;
 }
 
 export interface CareersSnapshot {
@@ -226,6 +233,12 @@ export function parseCareers(html: string, at: number): CareersSnapshot | null {
     }
     // A card appears twice when it's also under "Recent": keep the first.
     if (jobs.some((j) => j.id === Number(s[1]))) return;
+    // Checked on the 2026-11-10 captures: every card has the favor label,
+    // the Energy stat tile, the "OT: 58E" preview row and a "Nm CD" pill.
+    const family = /cv2-favor-lbl"[^>]*>([^<]+?)\s+Favor\s*</.exec(chunk);
+    const energy = /cv2-stat-val[^>]*>([\d,]+)<\/div>\s*<div class="cv2-stat-lbl">Energy</.exec(chunk);
+    const ot = /cv2-ot-row"[\s\S]*?OT:\s*(\d+)E/.exec(chunk);
+    const cd = /cv2-meta-pill"[^>]*>[\s\S]{0,80}?(?:(\d+)h\s*)?(\d+)m CD</.exec(chunk);
     jobs.push({
       id: Number(s[1]),
       name: decode(name[1]),
@@ -233,6 +246,10 @@ export function parseCareers(html: string, at: number): CareersSnapshot | null {
       rankName: badge ? decode(badge[1]) : '',
       next: prog ? { rankName: decode(prog[1]), done: num(prog[2]), need: num(prog[3]) } : null,
       rewards,
+      family: family ? decode(family[1]) : undefined,
+      energy: energy ? num(energy[1]) : undefined,
+      otEnergy: ot ? Number(ot[1]) : null,
+      cooldownMin: cd ? Number(cd[1] ?? 0) * 60 + Number(cd[2]) : null,
     });
   });
   return jobs.length ? { at, jobs } : null;

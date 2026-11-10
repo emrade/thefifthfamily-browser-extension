@@ -16,6 +16,9 @@ export const STORAGE_KEYS = {
   LAST_COURIER_RUN: 'ff_last_courier_run',
   CAREER_AUTO_CONFIG: 'ff_career_auto_config',
   CAREER_AUTO_STATUS: 'ff_career_auto_status',
+  CAREER_GOALS_CONFIG: 'ff_career_goals_config',
+  CAREER_GOALS_STATUS: 'ff_career_goals_status',
+  CAREER_ENERGY_STATUS: 'ff_career_energy_status',
   STREET_INTEL_AUTO_CONFIG: 'ff_street_intel_auto_config',
   STREET_INTEL_AUTO_STATUS: 'ff_street_intel_auto_status',
   STREET_INTEL_COMPLICATION_TALLY: 'ff_street_intel_complication_tally',
@@ -249,6 +252,18 @@ export const CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS = 3_000;
 // attempt fires — guards against firing a few hundred ms early on clock skew
 // and getting an ordinary rejection back for it.
 export const CAREER_AUTO_BUFFER_MS = 5_000;
+
+// Career Auto energy top-ups and Career Advisor goal mode
+// (docs/career-advisor-plan.md). Reminder while the
+// goal list is finished and Career Auto keeps running the last job: agreed
+// with the player 2026-11-10.
+export const CAREER_GOALS_REMINDER_MS = 4 * 60 * 60_000;
+// Most energy items one check may use, so a misread energy figure can't
+// empty the inventory in one go. A 46-energy shift needs at most 5 drinks.
+export const CAREER_GOALS_MAX_ITEMS_PER_CHECK = 8;
+// Gap between item uses, like a player tapping: the player's own uses sit
+// 2–4 s apart (archive 2026-11-10). postAction adds its own 0.6 s on top.
+export const CAREER_GOALS_ITEM_GAP_MS: [number, number] = [1_500, 3_000];
 
 // Derived from this account's real `career.php` history (see
 // docs/career-auto-plan.md): every accuracy value it has ever submitted was

@@ -625,3 +625,64 @@ html, body {
 .st-plan__warn { color: var(--ff-gold-bright); font-weight: 600; }
 .st-plan__confirm { display: inline-flex; gap: 8px; }
 .st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Career Advisor (sections/CareerAdvisor.tsx) */
+.ca-advisor .st-subtabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ca-picker { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.ca-search { width: 260px; max-width: 100%; margin-bottom: 12px; }
+.ca-select { width: auto; max-width: 320px; }
+.ca-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ca-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  font: 600 12.5px var(--font-body); color: var(--ff-ink-muted); background: var(--ff-bg);
+  border: 1px solid var(--ff-border); border-radius: 999px; cursor: pointer;
+}
+.ca-chip:hover { color: var(--ff-ink); }
+.ca-chip.is-on { color: var(--ff-ink); border-color: var(--ff-gold); box-shadow: inset 0 0 0 1px var(--ff-gold); }
+.ca-chip:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 2px; }
+.ca-chip__n { font-family: var(--font-mono); font-weight: 400; color: var(--ff-ink-faint); }
+.ca-table td { vertical-align: top; }
+.ca-sort { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+.ca-sort:hover { color: var(--ff-ink); }
+.ca-sort:focus-visible { outline: 2px solid var(--ff-gold-bright); outline-offset: 2px; }
+.ca-perk { display: block; color: var(--ff-gold-bright); font-weight: 700; }
+.ca-perk__label { display: block; font-family: var(--font-body); font-size: 12.5px; color: var(--ff-ink-muted); white-space: normal; }
+.ca-perk__rank { font-size: 11.5px; color: var(--ff-ink-faint); }
+.ca-job { font-weight: 600; color: var(--ff-ink); }
+.ca-sub { font-size: 12px; margin-top: 2px; }
+.ca-way { color: var(--ff-ink-faint); max-width: 360px; }
+.ca-actions { min-width: 90px; text-align: right; }
+.ca-actions > .db-btn, .ca-actions > .ca-confirm, .ca-actions > .st-muted { display: block; width: 100%; }
+.ca-actions > * + * { margin-top: 6px; }
+.ca-confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ff-ink); white-space: normal; }
+.ca-row--earned td, .ca-row--locked td { opacity: .72; }
+.ca-gap { margin-left: 6px; }
+.ca-done { list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.ca-perkcell { min-width: 0; }
+.ca-perkcell .ca-perk { display: inline; }
+.ca-perk__label { margin-top: 2px; }
+.ca-table .st-tag { white-space: nowrap; }
+.ca-modenote { margin: 0 0 10px; color: var(--ff-ink-muted); }
+.ca-jobcell { min-width: 140px; }
+.ca-table .ca-select { max-width: 250px; }
+.ca-goaljob { min-width: 150px; }
+.db-main--wide { max-width: none; }
+/* Goals table: the order buttons sit in a row. */
+.ca-actions--row { white-space: nowrap; }
+.ca-actions.ca-actions--row > .db-btn { display: inline-block; width: auto; margin-top: 0; }
+.ca-actions--row > * + * { margin-left: 6px; }
+.ca-confirm { flex-direction: column; align-items: stretch; text-align: left; }
+.ca-confirm .db-btn { width: 100%; }
+.ca-table th, .ca-table td { padding: 10px 8px; }
+.ca-table thead th { padding-top: 0; }
+.ca-table thead .ca-sort, .ca-table thead th { white-space: normal; }
+.ca-table thead .st-num { white-space: normal; }
+.ca-table td.st-num { white-space: nowrap; }
+.ca-perkhead { white-space: nowrap; }
+.ca-table .ca-select { max-width: 190px; }
+.ca-table .ca-goalselect { display: block; margin-top: 6px; max-width: 100%; width: 100%; }
+.ca-goaljob { min-width: 220px; }
+.ca-actions .db-btn { white-space: nowrap; }
+.ca-pagetabs { max-width: 360px; margin-bottom: 18px; }
+.ca-advisor a, .ca-modenote a, #ca-page-panel .db-warn a { color: var(--ff-gold-bright); text-decoration: underline; }
+.ca-advisor a:hover, .ca-modenote a:hover { color: var(--ff-gold); }

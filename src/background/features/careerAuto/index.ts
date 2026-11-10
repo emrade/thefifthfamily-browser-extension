@@ -2,7 +2,11 @@ import { GAME_ORIGIN, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { loggedFetch } from '@/shared/requestLog/loggedFetch';
 import { storage } from '@/shared/storage';
-import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry } from '@/shared/types';
+import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry, CareerGoalsConfig } from '@/shared/types';
+import { parseCareers, type CareersSnapshot } from '@/shared/statAdvisorSources';
+import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import type { Live } from '@/shared/careerAdvisor';
+import { clearQueueFinished, onGoalsConfigChanged } from './goals';
 import { fetchLiveStatus } from '../../gameAction';
 import { parseCareersCatalog } from './careersPanelParser';
 import { onConfigChanged, runIfEligible, scheduleNextCheck } from './runner';
@@ -55,11 +59,44 @@ export async function ensureScheduled(): Promise<void> {
  */
 export function watchConfigChanges(): void {
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !(STORAGE_KEYS.CAREER_AUTO_CONFIG in changes)) return;
-    const next = changes[STORAGE_KEYS.CAREER_AUTO_CONFIG].newValue as CareerAutoConfig | undefined;
-    if (!next) return;
-    onConfigChanged(next);
+    if (area !== 'local') return;
+    if (STORAGE_KEYS.CAREER_AUTO_CONFIG in changes) {
+      const next = changes[STORAGE_KEYS.CAREER_AUTO_CONFIG].newValue as CareerAutoConfig | undefined;
+      if (next) onConfigChanged(next);
+    }
+    // Career Advisor goals: goal mode switched on or a goal added should take
+    // effect now, not after the current wait.
+    if (STORAGE_KEYS.CAREER_GOALS_CONFIG in changes) {
+      const next = changes[STORAGE_KEYS.CAREER_GOALS_CONFIG].newValue as CareerGoalsConfig | undefined;
+      if (!next) return;
+      onGoalsConfigChanged(next).catch((err) => console.error(LOG_PREFIX, 'career goals change failed', err));
+      if (next.enabled) storage.getCareerAutoConfig().then(onConfigChanged).catch(() => {});
+    }
   });
+}
+
+/** Career Advisor's Refresh: reads the Careers page and the player's live
+ *  energy/level once. The page is also saved for Combat Stats. */
+export async function refreshCareerAdvisor(): Promise<{ snapshot: CareersSnapshot | null; live: Live | null; error: string | null }> {
+  try {
+    const res = await loggedFetch(`${GAME_ORIGIN}/api/panel.php?type=careers&_t=${Date.now()}`, { credentials: 'include' });
+    const envelope = unwrapPanelEnvelope(await res.text());
+    const snapshot = envelope ? parseCareers(envelope.html, Date.now()) : null;
+    if (snapshot) await storage.setStatSourceCareers(snapshot);
+    const status = await fetchLiveStatus().catch(() => null);
+    const live: Live | null = status
+      ? { level: status.level, energy: status.energy, maxEnergy: status.maxEnergy, energyRegenSeconds: status.energyRegenSeconds }
+      : null;
+    return { snapshot, live, error: snapshot ? null : "Couldn't read the jobs on the Careers page." };
+  } catch (err) {
+    console.error(LOG_PREFIX, 'career advisor refresh failed', err);
+    return { snapshot: null, live: null, error: "Couldn't reach the game. Is a game tab open and logged in?" };
+  }
+}
+
+/** "Keep running this job": stop the all-goals-done reminders. */
+export async function keepRunningAfterGoals(): Promise<void> {
+  await clearQueueFinished();
 }
 
 export function init(): void {

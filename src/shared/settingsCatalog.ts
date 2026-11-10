@@ -77,6 +77,8 @@ const NOTIFICATION_PLACES: Record<NotificationId, Place> = {
   streetIntelOpportunity: STREET_INTEL,
   streetIntelAutoStopped: STREET_INTEL,
   careerAutoStopped: CAREER,
+  careerGoalReached: CAREER,
+  careerGoalsFinished: CAREER,
   crimesAutoDistrictMastered: CRIMES,
   crimesAutoStopped: CRIMES,
   stockMarketTrackerPaused: STOCKS,

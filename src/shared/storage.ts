@@ -12,6 +12,9 @@ import type {
   ArenaWatchStatus,
   CareerAutoConfig,
   CareerAutoStatus,
+  CareerGoalsConfig,
+  CareerGoalsStatus,
+  CareerEnergyStatus,
   ComplicationTypeStats,
   CourierAutoConfig,
   CourierRunSummary,
@@ -66,6 +69,25 @@ const DEFAULT_CAREER_AUTO_CONFIG: CareerAutoConfig = {
   otEnergyCost: null,
   accuracyWeights: CAREER_AUTO_DEFAULT_ACCURACY_WEIGHTS,
   shiftMode: 'normal',
+  useEnergyItems: false,
+  energyDrinkKeep: 50,
+  useFreeRefill: false,
+};
+
+export const DEFAULT_CAREER_ENERGY_STATUS: CareerEnergyStatus = { itemDay: '', itemsUsed: {}, itemEnergy: 0, refillDoneDay: null };
+
+// Career Advisor goal mode: off by default.
+export const DEFAULT_CAREER_GOALS_CONFIG: CareerGoalsConfig = {
+  enabled: false,
+  goals: [],
+};
+
+export const DEFAULT_CAREER_GOALS_STATUS: CareerGoalsStatus = {
+  completed: [],
+  queueFinishedAt: null,
+  queueFinishedCareerId: null,
+  lastReminderAt: null,
+  lockedNotified: [],
 };
 
 /** "Big cards only" fields, replaced by `minCardValue` — read once to migrate. */
@@ -230,6 +252,22 @@ export const storage = {
   // since there's no "default" shift result to fall back to.
   getCareerAutoStatus: () => get<CareerAutoStatus | null>(STORAGE_KEYS.CAREER_AUTO_STATUS, null),
   setCareerAutoStatus: (v: CareerAutoStatus) => set(STORAGE_KEYS.CAREER_AUTO_STATUS, v),
+
+  getCareerGoalsConfig: async (): Promise<CareerGoalsConfig> => {
+    const stored = await get<Partial<CareerGoalsConfig>>(STORAGE_KEYS.CAREER_GOALS_CONFIG, {});
+    return { ...DEFAULT_CAREER_GOALS_CONFIG, ...stored };
+  },
+  setCareerGoalsConfig: (v: CareerGoalsConfig) => set(STORAGE_KEYS.CAREER_GOALS_CONFIG, v),
+  getCareerGoalsStatus: async (): Promise<CareerGoalsStatus> => {
+    const stored = await get<Partial<CareerGoalsStatus>>(STORAGE_KEYS.CAREER_GOALS_STATUS, {});
+    return { ...DEFAULT_CAREER_GOALS_STATUS, ...stored };
+  },
+  setCareerGoalsStatus: (v: CareerGoalsStatus) => set(STORAGE_KEYS.CAREER_GOALS_STATUS, v),
+  getCareerEnergyStatus: async (): Promise<CareerEnergyStatus> => ({
+    ...DEFAULT_CAREER_ENERGY_STATUS,
+    ...(await get<Partial<CareerEnergyStatus>>(STORAGE_KEYS.CAREER_ENERGY_STATUS, {})),
+  }),
+  setCareerEnergyStatus: (v: CareerEnergyStatus) => set(STORAGE_KEYS.CAREER_ENERGY_STATUS, v),
 
   // Same merge-with-defaults/simple-nullable split as the Career Auto pair above.
   getStreetIntelAutoConfig: async (): Promise<StreetIntelAutoConfig> => {
@@ -398,6 +436,7 @@ export const storage = {
   setPetScanState: (v: PetScanState) => set(STORAGE_KEYS.PET_SCAN_STATE, v),
   setStatSourceAcademy: (v: AcademySnapshot) => set(STORAGE_KEYS.STAT_SRC_ACADEMY, v),
   setStatSourceBloodline: (v: BloodlineSnapshot) => set(STORAGE_KEYS.STAT_SRC_BLOODLINE, v),
+  getStatSourceCareers: () => get<CareersSnapshot | null>(STORAGE_KEYS.STAT_SRC_CAREERS, null),
   setStatSourceCareers: (v: CareersSnapshot) => set(STORAGE_KEYS.STAT_SRC_CAREERS, v),
   setStatSourceGym: (v: GymSnapshot) => set(STORAGE_KEYS.STAT_SRC_GYM, v),
   setStatSourceGear: (v: GearSnapshot) => set(STORAGE_KEYS.STAT_SRC_GEAR, v),

@@ -8,6 +8,7 @@ import { isDashboardSection, type DashboardSection } from '@/shared/dashboardSec
 import { AutomationsSection } from './sections/Automations';
 import { ArenaSection } from './sections/Arena';
 import { CombatStatsSection } from './sections/CombatStats';
+import { CareerAutoSection } from './sections/CareerAuto';
 import { LiveStats } from '../popup/views/LiveStats';
 import { HealthAlert } from '../popup/views/HealthAlert';
 import { ExportDueBanner } from '../popup/views/ExportDueBanner';
@@ -15,7 +16,6 @@ import { ReloadGameTabsRow, UpdateBanner } from '../popup/views/GameTabs';
 import { Settings } from '../popup/views/Settings';
 import { FightClubHome } from '../popup/features/fightClub/FightClubHome';
 import { RequestLogHome } from '../popup/features/requestLog/RequestLogHome';
-import { CareerAutoHome } from '../popup/features/careerAuto/CareerAutoHome';
 import { StreetIntelAutoHome } from '../popup/features/streetIntelAuto/StreetIntelAutoHome';
 import { PetCouriersHome } from '../popup/features/petCouriers/PetCouriersHome';
 import { CrimesAutoHome } from '../popup/features/crimesAuto/CrimesAutoHome';
@@ -54,7 +54,15 @@ const MENU: MenuItem[] = [
   { id: 'settings', label: 'Settings' },
 ];
 
+/** Sections with wide tables: they use the whole window instead of the
+ *  reading-width cap the other pages keep (Career Auto's Advisor tab; its
+ *  Auto-Run tab keeps its own narrow column). */
+const WIDE_SECTIONS = new Set<DashboardSection>(['automations/career-auto']);
+
 function sectionFromHash(): DashboardSection {
+  // The Career Advisor was briefly its own page (unreleased); it's now
+  // Career Auto's Advisor tab. Forward the old address there.
+  if (/^#\/?automations\/career-advisor/.test(location.hash)) history.replaceState(null, '', '#/automations/career-auto?advisor');
   // "#/combat-stats?pet-planner": the part after "?" is for the section itself.
   const s = location.hash.replace(/^#\/?/, '').split('?')[0];
   return isDashboardSection(s) ? s : 'overview';
@@ -98,7 +106,7 @@ function Content({ section }: { section: DashboardSection }) {
     case 'automations/pet-couriers':
       return <Narrow><PetCouriersHome /></Narrow>;
     case 'automations/career-auto':
-      return <Narrow><CareerAutoHome /></Narrow>;
+      return <CareerAutoSection />;
     case 'automations/crimes-auto':
       return <Narrow><CrimesAutoHome /></Narrow>;
     case 'automations/real-estate-auto':
@@ -152,7 +160,7 @@ function Dashboard() {
         <div class="db-version">v{manifest.version}</div>
       </nav>
 
-      <main class="db-main">
+      <main class={`db-main${WIDE_SECTIONS.has(section) ? ' db-main--wide' : ''}`}>
         <h1 class="db-title">{current.label}</h1>
         <Content section={section} />
       </main>

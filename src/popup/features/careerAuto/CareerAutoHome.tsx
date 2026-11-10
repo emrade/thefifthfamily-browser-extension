@@ -2,7 +2,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { storage } from '@/shared/storage';
 import { ALARM_NAMES, STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
-import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry } from '@/shared/types';
+import type { CareerAutoConfig, CareerAutoStatus, CareerCatalogEntry, CareerEnergyStatus, CareerGoalsConfig, CareerGoalsStatus } from '@/shared/types';
+import { NumberInput } from '../../views/NumberInput';
+import { gameDay } from '@/shared/careerAdvisor';
 import { CAREER_SHIFT_MODE_HINT, CAREER_SHIFT_MODE_OPTIONS, careerWaitingText } from '@/shared/careerAutoDisplay';
 
 const PAUSE_REASON_LABEL: Record<NonNullable<CareerAutoStatus['pausedReason']>, string> = {
@@ -49,6 +51,10 @@ export function CareerAutoHome() {
   // background service worker that scheduled it.
   const [nextAlarmAt, setNextAlarmAt] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Career Advisor goal mode, which may switch this page's job.
+  const [goals, setGoals] = useState<CareerGoalsConfig | null>(null);
+  const [goalStatus, setGoalStatus] = useState<CareerGoalsStatus | null>(null);
+  const [energyStatus, setEnergyStatus] = useState<CareerEnergyStatus | null>(null);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -73,6 +79,9 @@ export function CareerAutoHome() {
       setLoaded(true);
     });
     loadCatalog();
+    storage.getCareerGoalsConfig().then(setGoals);
+    storage.getCareerGoalsStatus().then(setGoalStatus);
+    storage.getCareerEnergyStatus().then(setEnergyStatus);
 
     // Background writes a fresh status on every shift — reflected here live,
     // without polling, exactly like watching the in-page overlay while it runs.
@@ -80,6 +89,9 @@ export function CareerAutoHome() {
       if (area !== 'local') return;
       if (STORAGE_KEYS.CAREER_AUTO_STATUS in changes) setStatus(changes[STORAGE_KEYS.CAREER_AUTO_STATUS].newValue ?? null);
       if (STORAGE_KEYS.CAREER_AUTO_CONFIG in changes) setConfig(changes[STORAGE_KEYS.CAREER_AUTO_CONFIG].newValue ?? null);
+      if (STORAGE_KEYS.CAREER_GOALS_CONFIG in changes) storage.getCareerGoalsConfig().then(setGoals);
+      if (STORAGE_KEYS.CAREER_GOALS_STATUS in changes) storage.getCareerGoalsStatus().then(setGoalStatus);
+      if (STORAGE_KEYS.CAREER_ENERGY_STATUS in changes) storage.getCareerEnergyStatus().then(setEnergyStatus);
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -228,6 +240,21 @@ export function CareerAutoHome() {
         />
       </label>
 
+      {goals?.enabled && goals.goals.length > 0 && (
+        <div class="ff-field__hint">
+          Goal mode is on: the Advisor's goals pick the job ({goals.goals.length} goal{goals.goals.length === 1 ? '' : 's'} left, next:{' '}
+          {goals.goals[0].careerName} to R{goals.goals[0].targetRank}). A job picked below is switched back while goals remain.
+        </div>
+      )}
+      {goals?.enabled && goals.goals.length === 0 && goalStatus?.queueFinishedAt != null && (
+        <div class="ff-health-alert" style={{ borderColor: 'var(--ff-gold)' }}>
+          <strong>All career goals done</strong>
+          <span class="ff-health-alert__hint">
+            Still running {config.careerName}. Add a goal in Dashboard → Career Auto → Advisor, or pick a job below.
+          </span>
+        </div>
+      )}
+
       {status?.pausedReason && (
         <div class="ff-health-alert">
           <strong>Career auto-runner stopped</strong>
@@ -322,6 +349,64 @@ export function CareerAutoHome() {
           ))}
         </select>
       </div>
+
+      <div class="ff-section-label">Energy top-ups</div>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Use energy items</div>
+          <div class="ff-toggle-row__status">
+            When a shift is ready but energy is short: Energy Drinks, Energy Boosters, Adrenaline Shots, just enough for
+            that shift, smallest first, never past your max energy.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.useEnergyItems}
+          onChange={() => saveConfig({ ...config, useEnergyItems: !config.useEnergyItems })}
+        />
+      </label>
+
+      <div class="ff-field">
+        <div class="ff-field__label">Energy Drinks to keep</div>
+        <div class="ff-field__hint">Never takes Energy Drinks below this. Boosters and Adrenaline Shots have no floor.</div>
+        <NumberInput
+          class="ff-select ff-field__control"
+          min={0}
+          value={config.energyDrinkKeep}
+          onCommit={(v) => saveConfig({ ...config, energyDrinkKeep: Math.max(0, Math.floor(v)) })}
+        />
+      </div>
+
+      <label class="ff-toggle-row">
+        <div class="ff-toggle-row__text">
+          <div class="ff-toggle-row__title">Use the free daily energy refill</div>
+          <div class="ff-toggle-row__status">
+            Used when a shift is ready and energy is below that shift's cost, so little of it is wasted. One a day; it
+            comes back at the daily reset.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="ff-toggle"
+          checked={config.useFreeRefill}
+          onChange={() => saveConfig({ ...config, useFreeRefill: !config.useFreeRefill })}
+        />
+      </label>
+
+      {energyStatus && (energyStatus.itemDay === gameDay() || energyStatus.refillDoneDay === gameDay()) && (
+        <div class="ff-field__hint">
+          Today:{' '}
+          {[
+            ...(energyStatus.itemDay === gameDay()
+              ? Object.entries(energyStatus.itemsUsed).map(([name, n]) => `${name} ×${n}`)
+              : []),
+            ...(energyStatus.itemDay === gameDay() && energyStatus.itemEnergy > 0 ? [`+${energyStatus.itemEnergy} energy from items`] : []),
+            ...(energyStatus.refillDoneDay === gameDay() ? ['free refill already used today'] : []),
+          ].join(' · ')}
+        </div>
+      )}
 
       <div class="ff-section-label">Status</div>
 

@@ -165,6 +165,13 @@ export type ExtensionMessage =
   // running), returning the fresh `CareerAutoStatus`. For a wait the runner
   // can't see end early (a manual refill, bailing out of jail).
   | { type: 'career-auto-run-requested' }
+  // Dashboard → Career Advisor: read the Careers page and live energy once
+  // (background only: it holds the game session). Returns
+  // `{ snapshot, live, error }`.
+  | { type: 'career-advisor-refresh-requested' }
+  // Dashboard → Career Advisor "Keep running this job": ends the all-goals-
+  // done reminders. Background owns that status.
+  | { type: 'career-goals-keep-running' }
   // Same as 'career-auto-run-requested', for Street Intel Auto-Attempt.
   // Returns the fresh `StreetIntelAutoStatus`.
   | { type: 'street-intel-auto-run-requested' }

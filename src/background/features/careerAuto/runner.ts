@@ -9,6 +9,10 @@ import { SystemicActionError, fetchLiveStatus, postAction, type LiveStatus } fro
 import { careerRequiredLevel, isCareerOvertimeUnlocked, parseCareerCooldownSeconds } from './careersPanelParser';
 import type { CareerAccuracyWeight, CareerAutoConfig, CareerAutoWaiting } from '@/shared/types';
 import { runQueued } from '../../automationQueue';
+import { parseCareers, type CareersSnapshot } from '@/shared/statAdvisorSources';
+import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import { afterGoalShift, remindIfQueueFinished, steerToGoal, type GoalDecision } from './goals';
+import { topUpEnergy } from './energyTopUp';
 
 const FEATURE_KEY = 'careerAuto';
 
@@ -223,6 +227,18 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
     // this codebase treats a single failed fetch as transient, not systemic.
     console.error(LOG_PREFIX, 'career auto-runner cooldown cross-check fetch failed', err);
   }
+  // Career Advisor goal mode (off by default): reads the same page, keeps the
+  // advisor's copy of it fresh, and may switch the job (before the level check, so a
+  // locked job is switched away from rather than paused on). Only while Auto-Run
+  // is on, so Run Now with it off keeps doing exactly what it did.
+  const snapshot = readSnapshot(panelHtml);
+  let decision: GoalDecision = { kind: 'none' };
+  if (config.enabled) {
+    decision = await steerToGoal(config, snapshot, status.level);
+    if (decision.kind === 'switched') return; // the config change schedules the next check
+    await remindIfQueueFinished(config);
+  }
+
   // A level-locked job can't be worked at all: stop rather than send a shift
   // the game will only reject ("Level too low.").
   const requiredLevel = panelHtml !== null ? careerRequiredLevel(panelHtml, config.careerId, status.level) : null;
@@ -263,17 +279,47 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   // genuinely can't do Overtime yet (rank 1), which takes a successful panel
   // read to know — without one, wait rather than guess and spend energy on
   // the shift the player chose not to run.
-  if (config.shiftMode === 'overtime' && panelHtml === null) {
+  // A goal is reached by shift count, and Overtime is one shift for twice
+  // the energy, so goal work is always normal shifts.
+  const shiftMode = decision.kind === 'goal' ? 'normal' : config.shiftMode;
+  if (shiftMode === 'overtime' && panelHtml === null) {
     scheduleNextCheck(null);
     return;
   }
-  const overtimeWanted = config.shiftMode !== 'normal' && config.otEnergyCost != null && rankAllowsOvertime;
+  const overtimeWanted = shiftMode !== 'normal' && config.otEnergyCost != null && rankAllowsOvertime;
   const overtime = overtimeWanted && status.energy >= config.otEnergyCost!;
-  const canRunNormal = !(config.shiftMode === 'overtime' && overtimeWanted) && status.energy >= config.energyCost;
+  const canRunNormal = !(shiftMode === 'overtime' && overtimeWanted) && status.energy >= config.energyCost;
+  // The shift this check is waiting for: Overtime in 'overtime' mode once
+  // the job has it, otherwise a normal shift ('hybrid' only tops up to that).
+  const need = shiftMode === 'overtime' && overtimeWanted ? config.otEnergyCost! : config.energyCost;
+  if (!overtime && !canRunNormal && config.enabled) {
+    // Ready but short on energy: free refill / energy items, if the player
+    // switched those on (each off by default). Then check again right away.
+    // Only while Auto-Run is on, so Run Now with it off spends nothing extra.
+    let added = 0;
+    try {
+      added = await topUpEnergy(config, status, need);
+    } catch (err) {
+      if (err instanceof SystemicActionError && err.kind === 'status-blocked') {
+        scheduleNextCheck(null);
+        return;
+      }
+      if (isNetworkFailure(err)) {
+        scheduleNextCheck(null);
+        return;
+      }
+      console.error(LOG_PREFIX, 'career auto energy top-up failed', err);
+      await pause('error', err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (added > 0) {
+      chrome.alarms.create(ALARM_NAMES.CAREER_AUTO, { when: Date.now() + CAREER_AUTO_IMMEDIATE_CHECK_DELAY_MS });
+      return;
+    }
+  }
   if (!overtime && !canRunNormal) {
     // Not enough energy yet. Polled rather than aligned to `readyAt`, since
     // a refill can land sooner than regen would.
-    const need = config.shiftMode === 'overtime' && overtimeWanted ? config.otEnergyCost! : config.energyCost;
     await recordWaiting({ kind: 'energy', need, have: status.energy, readyAt: energyReadyAt(status, need) });
     scheduleNextCheck(null);
     return;
@@ -370,5 +416,18 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
     waiting: null,
   });
 
+  if (decision.kind === 'goal') await afterGoalShift(decision.goal, Number(resp.rank) || 0, snapshot, config);
+
   scheduleNextCheck(nextEligibleAt);
+}
+
+/** The Careers page as the Career Advisor reads it, saved for the Dashboard
+ *  (the same copy Combat Stats uses), so the advisor stays current while
+ *  Career Auto runs. */
+function readSnapshot(panelHtml: string | null): CareersSnapshot | null {
+  if (panelHtml === null) return null;
+  const envelope = unwrapPanelEnvelope(panelHtml);
+  const snapshot = envelope ? parseCareers(envelope.html, Date.now()) : null;
+  if (snapshot) storage.setStatSourceCareers(snapshot).catch((err) => console.error(LOG_PREFIX, 'saving careers snapshot failed', err));
+  return snapshot;
 }

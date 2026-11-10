@@ -885,6 +885,25 @@ export interface CareerAutoConfig {
    *  normal shift once the job is rank 2+ — 3× cash and XP for 2× energy. A
    *  rank-1 job can't do Overtime yet, so it runs normal shifts until rank 2. */
   shiftMode: 'normal' | 'hybrid' | 'overtime';
+  /** When a shift is ready (off cooldown) but energy is short, top up with
+   *  Energy Drinks / Boosters / Adrenaline Shots: just enough for that
+   *  shift, smallest first, never past max energy. Off by default. */
+  useEnergyItems: boolean;
+  /** Energy Drinks always left in stock (agreed with the player 2026-11-10). */
+  energyDrinkKeep: number;
+  /** Same moment, the free daily energy refill. Off by default. */
+  useFreeRefill: boolean;
+}
+
+/** Career Auto's energy top-ups today, background-owned. Its own key, not
+ *  `CareerAutoStatus`, which the runner rewrites whole on every shift. */
+export interface CareerEnergyStatus {
+  /** Game day (resets 23:00 UTC) the counts belong to. */
+  itemDay: string;
+  itemsUsed: Record<string, number>;
+  itemEnergy: number;
+  /** Game day the free energy refill was used, or seen already used. */
+  refillDoneDay: string | null;
 }
 
 /** What one automated shift actually did — the background-owned counterpart to
@@ -947,6 +966,36 @@ export interface CareerAutoStatus {
 export type CareerAutoWaiting =
   | { kind: 'cooldown' | 'jail' | 'hospital' | 'travel'; until: number }
   | { kind: 'energy'; need: number; have: number; readyAt: number | null };
+
+/** One Career Advisor goal: work `careerId` until its rank-`targetRank` perk
+ *  (R1–R4) is earned. */
+export interface CareerGoal {
+  careerId: number;
+  careerName: string;
+  targetRank: 1 | 2 | 3 | 4;
+}
+
+/** Written by the Dashboard's Career Advisor; the background only ever
+ *  removes a finished goal from `goals` (fresh read, then write). Every
+ *  toggle defaults off. See docs/career-advisor-plan.md. */
+export interface CareerGoalsConfig {
+  /** Goal mode: Career Auto works the first unfinished goal's job. Needs
+   *  Career Auto itself switched on. */
+  enabled: boolean;
+  goals: CareerGoal[];
+}
+
+/** Background-owned (the Dashboard asks the background to change it). */
+export interface CareerGoalsStatus {
+  /** Last goals finished, newest first (at most 10). */
+  completed: { careerName: string; targetRank: number; perk: string; at: number }[];
+  /** Set when goal mode finished its last goal; reminders repeat while set. */
+  queueFinishedAt: number | null;
+  queueFinishedCareerId: number | null;
+  lastReminderAt: number | null;
+  /** Goals already reported as waiting for a level, so it's said once. */
+  lockedNotified: number[];
+}
 
 /** User-configured — read/written directly by the popup, same as
  *  `CareerAutoConfig`. `minSuccessPct` gates which opportunities are worth

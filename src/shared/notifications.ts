@@ -22,6 +22,16 @@ export const NOTIFICATION_DEFINITIONS = [
     description: 'Notify when the career auto-runner stops itself, e.g. after getting fired.',
   },
   {
+    id: 'careerGoalReached',
+    label: 'Career Goal Reached',
+    description: 'Notify when Career Auto earns a perk you set as a goal in the Career Auto Advisor tab, or when a goal has to wait for a higher level.',
+  },
+  {
+    id: 'careerGoalsFinished',
+    label: 'Career Goals All Done',
+    description: 'Notify when the last Career Auto goal (Advisor tab) is done, then every 4 hours while Career Auto keeps running the last job, until you add a goal, pick a job or press Keep running.',
+  },
+  {
     id: 'streetIntelAutoStopped',
     label: 'Street Intel Auto Stopped',
     description: 'Notify when the Street Intel auto-runner stops itself after an unrecognized response.',

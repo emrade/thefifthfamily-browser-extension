@@ -17,7 +17,7 @@ import {
 } from './features/streetIntel';
 import { getStreetIntelAnalytics, initStreetIntelAnalytics, observeStreetIntelTraffic } from './features/streetIntel/analytics';
 import { observeStreetIntelPlayerMods } from './features/streetIntel/playerMods';
-import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
+import { fetchCareerCatalog, handleAlarm as handleCareerAutoAlarm, init as initCareerAuto, keepRunningAfterGoals, refreshCareerAdvisor, runCheckNow as runCareerAutoCheckNow } from './features/careerAuto';
 import { handleAlarm as handleCrimesAutoAlarm, init as initCrimesAuto, runCheckNow as runCrimesAutoCheckNow } from './features/crimesAuto';
 import { fetchCatalog as fetchStreetRacingCatalog, runRace as runStreetRace } from './features/streetRacing';
 import {
@@ -282,6 +282,14 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
   // Run Now from Career Auto's popup tab or in-page panel.
   if (msg.type === 'career-auto-run-requested') {
     return runCareerAutoCheckNow();
+  }
+
+  if (msg.type === 'career-advisor-refresh-requested') {
+    return refreshCareerAdvisor();
+  }
+
+  if (msg.type === 'career-goals-keep-running') {
+    return keepRunningAfterGoals();
   }
 
   // Run Now from Street Intel Auto's popup tab or in-page panel.
