@@ -55,6 +55,8 @@ export const STORAGE_KEYS = {
   STALE_GAME_TABS: 'ff_stale_game_tabs',
   AUTOMATION_QUEUE_CONFIG: 'ff_automation_queue_config',
   AUTOMATION_QUEUE_LOG: 'ff_automation_queue_log',
+  AUTOMATION_CATCH_UP_CONFIG: 'ff_automation_catch_up_config',
+  AUTOMATION_CATCH_UP_STATUS: 'ff_automation_catch_up_status',
   AUTOMATION_STOP_LOG: 'ff_automation_stop_log',
   // Dashboard → Combat Stats sources (shared/statBreakdown.ts), one key each: the
   // page capture and the Refresh button both write them, never the same one.
@@ -97,6 +99,7 @@ export const ALARM_NAMES = {
   REAL_ESTATE_VAULT: 'ff-real-estate-vault',
   REAL_ESTATE_AUTO: 'ff-real-estate-auto',
   GOLD_RUN_PAUSE_EXPIRY: 'ff-gold-run-pause-expiry',
+  AUTOMATION_CATCH_UP: 'ff-automation-catch-up',
 } as const;
 
 // --- Request log retention ---------------------------------------------------

@@ -1,13 +1,17 @@
 import { STORAGE_KEYS } from '@/shared/constants';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import type { AutomationQueueFeature, AutomationQueueLogEntry } from '@/shared/types';
+import { queueActive, quietHoursEndAt } from '@/shared/automationQueueHours';
+import type { AutomationQueueConfig, AutomationQueueFeature, AutomationQueueLogEntry } from '@/shared/types';
 
 /**
  * One-at-a-time queue across the background automations, so two of them never
  * act on the game at the same moment — something a single player in one tab
  * can't do. Design, measurements and the player's decisions:
  * docs/automation-queue.md.
+ *
+ * Quiet hours (their own switch, off by default): inside the player's
+ * window the queue behaves exactly as if it were off.
  *
  * **Off by default, and off means today's behaviour exactly.** `runQueued`
  * calls straight through to the feature's own run, with no waiting, no gap
@@ -43,16 +47,22 @@ const POLL_MS = 500;
 const LOG_LIMIT = 300;
 const KEEPALIVE_KEY = 'ff_automation_queue_keepalive';
 
-let enabledCache: boolean | null = null;
+let configCache: AutomationQueueConfig | null = null;
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG in changes)) return;
-  enabledCache = Boolean((changes[STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG].newValue as { enabled?: boolean } | undefined)?.enabled);
+  configCache = null; // re-read with defaults on next use
 });
 
+async function getConfig(): Promise<AutomationQueueConfig> {
+  if (configCache === null) configCache = await storage.getAutomationQueueConfig();
+  return configCache;
+}
+
+/** On, and not in its quiet hours (checked on every call: the hours start
+ *  and end while waiters are waiting, and those then go at once). */
 async function isEnabled(): Promise<boolean> {
-  if (enabledCache === null) enabledCache = (await storage.getAutomationQueueConfig()).enabled;
-  return enabledCache;
+  return queueActive(await getConfig());
 }
 
 interface Holder {
@@ -155,14 +165,18 @@ async function tracked<T>(feature: AutomationQueueFeature, fn: () => Promise<T>)
 
 export interface AutomationQueueState {
   enabled: boolean;
+  /** When quiet hours end, while they have the queue stepping aside. */
+  quietUntil: number | null;
   holder: { feature: AutomationQueueFeature; startedAt: number } | null;
   waiting: AutomationQueueFeature[];
   running: AutomationQueueFeature[];
 }
 
 export async function getQueueState(): Promise<AutomationQueueState> {
+  const config = await getConfig();
   return {
-    enabled: await isEnabled(),
+    enabled: config.enabled,
+    quietUntil: config.enabled ? quietHoursEndAt(config) : null,
     holder: holder ? { feature: holder.feature, startedAt: holder.startedAt } : null,
     waiting: waiters.map((w) => w.feature),
     running: [...running.keys()],
@@ -187,7 +201,7 @@ function appendLog(entry: AutomationQueueLogEntry): void {
  * player-started jobs sent one step per message.
  */
 export async function runQueued<T>(feature: AutomationQueueFeature, fn: () => Promise<T>, options: { linger?: boolean } = {}): Promise<T> {
-  if (enabledCache === false || !(await isEnabled())) return tracked(feature, fn);
+  if (!(await isEnabled())) return tracked(feature, fn);
 
   const queuedAt = Date.now();
   const got = await acquire(feature, queuedAt);
@@ -221,7 +235,7 @@ export async function runQueued<T>(feature: AutomationQueueFeature, fn: () => Pr
  * skip.
  */
 export async function skipIfQueueBusy(feature: AutomationQueueFeature): Promise<boolean> {
-  if (enabledCache === false || !(await isEnabled())) return false;
+  if (!(await isEnabled())) return false;
   const now = Date.now();
   const busy = (holder !== null && now - holder.startedAt <= MAX_HOLD_MS) || waiters.length > 0 || (now < freeAt && lastFeature !== feature);
   if (busy) appendLog({ feature, queuedAt: now, startedAt: null, endedAt: now, waitedMs: 0, outcome: 'skipped' });

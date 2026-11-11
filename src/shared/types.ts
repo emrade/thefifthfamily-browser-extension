@@ -728,6 +728,25 @@ export interface CrimesAutoStatus {
  *  Off = every automation runs exactly as before the queue existed. */
 export interface AutomationQueueConfig {
   enabled: boolean;
+  /** Quiet hours (off by default): between `quietFromMin` and `quietToMin`
+   *  (minutes after local midnight; may wrap past midnight) the queue steps
+   *  aside and automations run as if it were off. For the player's nights:
+   *  the computer only wakes for seconds at a time, and the queue's 3–8 s
+   *  gap let one automation through per wake (archive, Oct 26 – Nov 11 2026). */
+  quietHoursEnabled: boolean;
+  quietFromMin: number;
+  quietToMin: number;
+}
+
+/** Catch-up after sleep (off by default) — see background/automationCatchUp.ts. */
+export interface AutomationCatchUpConfig {
+  enabled: boolean;
+}
+
+/** The last time catch-up re-armed overdue checks, for the dashboard. */
+export interface AutomationCatchUpStatus {
+  lastAt: number | null;
+  items: { feature: AutomationQueueFeature; lateMs: number }[];
 }
 
 export type AutomationQueueFeature =
@@ -758,6 +777,8 @@ export interface AutomationScheduleItem {
 export interface AutomationScheduleSnapshot {
   now: number;
   queueEnabled: boolean;
+  /** Set while quiet hours have the queue stepping aside: when they end. */
+  queueQuietUntil: number | null;
   holder: { feature: AutomationQueueFeature; startedAt: number } | null;
   items: AutomationScheduleItem[];
 }

@@ -89,6 +89,7 @@ import { refreshStatSources } from './features/statSources';
 import { initPetStatScan, startPetSpend, startPetStatScan, stopPetStatScan } from './features/petStatScan';
 import { removeLegacyFuryCatcher } from './legacyCleanup';
 import { getAutomationSchedule, openDashboard } from './automationSchedule';
+import { handleAlarm as handleCatchUpAlarm, init as initCatchUp } from './automationCatchUp';
 
 /** Player-started jobs arrive one step per message: keep the automation
  *  queue theirs between steps (see automationQueue.ts). */
@@ -173,6 +174,10 @@ initStockMarket();
 // (off by default); `autoDispatchEnabled`/`autoOffloadEnabled` separately gate
 // whether an open destination gets pets sent/offloaded once watch is on.
 initCourierWatch().catch((err) => console.error(LOG_PREFIX, 'initCourierWatch failed', err));
+
+// Catch-up after sleep (off by default): re-times automation alarms left
+// overdue by a sleep — see automationCatchUp.ts.
+initCatchUp();
 
 // Processed one at a time, strictly in arrival order — not fire-and-forget. Several
 // handlers do a read-then-write on shared storage/Dexie state (check "is there a
@@ -489,4 +494,5 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   handleRealEstateVaultAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateVaultAlarm failed', err));
   handleRealEstateAutoAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleRealEstateAutoAlarm failed', err));
   handleGoldRunAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleGoldRunAlarm failed', err));
+  handleCatchUpAlarm(alarm).catch((err) => console.error(LOG_PREFIX, 'handleCatchUpAlarm failed', err));
 });

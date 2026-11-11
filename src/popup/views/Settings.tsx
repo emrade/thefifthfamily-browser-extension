@@ -96,7 +96,7 @@ export function Settings() {
         setNotificationPrefs({ ...DEFAULT_NOTIFICATION_PREFERENCES, ...changes[STORAGE_KEYS.NOTIFICATION_PREFERENCES].newValue });
       }
       if (STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG in changes) {
-        setQueue({ enabled: false, ...(changes[STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG].newValue as Partial<AutomationQueueConfig> | undefined) });
+        storage.getAutomationQueueConfig().then(setQueue);
       }
     };
     chrome.storage.onChanged.addListener(onChanged);
@@ -167,9 +167,10 @@ export function Settings() {
         tabLabel={tabLabel}
         checked={queue!.enabled}
         onToggle={() => {
-          const next = { ...queue!, enabled: !queue!.enabled };
-          setQueue(next);
-          void storage.setAutomationQueueConfig(next);
+          const enabled = !queue!.enabled;
+          setQueue({ ...queue!, enabled });
+          // Only this field: quiet hours are set on the Dashboard.
+          void storage.updateAutomationQueueConfig({ enabled });
         }}
       />
     );

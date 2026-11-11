@@ -31,6 +31,10 @@ let snap: AutomationScheduleSnapshot | null = null;
 let lastFetch = 0;
 let timer: number | undefined;
 
+/** Past due by more than this: the timer was paused by a sleep (see the
+ *  Dashboard's Automations page), not just about to fire. */
+const OVERDUE_MS = 60_000;
+
 function short(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
@@ -44,6 +48,7 @@ function stateText(item: AutomationScheduleItem, now: number): string {
   if (item.state === 'waiting') return 'waiting its turn';
   if (item.state === 'off') return 'off';
   if (item.nextAt === null) return 'on';
+  if (now - item.nextAt > OVERDUE_MS) return `overdue ${short(now - item.nextAt)}`;
   return item.nextAt <= now ? 'due now' : `in ${short(item.nextAt - now)}`;
 }
 
@@ -123,7 +128,11 @@ function build(): HTMLDivElement {
   });
   el.querySelector<HTMLInputElement>('.ff-un-queue input')!.addEventListener('change', (e) => {
     const enabled = (e.target as HTMLInputElement).checked;
-    void chrome.storage.local.set({ [STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG]: { enabled } }).then(() => refresh());
+    // Merge: the config also holds the quiet hours.
+    void chrome.storage.local
+      .get(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG)
+      .then((got) => chrome.storage.local.set({ [STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG]: { ...(got[STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG] ?? {}), enabled } }))
+      .then(() => refresh());
   });
   el.querySelector('.ff-un-open')!.addEventListener('click', () => {
     const msg: ExtensionMessage = { type: 'dashboard-open-requested', section: 'automations' };

@@ -4,7 +4,16 @@ import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { AUTOMATION_FEATURE_LABELS } from '@/shared/automationLabels';
 import type { ExtensionMessage } from '@/shared/messaging';
-import type { AutomationQueueLogEntry, AutomationScheduleItem, AutomationScheduleSnapshot, AutomationStopLogEntry } from '@/shared/types';
+import { minToTime, timeToMin } from '@/shared/automationQueueHours';
+import type {
+  AutomationCatchUpConfig,
+  AutomationCatchUpStatus,
+  AutomationQueueConfig,
+  AutomationQueueLogEntry,
+  AutomationScheduleItem,
+  AutomationScheduleSnapshot,
+  AutomationStopLogEntry,
+} from '@/shared/types';
 
 /**
  * Dashboard → Automations: what the background automations are doing and,
@@ -30,6 +39,12 @@ function duration(ms: number): string {
   if (m < 60) return `${m}m ${s % 60}s`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
+
+/** Past due by more than this: the alarm's countdown was paused by a sleep,
+ *  not just about to fire (see background/automationCatchUp.ts). */
+const OVERDUE_MS = 60_000;
+
+const isOverdue = (item: AutomationScheduleItem, now: number) => item.state === 'scheduled' && item.nextAt !== null && now - item.nextAt > OVERDUE_MS;
 
 function until(at: number, now: number): string {
   const ms = at - now;
@@ -154,38 +169,125 @@ function useNow(): number {
   return now;
 }
 
-function QueueSwitch({ enabled }: { enabled: boolean }) {
+/** Stored settings shown live, kept in step with other screens' writes. */
+function useStored<T>(key: string, load: () => Promise<T>): T | null {
+  const [value, setValue] = useState<T | null>(null);
+  useEffect(() => {
+    load().then(setValue);
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && key in changes) load().then(setValue);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
+  return value;
+}
+
+/** Minutes after midnight as this computer shows times, e.g. "2:00 AM". */
+function dayTime(min: number): string {
+  return new Date(2000, 0, 1, Math.floor(min / 60), min % 60).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function TimeField({ label, min, onCommit }: { label: string; min: number; onCommit: (min: number) => void }) {
   return (
-    <label class="db-switch">
-      <div>
-        <div class="db-switch__title">Automation Queue</div>
-        <div class="db-switch__hint">
-          {enabled
-            ? 'On: automations take turns, one at a time, with a 3–8 s gap.'
-            : 'Off: automations run exactly as before. Turn on to make them take turns.'}
-        </div>
-      </div>
+    <label class="db-field">
+      {label}
       <input
-        type="checkbox"
-        class="db-toggle"
-        checked={enabled}
-        onChange={() => void storage.setAutomationQueueConfig({ enabled: !enabled })}
+        type="time"
+        class="db-input db-input--date"
+        value={minToTime(min)}
+        onChange={(e) => {
+          const m = timeToMin((e.target as HTMLInputElement).value);
+          if (m !== null && m !== min) onCommit(m);
+        }}
       />
     </label>
   );
 }
 
-function ComingUp({ snap, now }: { snap: AutomationScheduleSnapshot; now: number }) {
+function QueueSettings({ queue, quietUntil, catchUp, catchUpStatus }: {
+  queue: AutomationQueueConfig;
+  quietUntil: number | null;
+  catchUp: AutomationCatchUpConfig;
+  catchUpStatus: AutomationCatchUpStatus | null;
+}) {
+  const update = (change: Partial<AutomationQueueConfig>) => void storage.updateAutomationQueueConfig(change);
+  const hours = `${dayTime(queue.quietFromMin)} to ${dayTime(queue.quietToMin)}`;
+  const last = catchUpStatus?.lastAt ? catchUpStatus : null;
+  return (
+    <div class="db-switches">
+      <label class="db-switch">
+        <div>
+          <div class="db-switch__title">Automation Queue</div>
+          <div class="db-switch__hint">
+            {!queue.enabled
+              ? 'Off: automations run exactly as before. Turn on to make them take turns.'
+              : quietUntil !== null
+                ? `On, but stepping aside for quiet hours until ${clock(quietUntil)}: automations run side by side.`
+                : 'On: automations take turns, one at a time, with a 3–8 s gap.'}
+          </div>
+        </div>
+        <input type="checkbox" class="db-toggle" checked={queue.enabled} onChange={() => update({ enabled: !queue.enabled })} />
+      </label>
+
+      <div class={`db-switch-group${queue.enabled ? '' : ' db-switch-group--idle'}`}>
+        <label class="db-switch db-switch--inner">
+          <div>
+            <div class="db-switch__title">Quiet hours</div>
+            <div class="db-switch__hint">
+              {queue.quietHoursEnabled
+                ? `On: from ${hours} every day, the queue steps aside and automations run side by side.`
+                : 'Off: the queue spaces automations out at all hours.'}{' '}
+              A sleeping computer wakes for seconds at a time, and the queue's gap lets only one automation through per wake.
+            </div>
+          </div>
+          <input type="checkbox" class="db-toggle" checked={queue.quietHoursEnabled} onChange={() => update({ quietHoursEnabled: !queue.quietHoursEnabled })} />
+        </label>
+        <div class="db-fields db-switch-fields">
+          <TimeField label="From" min={queue.quietFromMin} onCommit={(m) => update({ quietFromMin: m })} />
+          <TimeField label="To" min={queue.quietToMin} onCommit={(m) => update({ quietToMin: m })} />
+        </div>
+      </div>
+
+      <label class="db-switch">
+        <div>
+          <div class="db-switch__title">Catch up after sleep</div>
+          <div class="db-switch__hint">
+            {catchUp.enabled
+              ? 'On: within about a minute of the computer waking, any check left overdue by the sleep runs.'
+              : "Off: after a sleep, checks run late (Firefox's timers pause while the computer sleeps)."}
+            {last && (
+              <>
+                {' '}Last: {dateTime(last.lastAt!)}, {last.items.map((i) => `${AUTOMATION_FEATURE_LABELS[i.feature]} ${duration(i.lateMs)} late`).join(', ')}.
+              </>
+            )}
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="db-toggle"
+          checked={catchUp.enabled}
+          onChange={() => void storage.setAutomationCatchUpConfig({ ...catchUp, enabled: !catchUp.enabled })}
+        />
+      </label>
+    </div>
+  );
+}
+
+function ComingUp({ snap, now, catchUpOn }: { snap: AutomationScheduleSnapshot; now: number; catchUpOn: boolean }) {
+  const anyOverdue = snap.items.some((i) => isOverdue(i, now));
   return (
     <section class="db-card">
       <h2 class="db-h">Now and coming up</h2>
       <ul class="db-list">
         {snap.items.map((item) => (
-          <li class={`db-row db-row--${item.state}`} key={item.feature}>
+          <li class={`db-row db-row--${item.state}${isOverdue(item, now) ? ' db-row--overdue' : ''}`} key={item.feature}>
             <span class="db-dot" aria-hidden="true" />
             <span class="db-row__name">{AUTOMATION_FEATURE_LABELS[item.feature]}</span>
             <span class="db-row__state">
-              {item.state === 'scheduled' && item.nextAt !== null
+              {isOverdue(item, now)
+                ? `Overdue by ${duration(now - item.nextAt!)} · was due ${clock(item.nextAt!)}`
+                : item.state === 'scheduled' && item.nextAt !== null
                 ? `${STATE_TEXT.scheduled} ${until(item.nextAt, now)} · ${clock(item.nextAt)}`
                 : item.state === 'scheduled'
                   ? 'On, no check scheduled yet'
@@ -196,6 +298,12 @@ function ComingUp({ snap, now }: { snap: AutomationScheduleSnapshot; now: number
           </li>
         ))}
       </ul>
+      {anyOverdue && (
+        <p class="db-note db-note--warn">
+          Overdue: the computer was most likely asleep. Firefox's timers pause during sleep, so these run late.{' '}
+          {catchUpOn ? 'Catch up after sleep will run them within about a minute.' : 'Turn on Catch up after sleep above to run them as soon as it wakes.'}
+        </p>
+      )}
       <p class="db-note">A check can find nothing to do (e.g. no Street Intel card worth taking). Garage, Inventory, Street Racing and achievement claims only appear while they run.</p>
     </section>
   );
@@ -274,13 +382,16 @@ export function AutomationsSection() {
   const log = useQueueLog();
   const stops = useStopLog();
   const now = useNow();
+  const queue = useStored(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG, storage.getAutomationQueueConfig);
+  const catchUp = useStored(STORAGE_KEYS.AUTOMATION_CATCH_UP_CONFIG, storage.getAutomationCatchUpConfig);
+  const catchUpStatus = useStored(STORAGE_KEYS.AUTOMATION_CATCH_UP_STATUS, storage.getAutomationCatchUpStatus);
 
-  if (!snap) return <p class="db-empty">Loading…</p>;
+  if (!snap || !queue || !catchUp) return <p class="db-empty">Loading…</p>;
   return (
     <>
-      <QueueSwitch enabled={snap.queueEnabled} />
+      <QueueSettings queue={queue} quietUntil={snap.queueQuietUntil} catchUp={catchUp} catchUpStatus={catchUpStatus} />
       <div class="db-grid">
-        <ComingUp snap={snap} now={now} />
+        <ComingUp snap={snap} now={now} catchUpOn={catchUp.enabled} />
         <TodayStats log={log} now={now} />
         <Stops log={stops} />
         <Recent log={log} />

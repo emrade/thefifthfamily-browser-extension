@@ -14,13 +14,13 @@ import { getQueueState } from './automationQueue';
  * nothing to do (e.g. no Street Intel card worth taking).
  */
 
-interface Scheduled {
+export interface Scheduled {
   feature: AutomationQueueFeature;
   alarms: string[];
   isOn: () => Promise<boolean>;
 }
 
-const SCHEDULED: Scheduled[] = [
+export const SCHEDULED: Scheduled[] = [
   {
     feature: 'pet-courier',
     alarms: [ALARM_NAMES.SMUGGLING_DEST_POLL, ALARM_NAMES.SMUGGLING_COURIER_RETURN],
@@ -64,7 +64,7 @@ export async function getAutomationSchedule(): Promise<AutomationScheduleSnapsho
   }
 
   items.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity));
-  return { now: Date.now(), queueEnabled: queue.enabled, holder: queue.holder, items };
+  return { now: Date.now(), queueEnabled: queue.enabled, queueQuietUntil: queue.quietUntil, holder: queue.holder, items };
 }
 
 const PING_TIMEOUT_MS = 500;

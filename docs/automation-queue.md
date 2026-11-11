@@ -297,3 +297,48 @@ The player's answers to the open questions:
 3. **The "Up next" chip.**
 4. **The dashboard page,** built once the queue has logged a day or two of
    real data.
+
+## Sleep: quiet hours and catch-up (2026-11-11)
+
+**What happened.** Overnight the Mac sleeps and wakes for a few seconds at a
+time. Firefox's alarms count down only while it is awake, but report the
+wall-clock time they were set for, so the Dashboard showed "due now" for
+minutes on end. For example, the stock check was due 10:18:59 UTC and ran at
+10:33:24 UTC, after about 15 minutes asleep. Firefox source
+`toolkit/components/extensions/parent/ext-alarms.js` shows each alarm is a
+one-shot `nsITimer` set with a relative delay.
+
+**What the queue cost overnight.** Archive, 01:00–08:00 UTC, 9 nights before
+the queue (Oct 26–Nov 3) vs 8 with it (Nov 4–11):
+
+| | Before | With queue |
+|---|---|---|
+| Automation actions per night | 54 | 26 |
+| Actions per awake minute | 1.26 | 0.85 |
+| Automations per wake under 15 s | 2.1 | 1.15 |
+
+Before the queue, 21 of 31 multi-automation wakes had the second one in the
+same second. With the queue the second came 5–9 s later, which is the gap.
+Usually the Mac was already asleep again by then.
+
+Caveats: there was less awake time on queue nights (31 vs 43 minutes), and
+courier and Street Intel counts also depend on game state. A run can also
+freeze mid-cycle while holding the queue until the 15-min takeover; this
+happened at 01:55 UTC on Nov 11.
+
+**Two new switches, both off by default, on Dashboard → Automations:**
+
+- **Quiet hours** (`AutomationQueueConfig.quietHoursEnabled`, `quietFromMin`
+  and `quietToMin`, default 02:00–10:00 local, the player's choice). Inside
+  the window the queue behaves exactly as if it were off. Waiters go at once
+  when the window starts. Writers merge into the config
+  (`storage.updateAutomationQueueConfig`) so the queue on/off switches don't
+  wipe the hours.
+- **Catch up after sleep** (`background/automationCatchUp.ts`). A 1-minute
+  alarm re-creates any automation alarm more than 1 min past its time to fire
+  now, keeping its period. The feature's own handler and guard run as usual.
+  Its own countdown also pauses in sleep, so it needs up to a minute of awake
+  time. It doesn't help a wake of a few seconds.
+
+The Dashboard and "Up next" chip show "Overdue by …" instead of "due now"
+when a check is more than a minute late.

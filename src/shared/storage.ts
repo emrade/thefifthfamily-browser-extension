@@ -1,5 +1,7 @@
 import type {
   AutomationQueueConfig,
+  AutomationCatchUpConfig,
+  AutomationCatchUpStatus,
   AutomationQueueLogEntry,
   AutomationStopLogEntry,
   PetScanState,
@@ -134,6 +136,14 @@ const DEFAULT_CRIMES_AUTO_CONFIG: CrimesAutoConfig = {
 
 // Off by default: with it off, automations run exactly as they always have.
 const DEFAULT_AUTOMATION_QUEUE_CONFIG: AutomationQueueConfig = {
+  enabled: false,
+  quietHoursEnabled: false,
+  quietFromMin: 2 * 60, // 02:00, the player's choice (2026-11-11)
+  quietToMin: 10 * 60, // 10:00
+};
+
+// Off by default, same convention as every other auto feature.
+const DEFAULT_AUTOMATION_CATCH_UP_CONFIG: AutomationCatchUpConfig = {
   enabled: false,
 };
 
@@ -402,6 +412,19 @@ export const storage = {
     return { ...DEFAULT_AUTOMATION_QUEUE_CONFIG, ...stored };
   },
   setAutomationQueueConfig: (v: AutomationQueueConfig) => set(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG, v),
+  /** Changes some fields, keeping the rest (several screens write this key). */
+  updateAutomationQueueConfig: async (change: Partial<AutomationQueueConfig>): Promise<void> => {
+    const current = await storage.getAutomationQueueConfig();
+    await set(STORAGE_KEYS.AUTOMATION_QUEUE_CONFIG, { ...current, ...change });
+  },
+
+  getAutomationCatchUpConfig: async (): Promise<AutomationCatchUpConfig> => {
+    const stored = await get<Partial<AutomationCatchUpConfig>>(STORAGE_KEYS.AUTOMATION_CATCH_UP_CONFIG, {});
+    return { ...DEFAULT_AUTOMATION_CATCH_UP_CONFIG, ...stored };
+  },
+  setAutomationCatchUpConfig: (v: AutomationCatchUpConfig) => set(STORAGE_KEYS.AUTOMATION_CATCH_UP_CONFIG, v),
+  getAutomationCatchUpStatus: () => get<AutomationCatchUpStatus>(STORAGE_KEYS.AUTOMATION_CATCH_UP_STATUS, { lastAt: null, items: [] }),
+  setAutomationCatchUpStatus: (v: AutomationCatchUpStatus) => set(STORAGE_KEYS.AUTOMATION_CATCH_UP_STATUS, v),
 
   getAutomationQueueLog: () => get<AutomationQueueLogEntry[]>(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, []),
   setAutomationQueueLog: (v: AutomationQueueLogEntry[]) => set(STORAGE_KEYS.AUTOMATION_QUEUE_LOG, v),
