@@ -160,6 +160,9 @@ export type ExtensionMessage =
   // scheduled alarm time, which a content script can't read itself (same
   // reason as 'street-intel-next-check-requested'). Returns number | null.
   | { type: 'career-auto-next-check-requested' }
+  // The in-page Crime Alley panel: the Crimes Auto alarm's time (content
+  // scripts can't read `chrome.alarms`).
+  | { type: 'crimes-auto-next-check-requested' }
   // Run Now from the popup's Career Auto tab or the in-page Careers panel:
   // one check right now, even with automation off (a no-op if one is already
   // running), returning the fresh `CareerAutoStatus`. For a wait the runner

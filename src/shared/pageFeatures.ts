@@ -59,6 +59,12 @@ export const PAGE_FEATURE_DEFINITIONS = [
       'A floating panel on the Careers page with everything the popup’s Career Auto tab has: the Auto-Run toggle, job picker, shift mode, next shift and today’s shifts. Each job card also gets an “Auto-run this job” button (with a confirm step) to pick it right where you see its perks.',
   },
   {
+    id: 'crimesAutoPanel',
+    label: 'Crimes Auto Panel',
+    description:
+      'A floating panel on Crime Alley with what the popup’s Crimes Auto tab has: the Auto-Run toggle, Check Now, next check, attempts, earnings, bails and bribes, and the last attempt.',
+  },
+  {
     id: 'realEstateAdvisor',
     label: 'Real Estate Advisor',
     description: 'Shows what each property actually earns you per day, flags any losing income to a vault too small for its revenue, and tells you the exact level (and cost) to fix it, on the Real Estate page.',

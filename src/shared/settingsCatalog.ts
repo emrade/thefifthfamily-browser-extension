@@ -52,6 +52,7 @@ const PAGE_FEATURE_PLACES: Record<PageFeatureId, Place> = {
   streetIntelComplicationHint: STREET_INTEL,
   streetIntelStatusPanel: STREET_INTEL,
   careerAutoPanel: CAREER,
+  crimesAutoPanel: CRIMES,
   courierPanel: COURIERS,
   realEstateAdvisor: REAL_ESTATE,
   menagerieAssistant: MENAGERIE,

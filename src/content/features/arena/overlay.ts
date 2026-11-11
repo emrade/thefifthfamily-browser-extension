@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
@@ -332,6 +333,7 @@ function buildPanel(): HTMLDivElement {
     <div class="ff-arp-panel">
       <div class="ff-arp-head">
         ${brandBadgeHtml('Arena')}
+        ${dashboardLinkHtml('arena')}
         <button class="ff-arp-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-arp-tabs" role="tablist">

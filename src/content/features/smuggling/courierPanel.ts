@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
@@ -470,6 +471,7 @@ function buildPanel(): HTMLDivElement {
     <div class="ff-cp-panel">
       <div class="ff-cp-head">
         ${brandBadgeHtml('Pet Couriers')}
+        ${dashboardLinkHtml('automations/pet-couriers')}
         <button class="ff-cp-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-cp-roster">Loading…</div>

@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { GAME_ORIGIN } from '@/shared/constants';
@@ -230,6 +231,7 @@ function buildPanel(): HTMLDivElement {
     <div class="ff-fcr-panel">
       <div class="ff-fcr-head">
         ${brandBadgeHtml('Recon')}
+        ${dashboardLinkHtml('fight-club')}
         <button class="ff-fcr-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-fcr-body"></div>

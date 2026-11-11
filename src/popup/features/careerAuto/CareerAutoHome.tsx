@@ -356,8 +356,9 @@ export function CareerAutoHome() {
         <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Use energy items</div>
           <div class="ff-toggle-row__status">
-            When a shift is ready but energy is short: Energy Drinks, Energy Boosters, Adrenaline Shots, just enough for
-            that shift, smallest first, never past your max energy.
+            When a shift is ready but energy is short: Energy Drinks, Energy Boosters, Adrenaline Shots, in the mix that
+            leaves the least energy over, never past your max energy. With the free refill on, items wait until it's
+            used: before then it waits for regen, so none is lost to the refill.
           </div>
         </div>
         <input

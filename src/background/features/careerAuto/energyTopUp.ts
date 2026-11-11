@@ -47,18 +47,69 @@ async function listEnergyItems(keep: number): Promise<EnergyItem[]> {
   return items;
 }
 
-/** Smallest item that covers the gap; else the biggest that fits. Never past
- *  max energy: the game drops the excess ("+28 Energy" at the cap). */
-export function pickItem(items: EnergyItem[], need: number, room: number): EnergyItem | null {
-  const fits = items.filter((i) => i.amount <= room);
-  const covers = fits.filter((i) => i.amount >= need).sort((a, b) => a.amount - b.amount);
-  if (covers.length) return covers[0];
-  return fits.sort((a, b) => b.amount - a.amount)[0] ?? null;
+/**
+ * The mix of items to use for a gap of `need`, never past `room` (max energy
+ * minus current: the game drops the excess, "+28 Energy" at the cap), at
+ * most `maxItems` in all. Picks the mix that leaves the least energy over
+ * (2 Energy Drinks, 1 over, for a gap of 19 rather than an Adrenaline Shot,
+ * 6 over); ties go to fewer items, then to the items you hold most of.
+ * Empty when no mix covers the gap: then it waits for regen rather than
+ * spending items that only shorten the wait.
+ */
+export function planItems(items: EnergyItem[], need: number, room: number, maxItems: number): EnergyItem[] {
+  const usable = items.filter((i) => i.amount > 0 && i.amount <= room && i.qty > 0);
+  let best: { counts: number[]; over: number; n: number; held: number } | null = null;
+  const counts = usable.map(() => 0);
+  const visit = (k: number, sum: number, n: number) => {
+    if (sum > room) return;
+    if (k === usable.length) {
+      if (sum < need || n === 0) return;
+      const over = sum - need;
+      // Prefer items held in quantity: the sum of the qty of each one used.
+      const held = counts.reduce((h, c, i) => h + (c > 0 ? usable[i].qty : 0), 0);
+      if (!best || over < best.over || (over === best.over && (n < best.n || (n === best.n && held > best.held)))) {
+        best = { counts: [...counts], over, n, held };
+      }
+      return;
+    }
+    for (let c = 0; c <= Math.min(usable[k].qty, maxItems - n); c++) {
+      counts[k] = c;
+      visit(k + 1, sum + c * usable[k].amount, n + c);
+    }
+    counts[k] = 0;
+  };
+  visit(0, 0, 0);
+  const chosen = best as { counts: number[] } | null;
+  if (!chosen) return [];
+  // Biggest first: if one use fails part-way, the most energy is already in.
+  return usable.flatMap((item, i) => Array<EnergyItem>(chosen.counts[i]).fill(item)).sort((x, y) => y.amount - x.amount);
+}
+
+/** Last game day the free energy refill was seen still unused (in memory: a
+ *  restart costs one more `list`). */
+let refillSeenUnusedDay: string | null = null;
+
+/** Whether today's free energy refill is still unused. Asks the game at most
+ *  once per game day while it is; a refill used by hand is noticed then, or
+ *  by the next `refillAfterShift`. */
+async function refillStillUnused(status: CareerEnergyStatus): Promise<boolean> {
+  const day = gameDay();
+  if (status.refillDoneDay === day) return false;
+  if (refillSeenUnusedDay === day) return true;
+  const list = await postAction('/actions/free_refill.php', { action: 'list' });
+  if (list?.ok !== true || !Array.isArray(list.remaining)) throw new EnergyTopUpError('Unexpected response listing free refills — the game may have changed something.');
+  if (list.remaining.includes('energy')) {
+    refillSeenUnusedDay = day;
+    return true;
+  }
+  await updateStatus(() => ({ refillDoneDay: day }));
+  return false;
 }
 
 async function useFreeRefill(status: CareerEnergyStatus): Promise<boolean> {
   const day = gameDay();
   if (status.refillDoneDay === day) return false;
+  refillSeenUnusedDay = null;
   const list = await postAction('/actions/free_refill.php', { action: 'list' });
   if (list?.ok !== true || !Array.isArray(list.remaining)) throw new EnergyTopUpError('Unexpected response listing free refills — the game may have changed something.');
   if (!list.remaining.includes('energy')) {
@@ -97,7 +148,8 @@ function refillDeadlinePassed(live: LiveStatus, shiftCost: number, now = Date.no
 
 /**
  * Called when Career Auto's shift is ready (off cooldown) but energy is short.
- * Energy items cover just the gap. The free refill is not used here (it would
+ * Energy items cover the gap with the least left over, but only once today's
+ * free refill is used (or its switch is off). The free refill is not used here (it would
  * overwrite the energy on hand), except when it would otherwise expire at the
  * reset. Returns the energy it thinks it added (refill counts as filling to
  * max); 0 = nothing used, so the runner waits for regen. Throws
@@ -112,13 +164,18 @@ export async function topUpEnergy(config: CareerAutoConfig, live: LiveStatus, sh
     return live.maxEnergy - live.energy;
   }
   if (!config.useEnergyItems) return 0;
+  // While today's refill is unused, items wait too: regen reaches the shift,
+  // the shift leaves ~0, and the refill goes in after it. An item now would
+  // leave energy over that the refill then overwrites (2026-11-11: Adrenaline
+  // Shot at 10/29, 6 left after the shift, lost to the refill).
+  if (config.useFreeRefill && (await refillStillUnused(await storage.getCareerEnergyStatus()))) return 0;
 
+  const plan = planItems(await listEnergyItems(Math.max(0, config.energyDrinkKeep)), shiftCost - live.energy, live.maxEnergy - live.energy, CAREER_GOALS_MAX_ITEMS_PER_CHECK);
   let energy = live.energy;
   let added = 0;
-  for (let n = 0; n < CAREER_GOALS_MAX_ITEMS_PER_CHECK && energy < shiftCost; n++) {
+  for (const [n, item] of plan.entries()) {
+    if (energy >= shiftCost) break;
     if (n > 0) await sleep(CAREER_GOALS_ITEM_GAP_MS[0] + Math.random() * (CAREER_GOALS_ITEM_GAP_MS[1] - CAREER_GOALS_ITEM_GAP_MS[0]));
-    const item = pickItem(await listEnergyItems(Math.max(0, config.energyDrinkKeep)), shiftCost - energy, live.maxEnergy - energy);
-    if (!item) break;
     const used = await postAction('/actions/inventory.php', { action: 'use', inv_id: item.invId });
     // "Item not found in inventory": the list was stale (seen 12 times in the
     // archive, all manual). Try again next check rather than pausing.

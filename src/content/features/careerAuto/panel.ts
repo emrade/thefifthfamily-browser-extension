@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
@@ -450,6 +451,7 @@ function buildPanel(): HTMLDivElement {
     <div class="ff-cap-panel">
       <div class="ff-cap-head">
         ${brandBadgeHtml('Career Auto')}
+        ${dashboardLinkHtml('automations/career-auto')}
         <button class="ff-cap-close" type="button" title="Collapse">✕</button>
       </div>
       <div class="ff-cap-body"><div class="ff-cap-empty">Loading…</div></div>

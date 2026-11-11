@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import { REAL_ESTATE_AUTO_MAX_INTERVAL_HOURS, REAL_ESTATE_AUTO_MIN_INTERVAL_HOURS, STORAGE_KEYS } from '@/shared/constants';
@@ -177,6 +178,7 @@ function render(): void {
   const html = `
     <div class="ff-re-auto-top">
       <div><span class="ff-re-auto-title">Auto-Collect</span><span class="ff-re-auto-state" data-ff-state="${state}">${state}</span></div>
+      ${dashboardLinkHtml('automations/real-estate-auto')}
       <input class="ff-re-auto-toggle" type="checkbox" ${on ? 'checked' : ''} title="Turn Auto-Collect on or off">
     </div>
     <div class="ff-re-auto-sub">${sub}</div>

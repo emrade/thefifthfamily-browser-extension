@@ -1,3 +1,4 @@
+import { dashboardLinkHtml } from '@/content/shared/dashboardLink';
 import { injectStyleOnce } from '@/content/shared/injectStyle';
 import { BRAND_BADGE_CSS, brandBadgeHtml } from '@/content/shared/brandBadge';
 import { LOG_PREFIX } from '@/shared/log';
@@ -630,6 +631,7 @@ function buildPanel(): HTMLDivElement {
     <div class="ff-sip-panel" role="dialog" aria-label="Street Intel">
       <div class="ff-sip-head">
         ${brandBadgeHtml('Street Intel')}
+        ${dashboardLinkHtml('automations/street-intel')}
         <button class="ff-sip-close" type="button" title="Collapse" aria-label="Collapse">${CLOSE_ICON}</button>
       </div>
       <div class="ff-sip-tabs" role="tablist">

@@ -32,6 +32,7 @@ import { handleCapturedRequest as handleArenaMastery } from './features/arena/ma
 import { handleCapturedRequest as handleInventoryQuickSell, initInventoryQuickSell } from './features/inventory/quickSellTotal';
 import { initInventoryAutoSell } from './features/inventory/autoSell';
 import { initCareerAutoPanel } from './features/careerAuto/panel';
+import { initCrimesAutoPanel } from './features/crimesAuto/panel';
 import { handleCapturedRequest as handleStatSources } from './features/statSources';
 
 // Each feature owns the paths it cares about and no-ops on everything else, so every
@@ -160,6 +161,9 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     }
     if (prefs.careerAutoPanel) {
       initCareerAutoPanel();
+    }
+    if (prefs.crimesAutoPanel) {
+      initCrimesAutoPanel();
     }
     if (prefs.realEstateAdvisor) {
       initRealEstateAdvisor().catch((err) => console.error(LOG_PREFIX, 'initRealEstateAdvisor failed', err));

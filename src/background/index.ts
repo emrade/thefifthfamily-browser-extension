@@ -280,6 +280,10 @@ chrome.runtime.onMessage.addListener((msg: ExtensionMessage, sender) => {
     return fetchCareerCatalog();
   }
 
+  if (msg.type === 'crimes-auto-next-check-requested') {
+    return chrome.alarms.get(ALARM_NAMES.CRIMES_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
+  }
+
   if (msg.type === 'career-auto-next-check-requested') {
     return chrome.alarms.get(ALARM_NAMES.CAREER_AUTO).then((alarm) => alarm?.scheduledTime ?? null);
   }
