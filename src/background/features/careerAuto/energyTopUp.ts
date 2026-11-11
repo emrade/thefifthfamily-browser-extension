@@ -73,19 +73,44 @@ async function useFreeRefill(status: CareerEnergyStatus): Promise<boolean> {
   return true;
 }
 
+/** Next daily reset, 23:00 UTC (checked on 60 refill resets, Sep 1 – Nov 10
+ *  2026: every one came back in a window containing 23:00 UTC). */
+export function nextGameReset(now = Date.now()): number {
+  const d = new Date(now);
+  const reset = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23);
+  return reset > now ? reset : reset + 86_400_000;
+}
+
+/**
+ * The free refill fills energy to max, so whatever is on hand when it's used
+ * is lost. It's used right after a shift (`refillAfterShift`), when energy is
+ * at its lowest — usually 0. Before a shift only as a last resort: the
+ * refill is still unused and regen won't reach the shift's cost before the
+ * daily reset, which would lose the whole refill instead.
+ */
+function refillDeadlinePassed(live: LiveStatus, shiftCost: number, now = Date.now()): boolean {
+  if (live.energyRegenSeconds <= 0) return false;
+  const points = shiftCost - live.energy;
+  const readyAt = now + (Math.max(0, live.energyTimerSeconds) + Math.max(0, points - 1) * live.energyRegenSeconds) * 1000;
+  return readyAt >= nextGameReset(now);
+}
+
 /**
  * Called when Career Auto's shift is ready (off cooldown) but energy is short.
- * Free refill first when allowed (it fills to max and is lost at the reset),
- * then items. Returns the energy it thinks it added (refill counts as
- * filling to max); 0 = nothing used. Throws `EnergyTopUpError` (pause) on a
- * response it doesn't recognise; jail/hospital/travel throw postAction's own
- * status-blocked error.
+ * Energy items cover just the gap. The free refill is not used here (it would
+ * overwrite the energy on hand), except when it would otherwise expire at the
+ * reset. Returns the energy it thinks it added (refill counts as filling to
+ * max); 0 = nothing used, so the runner waits for regen. Throws
+ * `EnergyTopUpError` (pause) on a response it doesn't recognise;
+ * jail/hospital/travel throw postAction's own status-blocked error.
  */
 export async function topUpEnergy(config: CareerAutoConfig, live: LiveStatus, shiftCost: number): Promise<number> {
   if (!config.useFreeRefill && !config.useEnergyItems) return 0;
   if (live.energy >= shiftCost || shiftCost > live.maxEnergy) return 0;
 
-  if (config.useFreeRefill && (await useFreeRefill(await storage.getCareerEnergyStatus()))) return live.maxEnergy - live.energy;
+  if (config.useFreeRefill && refillDeadlinePassed(live, shiftCost) && (await useFreeRefill(await storage.getCareerEnergyStatus()))) {
+    return live.maxEnergy - live.energy;
+  }
   if (!config.useEnergyItems) return 0;
 
   let energy = live.energy;
@@ -110,4 +135,15 @@ export async function topUpEnergy(config: CareerAutoConfig, live: LiveStatus, sh
     });
   }
   return added;
+}
+
+/**
+ * Straight after a shift, with the energy the shift response reports: if
+ * it's below the next shift's cost, this is the lowest energy will get
+ * (usually 0), so the free refill loses nothing. Returns whether it was used.
+ */
+export async function refillAfterShift(config: CareerAutoConfig, energyAfter: number, nextShiftCost: number, maxEnergy: number): Promise<boolean> {
+  if (!config.useFreeRefill) return false;
+  if (!Number.isFinite(energyAfter) || energyAfter >= nextShiftCost || nextShiftCost > maxEnergy) return false;
+  return useFreeRefill(await storage.getCareerEnergyStatus());
 }

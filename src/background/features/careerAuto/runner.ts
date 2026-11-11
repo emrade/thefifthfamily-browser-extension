@@ -12,7 +12,7 @@ import { runQueued } from '../../automationQueue';
 import { parseCareers, type CareersSnapshot } from '@/shared/statAdvisorSources';
 import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
 import { afterGoalShift, remindIfQueueFinished, steerToGoal, type GoalDecision } from './goals';
-import { topUpEnergy } from './energyTopUp';
+import { refillAfterShift, topUpEnergy } from './energyTopUp';
 
 const FEATURE_KEY = 'careerAuto';
 
@@ -417,6 +417,22 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
   });
 
   if (decision.kind === 'goal') await afterGoalShift(decision.goal, Number(resp.rank) || 0, snapshot, config);
+
+  // Free daily refill (off by default): now, when the shift has just left
+  // energy at its lowest, so none of the refill is lost.
+  if (config.enabled && config.useFreeRefill) {
+    try {
+      const energyAfter = Number(resp.stats?.energy);
+      const maxEnergy = Number(resp.stats?.max_energy) || status.maxEnergy;
+      await refillAfterShift(config, energyAfter, need, maxEnergy);
+    } catch (err) {
+      if (!(err instanceof SystemicActionError && err.kind === 'status-blocked') && !isNetworkFailure(err)) {
+        console.error(LOG_PREFIX, 'career auto free refill after shift failed', err);
+        await pause('error', err instanceof Error ? err.message : String(err));
+        return;
+      }
+    }
+  }
 
   scheduleNextCheck(nextEligibleAt);
 }

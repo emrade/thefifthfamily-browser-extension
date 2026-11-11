@@ -17,6 +17,15 @@ Auto runs (goal or not) while Auto-Run is on, to that check's shift cost
 settings on the Career Auto page; today's counts in `ff_career_energy_status`.
 The "Only while goal mode is on" lines below are superseded.
 
+**Changed again for 0.65.1 (player's call):** the free refill is used straight
+after a shift, with the energy the `career.php` response reports (every one
+of 2,309 ok responses has `stats.energy`), when it's below the next shift's
+cost — the lowest energy gets, usually 0 — so none of the refill is lost.
+While energy is short before a shift it just waits for regen (items still
+cover the gap if on). Only exception: the refill is still unused and regen
+won't reach the shift's cost before the 23:00 UTC reset. The "use it when
+energy is below one shift" rule below is superseded.
+
 As built, beyond the design below: finished goals are removed from the list
 and kept under "Recently earned" (last 10); while goal mode has goals, the
 finder's Run now is off (goal mode would switch straight back); if only
