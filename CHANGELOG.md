@@ -9,6 +9,27 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.66.0] - 2026-11-11
+
+### Added
+- **Automation Queue quiet hours** (Dashboard → Automations, off by default). Between
+  two times you choose (default 2:00 AM to 10:00 AM, this computer's time), the queue
+  steps aside and automations run side by side, as they did before the queue. Overnight
+  the computer wakes for only a few seconds at a time, and the queue's 3–8 s gap let
+  just one automation through per wake. Over 8 nights with the queue, about half as
+  many automation actions ran between 01:00 and 08:00 UTC as on the 9 nights before it.
+- **Catch up after sleep** (Dashboard → Automations, off by default). Firefox's
+  timers pause while the computer sleeps, so checks ran late after a sleep. For
+  example, a stock check due at 11:18 ran at 11:33 your time. With this on, any check
+  more than a minute overdue runs within about a minute of the computer waking.
+  Automations you've switched off are left alone.
+
+### Changed
+- A check more than a minute late now shows "Overdue by …" with the time it was due,
+  instead of "due now", on the Automations page and the in-game "Up next" chip.
+- The popup's Settings and the "Up next" chip now change only the queue's on/off, so
+  they keep your quiet hours.
+
 ## [0.65.1] - 2026-11-11
 
 ### Fixed
