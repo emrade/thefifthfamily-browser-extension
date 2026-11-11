@@ -9,6 +9,16 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.65.1] - 2026-11-11
+
+### Fixed
+- **Career Auto's free daily refill no longer wastes energy.** It used to be used as
+  soon as a shift was short of energy, so with 28 energy for a 29-energy shift the 28
+  was lost. Now Career Auto waits for regen and uses the refill straight after the
+  shift, when your energy is at its lowest (usually 0). Only if regen won't reach the
+  next shift before the daily reset (23:00 UTC) is it used early, so it doesn't
+  expire. Energy items work as before.
+
 ## [0.65.0] - 2026-11-11
 
 ### Added
