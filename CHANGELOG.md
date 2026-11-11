@@ -9,6 +9,28 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.67.0] - 2026-11-11
+
+### Added
+- **Crimes Auto panel on Crime Alley.** A floating panel, like Career Auto's on the
+  Careers page, with the Auto-Run switch, Check Now, the "stopped" and "nothing left in
+  this district" notes, next check, attempts, successes, busts, cash, XP, bails, bribes
+  and the last attempt. You can switch it off under Settings → Crimes.
+- **"Dashboard ↗" in the in-page panels** that have their own Dashboard page: Career
+  Auto, Crimes Auto, Street Intel, Pet Couriers, Real Estate Auto-Collect, Arena and
+  Fight Club Recon. It switches to a Dashboard tab that's already open instead of
+  opening another.
+
+### Fixed
+- **Career Auto no longer loses energy when both energy switches are on.** An energy
+  item used to fill the gap straight away, so the shift left energy over, and the free
+  refill straight after overwrote it. On 11 Nov an Adrenaline Shot at 10/29 energy left
+  6, which the refill then wiped. Now, while today's refill is unused, items wait too:
+  regen reaches the shift, the shift leaves about 0, and then the refill goes in. Once
+  the refill is used, items cover a shortfall with the mix that leaves the least over
+  (2 Energy Drinks for a gap of 19, not an Adrenaline Shot). If no mix of your items
+  covers the shift, it waits for regen instead of using items.
+
 ## [0.66.0] - 2026-11-11
 
 ### Added
