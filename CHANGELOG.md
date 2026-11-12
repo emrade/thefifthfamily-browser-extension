@@ -9,6 +9,21 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.68.0] - 2026-11-13
+
+### Added
+- **Street Intel Analytics now counts drops.** Both suggestions (minimum card value
+  and extreme card minimum) come in two versions: counting cash only, and counting
+  cash + the drops' estimated sale value. When they agree you see one answer; when
+  they don't, each has its own line, numbers and Apply button, so you choose. Drops
+  are worth 2–3× the cash per Stamina but only pay once sold. On 12 Nov, from $800k,
+  cash only said raise to $1M, while cash + drops said keep $800k. The medium $881k/
+  $888k card drops gold on about 12% of tries ($325k per Stamina with cash), and $1M
+  would have skipped it. The drops version needs 100 attempts per side, not 30,
+  because one gold drop can otherwise pass for a real difference. Results by card
+  adds a Drops/S column, and Today vs average adds cash + drops per Stamina. See
+  `docs/street-intel-drops-by-card.md`.
+
 ## [0.67.0] - 2026-11-11
 
 ### Added
