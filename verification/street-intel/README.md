@@ -26,6 +26,7 @@ python3 verification/street-intel/simulate_target_selection.py [--archive ...] [
 python3 verification/street-intel/analyze_live_modes.py [--archive ...] [--since YYYY-MM-DD]
 python3 -I verification/street-intel/analyze_blind_vs_scouted.py [--archive ...] [--since YYYY-MM-DD]
 python3 verification/street-intel/verify_min_card_suggestion.py [--archive ...] [--dates D1,D2] [--minimums 0,800000] [--src DIR] [--seed FILE]
+python3 -I verification/street-intel/analyze_drops_by_card.py [--seed FILE] [--asof YYYY-MM-DD]
 ```
 
 `--archive` defaults to the newest `fifth-family-archive-*.ndjson.gz` found

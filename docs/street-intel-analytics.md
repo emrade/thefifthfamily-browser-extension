@@ -34,6 +34,10 @@ more per Stamina than high-risk cards failing half as often (142 attempts,
 40% fail, $48k/S vs high $500k–1M: 413 attempts, 25%, $46k/S). Lifted with
 the minimum at 90% Stamina.
 
+**Drops (2026-11-12):** the cash-per-Stamina figures here leave out drops,
+which are worth 2–3× the cash and change which cards pay best — see
+[street-intel-drops-by-card.md](street-intel-drops-by-card.md).
+
 ## Analytics tab
 
 In the in-page Street Intel panel (Auto | Analytics tabs) and the popup's
