@@ -111,15 +111,17 @@ sections. So the reason for the difference is unknown.
   better card was estimated from untaken cards, not simulated against the
   Stamina history.
 
-## Implication for the extension (not done)
+## What changed in the extension (2026-11-13)
 
-The minimum-card suggestion (and the extreme-card suggestion) compare cash
-per Stamina only (`docs/street-intel-analytics.md`). Ranking by cash plus
-estimated drops, which the Analytics tab already computes per day, would
-stop it recommending cuts like this one. Because drops are heavy-tailed, the
-"clearly better" test would need care. A per-risk minimum (not only
-extreme) would also let the high $850k card be skipped while keeping the
-medium one.
+Both Analytics suggestions now come in two versions, counting cash only
+and counting cash + drops, so the player can choose. They mostly sell gold
+drops, but hold back near the vault limit, and raising that limit needs
+Mafia Gold. The drops version needs 100+ attempts each side, not 30.
+Details and checks are in [street-intel-analytics.md](street-intel-analytics.md).
+On Nov 12 from $800k: cash only says $1M, cash + drops says keep $800k.
+
+Not done: a minimum for each risk level, which would let the high $850k card
+be skipped while keeping the medium one.
 
 ## Reproduce
 

@@ -19,12 +19,13 @@ const [seedPath, datesArg, minimumsArg, extremeArg] = process.argv.slice(2);
 const seed = JSON.parse(readFileSync(seedPath, 'utf8'));
 
 const attempts: SiAttemptRecord[] = seed.attempts.map((a: unknown[]) => {
-  const [id, at, origin, band, reward, jail, comp, compSuccess, cashLost, , risk, legendary, min, max, stamina, scout] = a as [
-    number, number, number, string, number, number, number, number | null, number, unknown, number | null, number | null, number | null, number | null, number | null, number | null,
+  const [id, at, origin, band, reward, jail, comp, compSuccess, cashLost, drops, risk, legendary, min, max, stamina, scout] = a as [
+    number, number, number, string, number, number, number, number | null, number, [string, string | null, string | null, number][], number | null, number | null, number | null, number | null, number | null, number | null,
   ];
   return {
     id, at, origin: origin === 0 ? 'page' : 'background', band, reward, jailSeconds: jail, complication: comp === 1,
-    complicationSuccess: compSuccess === null ? null : compSuccess === 1, cashLost, drops: [],
+    complicationSuccess: compSuccess === null ? null : compSuccess === 1, cashLost,
+    drops: drops.map(([name, quality, type, header]) => ({ name, quality, type, header: header === 1 })),
     card: risk === null || min === null || max === null || stamina === null
       ? null
       : { risk: RISKS[risk], legendary: legendary === 1, rewardMin: min, rewardMax: max, stamina, scoutCost: scout ?? 1 },
@@ -33,6 +34,7 @@ const attempts: SiAttemptRecord[] = seed.attempts.map((a: unknown[]) => {
 const cards: SiCardRecord[] = seed.cards.map(([id, firstSeen, lastSeen, risk, legendary, rewardMin, rewardMax, stamina, scoutCost]: number[]) => ({
   id, firstSeen, lastSeen, risk: RISKS[risk], legendary: legendary === 1, rewardMin, rewardMax, stamina, scoutCost,
 }));
+const prices = new Map(Object.entries(seed.prices as Record<string, number>));
 const days = Object.entries(seed.scoutStamina as Record<string, number>).map(([day, scoutStamina]) => ({ day, scoutStamina }));
 
 const extremeMinValue = Number(extremeArg ?? 0);
@@ -44,7 +46,8 @@ for (const date of datesArg.split(',')) {
   const board = cards.filter((c) => c.firstSeen < now && c.firstSeen >= now - CARD_RETENTION_MS);
   for (const minimum of minimumsArg.split(',').map(Number)) {
     const config = { minCardValue: minimum, extremeMinEnabled: extremeMinValue > 0, extremeMinValue };
-    const a = buildStreetIntelAnalytics(live, board, days, new Map(), config, now, now - CARD_RETENTION_MS);
+    const a = buildStreetIntelAnalytics(live, board, days, prices, config, now, now - CARD_RETENTION_MS);
     console.log(JSON.stringify({ date, minimum, suggestion: a.suggestion, note: a.suggestionNote }));
+    console.log(JSON.stringify({ date, minimum, suggestion: a.suggestionWithDrops, note: a.suggestionNote }));
   }
 }

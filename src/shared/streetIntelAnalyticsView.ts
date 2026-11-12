@@ -1,5 +1,5 @@
 import { formatFloor } from './streetIntelAutoDisplay';
-import type { SiDaySummary, StreetIntelAnalytics } from './streetIntelAnalytics';
+import type { SiDaySummary, SiExtremeSuggestion, SiSuggestion, SiValueGroup, StreetIntelAnalytics } from './streetIntelAnalytics';
 import type { StreetIntelAutoConfig } from './types';
 
 /**
@@ -19,6 +19,11 @@ export const ANALYTICS_CSS = `
 .ff-sia-big { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 18px; font-weight: 700; color: #f1ede2; }
 .ff-sia-current { font-size: 10px; color: #8b8578; margin-left: 6px; font-weight: 400; font-family: 'Inter', system-ui, sans-serif; }
 .ff-sia-note { color: #a8a294; margin: 4px 0 8px; }
+.ff-sia-basis { padding-top: 8px; margin-top: 8px; border-top: 1px solid rgba(201,168,76,0.25); }
+.ff-sia-basis:first-of-type { border-top: none; margin-top: 2px; padding-top: 0; }
+.ff-sia-basis-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ff-sia-basis-label { font-size: 10px; font-weight: 700; color: #d6cfbd; }
+.ff-sia-mid { font-family: 'Courier New', ui-monospace, Menlo, monospace; font-size: 15px; font-weight: 700; color: #f1ede2; }
 .ff-sia-apply {
   box-sizing: border-box; display: block; width: 100%; padding: 6px 10px; border-radius: 7px; cursor: pointer;
   font-family: 'Inter', system-ui, sans-serif; font-size: 11px; font-weight: 700;
@@ -94,77 +99,128 @@ function riskLabel(risk: string): string {
 
 type CardRuleConfig = Pick<StreetIntelAutoConfig, 'minCardValue' | 'extremeMinEnabled' | 'extremeMinValue'>;
 
+const BASIS_LABEL = { cash: 'Counting cash only', drops: 'Counting cash + drops' };
+
+/** The value range a group covers, as card values. */
+function range(g: { from: number; to: number }): string {
+  return g.from === g.to ? cardValue(g.from) : `${cardValue(g.from)}–${cardValue(g.to)}`;
+}
+
+/** What a group of cards made per Stamina, on the suggestion's own basis. */
+function groupPay(g: SiValueGroup, countsDrops: boolean): string {
+  const total = g.cashPerStamina + (countsDrops ? g.dropsPerStamina : 0);
+  const split = countsDrops ? `${money(g.cashPerStamina)} cash + ${money(g.dropsPerStamina)} drops = ` : '';
+  return `${split}${money(total)} per Stamina (${g.attempts} attempts)`;
+}
+
+function suggestionNote(s: SiSuggestion, a: StreetIntelAnalytics, config: CardRuleConfig): string {
+  const current = config.minCardValue > 0 ? formatFloor(config.minCardValue) : 'none';
+  const window = `your last ${a.cellDays} days`;
+  if (s.verdict === 'lower') {
+    return s.value > 0
+      ? `Over the last ${s.days} days, cards worth ${current}+ came to only about ${whole(s.currentSupply)} Stamina a day, against about ${whole(s.spent)} spent. At ${formatFloor(s.value)}+ they came to about ${whole(s.supply)}, enough to keep Stamina going on cards above the minimum.`
+      : `Over the last ${s.days} days the board didn't have enough big cards to use your Stamina (about ${whole(s.spent)} a day) at any minimum.`;
+  }
+  if (s.verdict === 'raise' && s.compare) {
+    return `It skips cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${groupPay(s.compare.cut, s.countsDrops)}. Their Stamina would go to the cards just above (${range(s.compare.next)}), and cards in that range made ${groupPay(s.compare.next, s.countsDrops)}. Cards worth ${formatFloor(s.value)}+ still came to about ${whole(s.supply)} Stamina a day, against about ${whole(s.spent)} spent.`;
+  }
+  if (s.compare) {
+    return `Raising it would skip cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${groupPay(s.compare.cut, s.countsDrops)}. Cards in the range just above (${range(s.compare.next)}) made ${groupPay(s.compare.next, s.countsDrops)}, not clearly more (it needs 10% more, beyond what chance explains${
+      s.countsDrops ? ' — one gold drop moves these numbers a lot, so a wide gap can still be luck' : ''
+    }), so skipping them wouldn't be known to earn more.${
+      s.blockedAt ? ` Higher still, from ${formatFloor(s.blockedAt.value)}, the board wouldn't have enough cards to use your Stamina.` : ''
+    }`;
+  }
+  if (s.blockedAt !== null) {
+    return `A higher minimum would leave too few cards: over the last ${s.days} days, cards worth ${formatFloor(s.blockedAt.value)}+ came to about ${whole(s.blockedAt.supply)} Stamina a day, against about ${whole(s.spent)} spent — not enough room for cards that expire or come during a cooldown.`;
+  }
+  return `Not enough attempts on cards above your minimum to compare yet — each side needs ${s.countsDrops ? 100 : 30} over ${window}.`;
+}
+
+function minimumAction(value: number, config: CardRuleConfig): string {
+  return value === config.minCardValue
+    ? '<div class="ff-sia-ok">Keep your minimum.</div>'
+    : `<button class="ff-sia-apply" type="button" data-value="${value}">Apply ${value > 0 ? formatFloor(value) : 'no minimum'}</button>`;
+}
+
+/** Two suggestions, one on cash alone and one counting drops: drops are
+ *  worth 2–3x the cash per Stamina, but only turn into cash when sold, and
+ *  selling is held back near the vault limit — so the player picks. Shown as
+ *  one when they agree. */
 function renderSuggestion(a: StreetIntelAnalytics, config: CardRuleConfig): string {
   const parts = ['<div class="ff-sia-suggest"><div class="ff-sia-h">Suggested minimum card value</div>'];
-  if (!a.suggestion) {
+  const cash = a.suggestion;
+  const drops = a.suggestionWithDrops;
+  if (!cash || !drops) {
     parts.push(`<div class="ff-sia-note">Not enough history yet. ${escapeHtml(a.suggestionNote ?? '')}</div></div>`);
     return parts.join('');
   }
-  const s = a.suggestion;
   const current = config.minCardValue > 0 ? formatFloor(config.minCardValue) : 'none';
-  parts.push(`<div class="ff-sia-big">${s.value > 0 ? formatFloor(s.value) : 'None'}<span class="ff-sia-current">yours: ${current}</span></div>`);
+  const amount = (value: number) => (value > 0 ? formatFloor(value) : 'None');
+  const shown = (s: SiSuggestion) => (s.value === config.minCardValue ? `Keep ${amount(s.value)}` : amount(s.value));
   const extreme = config.extremeMinEnabled ? ` With extreme cards needing ${formatFloor(config.extremeMinValue)}+, as you have it set.` : '';
-  const range = (g: { from: number; to: number }) => (g.from === g.to ? cardValue(g.from) : `${cardValue(g.from)}–${cardValue(g.to)}`);
-  const perStamina = (g: { cashPerStamina: number; attempts: number }) => `${money(g.cashPerStamina)} per Stamina (${g.attempts} attempts)`;
-  const window = `your last ${a.cellDays} days`;
-  let note: string;
-  if (s.verdict === 'lower') {
-    note =
-      s.value > 0
-        ? `Over the last ${s.days} days, cards worth ${current}+ came to only about ${whole(s.currentSupply)} Stamina a day, against about ${whole(s.spent)} spent. At ${formatFloor(s.value)}+ they came to about ${whole(s.supply)}, enough to keep Stamina going on cards above the minimum.`
-        : `Over the last ${s.days} days the board didn't have enough big cards to use your Stamina (about ${whole(s.spent)} a day) at any minimum.`;
-  } else if (s.verdict === 'raise' && s.compare) {
-    note = `It skips cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${perStamina(s.compare.cut)}. Their Stamina would go to the cards just above (${range(s.compare.next)}), and cards in that range made ${perStamina(s.compare.next)}. Cards worth ${formatFloor(s.value)}+ still came to about ${whole(s.supply)} Stamina a day, against about ${whole(s.spent)} spent.`;
-  } else if (s.compare) {
-    note = `Raising it would skip cards worth ${range(s.compare.cut)}; over ${window}, cards in that range made ${perStamina(s.compare.cut)}. Cards in the range just above (${range(s.compare.next)}) made ${perStamina(s.compare.next)}, not clearly more (it needs 10% more, beyond what chance explains), so skipping them wouldn't be known to earn more.${
-      s.blockedAt ? ` Higher still, from ${formatFloor(s.blockedAt.value)}, the board wouldn't have enough cards to use your Stamina.` : ''
-    }`;
-  } else if (s.blockedAt !== null) {
-    note = `A higher minimum would leave too few cards: over the last ${s.days} days, cards worth ${formatFloor(s.blockedAt.value)}+ came to about ${whole(s.blockedAt.supply)} Stamina a day, against about ${whole(s.spent)} spent — not enough room for cards that expire or come during a cooldown.`;
+  if (cash.value === drops.value) {
+    parts.push(`<div class="ff-sia-big">${amount(drops.value)}<span class="ff-sia-current">yours: ${current}</span></div>`);
+    const agree = drops.verdict === 'lower' ? '' : ' Counting cash only or cash + drops gives the same answer.';
+    parts.push(`<div class="ff-sia-note">${suggestionNote(drops, a, config)}${extreme}${agree}</div>`);
+    parts.push(minimumAction(drops.value, config));
   } else {
-    note = `Not enough attempts on cards above your minimum to compare yet — each side needs 30 over ${window}.`;
+    parts.push(`<div class="ff-sia-note">Yours: ${current}. Counting drops or not gives different answers — drops pay only once sold.${extreme}</div>`);
+    for (const s of [cash, drops]) {
+      parts.push(`<div class="ff-sia-basis"><div class="ff-sia-basis-h"><span class="ff-sia-basis-label">${s.countsDrops ? BASIS_LABEL.drops : BASIS_LABEL.cash}</span><span class="ff-sia-mid">${shown(s)}</span></div>`);
+      parts.push(`<div class="ff-sia-note">${suggestionNote(s, a, config)}</div>${minimumAction(s.value, config)}</div>`);
+    }
   }
-  parts.push(`<div class="ff-sia-note">${note}${extreme}</div>`);
-  parts.push(
-    s.value === config.minCardValue
-      ? '<div class="ff-sia-ok">Keep your minimum.</div>'
-      : `<button class="ff-sia-apply" type="button" data-value="${s.value}">Apply ${s.value > 0 ? formatFloor(s.value) : 'no minimum'}</button>`,
-  );
   parts.push('</div>');
   return parts.join('');
 }
 
 function renderExtremeSuggestion(a: StreetIntelAnalytics, config: CardRuleConfig): string {
   const parts = ['<div class="ff-sia-suggest"><div class="ff-sia-h">Suggested extreme card minimum</div>'];
-  const e = a.extremeSuggestion;
-  if (!e) {
+  const cash = a.extremeSuggestion;
+  const drops = a.extremeSuggestionWithDrops;
+  if (!cash || !drops) {
     parts.push(`<div class="ff-sia-note">Not enough history yet. ${escapeHtml(a.extremeSuggestionNote ?? '')}</div></div>`);
     return parts.join('');
   }
   const label = (value: number) => (value > 0 ? `${formatFloor(value)}+` : 'Off');
   const current = config.extremeMinEnabled ? label(Math.max(config.minCardValue, config.extremeMinValue)) : 'Off';
-  parts.push(`<div class="ff-sia-big">${label(e.value)}<span class="ff-sia-current">yours: ${current}</span></div>`);
-  parts.push(
-    `<div class="ff-sia-note">Over the last ${e.days} days, if the extreme cards under each amount (and at or above your minimum card value) had gone to high, medium or low cards of similar value instead. ${
-      e.value > 0
-        ? `${label(e.value)} adds the most cash, more than 1% of your daily ${money(e.dailyCash)}.`
-        : `No amount adds more than 1% of your daily cash (${money(e.dailyCash)}) — smaller differences are noise — so leave it off.`
-    }</div>`,
-  );
+  const matches = (value: number) =>
+    value === 0 ? !config.extremeMinEnabled : config.extremeMinEnabled && Math.max(config.minCardValue, config.extremeMinValue) === value;
+  const action = (value: number) =>
+    matches(value)
+      ? '<div class="ff-sia-ok">Your setting already matches.</div>'
+      : `<button class="ff-sia-apply-extreme" type="button" data-value="${value}">${value > 0 ? `Apply: extreme cards need ${formatFloor(value)}+` : 'Apply: switch the extreme rule off'}</button>`;
+  const verdict = (e: SiExtremeSuggestion) => {
+    const what = e.countsDrops ? 'cash + drops' : 'cash';
+    const daily = money(e.dailyCash + (e.countsDrops ? e.dailyDrops : 0));
+    return e.value > 0
+      ? `${label(e.value)} adds the most ${what}, more than 1% of your daily ${daily}.`
+      : `No amount adds more than 1% of your daily ${what} (${daily}) — smaller differences are noise — so leave it off.`;
+  };
+  const intro = `Over the last ${cash.days} days, if the extreme cards under each amount (and at or above your minimum card value) had gone to high, medium or low cards of similar value instead.`;
+  if (cash.value === drops.value) {
+    parts.push(`<div class="ff-sia-big">${label(cash.value)}<span class="ff-sia-current">yours: ${current}</span></div>`);
+    parts.push(`<div class="ff-sia-note">${intro} ${verdict(drops)} Counting cash only gives the same answer.</div>`);
+  } else {
+    parts.push(`<div class="ff-sia-note">Yours: ${current}. ${intro}</div>`);
+    for (const e of [cash, drops]) {
+      parts.push(
+        `<div class="ff-sia-basis"><div class="ff-sia-basis-h"><span class="ff-sia-basis-label">${e.countsDrops ? BASIS_LABEL.drops : BASIS_LABEL.cash}</span><span class="ff-sia-mid">${label(e.value)}</span></div><div class="ff-sia-note">${verdict(e)}</div>${action(e.value)}</div>`,
+      );
+    }
+  }
   const signed = (n: number, fmt: (v: number) => string) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `−${fmt(-n)}` : fmt(0));
-  parts.push('<table class="ff-sia-table"><tr><th>Extreme needs</th><th>Skips</th><th>Cash/day</th><th>Fails/day</th></tr>');
-  for (const o of e.options) {
+  const picked = (value: number) => (value === cash.value || value === drops.value ? ' class="ff-sia-pick"' : '');
+  parts.push('<table class="ff-sia-table"><tr><th>Extreme needs</th><th>Skips</th><th>Cash/day</th><th>Drops/day</th><th>Fails/day</th></tr>');
+  for (const o of cash.options) {
     parts.push(
-      `<tr${o.value === e.value ? ' class="ff-sia-pick"' : ''}><td>${label(o.value)}</td><td>${o.skipped}</td><td>${signed(o.cashPerDay, money)}</td><td>${signed(o.failsPerDay, (v) => v.toFixed(1))}</td></tr>`,
+      `<tr${picked(o.value)}><td>${label(o.value)}</td><td>${o.skipped}</td><td>${signed(o.cashPerDay, money)}</td><td>${signed(o.dropsPerDay, money)}</td><td>${signed(o.failsPerDay, (v) => v.toFixed(1))}</td></tr>`,
     );
   }
   parts.push('</table>');
-  const matches = e.value === 0 ? !config.extremeMinEnabled : config.extremeMinEnabled && Math.max(config.minCardValue, config.extremeMinValue) === e.value;
-  parts.push(
-    matches
-      ? '<div class="ff-sia-ok">Your setting already matches.</div>'
-      : `<button class="ff-sia-apply-extreme" type="button" data-value="${e.value}">${e.value > 0 ? `Apply: extreme cards need ${formatFloor(e.value)}+` : 'Apply: switch the extreme rule off'}</button>`,
-  );
+  if (cash.value === drops.value) parts.push(action(cash.value));
+  else parts.push('<div class="ff-sia-hint">Highlighted: the two suggestions above. Drops/day is their estimated sale value; it swings far more than cash.</div>');
   parts.push('</div>');
   return parts.join('');
 }
@@ -173,6 +229,7 @@ function renderComparison(a: StreetIntelAnalytics): string {
   const t = a.today;
   const avg = a.average;
   const perStamina = (d: SiDaySummary) => (d.stamina > 0 ? money(d.cash / d.stamina) : '—');
+  const withDrops = (d: SiDaySummary) => (d.stamina > 0 ? money((d.cash + d.dropValue) / d.stamina) : '—');
   const failPct = (d: SiDaySummary) => (d.attempts > 0 ? `${Math.round((d.fails / d.attempts) * 100)}%` : '—');
   const rows: [string, string, string][] = [
     ['Cash', money(t.cash), avg ? money(avg.cash) : '—'],
@@ -181,6 +238,7 @@ function renderComparison(a: StreetIntelAnalytics): string {
     ['Fail rate', failPct(t), avg ? failPct(avg) : '—'],
     ['Stamina', whole(t.stamina), avg ? whole(avg.stamina) : '—'],
     ['Cash per Stamina', perStamina(t), avg ? perStamina(avg) : '—'],
+    ['Cash + drops per Stamina', withDrops(t), avg ? withDrops(avg) : '—'],
   ];
   return `<div class="ff-sia-section"><div class="ff-sia-h">Today vs ${a.averageDays}-day average</div>
     <table class="ff-sia-table"><tr><th></th><th>Today</th><th>Average</th></tr>
@@ -213,11 +271,11 @@ function renderCells(a: StreetIntelAnalytics, config: CardRuleConfig): string {
   const rows = a.cells.map((c) => {
     const minimum = c.risk === 'extreme' && config.extremeMinEnabled ? Math.max(config.minCardValue, config.extremeMinValue) : config.minCardValue;
     const skipped = (bandFloor[c.band] ?? 0) < minimum;
-    return `<tr${skipped ? ' class="ff-sia-dim"' : ''}><td>${riskLabel(c.risk)}, ${c.band}</td><td>${c.attempts}</td><td>${Math.round(c.failPct)}%</td><td>${money(c.cashPerStamina)}</td></tr>`;
+    return `<tr${skipped ? ' class="ff-sia-dim"' : ''}><td>${riskLabel(c.risk)}, ${c.band}</td><td>${c.attempts}</td><td>${Math.round(c.failPct)}%</td><td>${money(c.cashPerStamina)}</td><td>${money(c.dropsPerStamina)}</td></tr>`;
   });
   return `<div class="ff-sia-section"><div class="ff-sia-h">Your results by card (last ${a.cellDays} days)</div>
-    <table class="ff-sia-table"><tr><th>Card</th><th>Tries</th><th>Fail</th><th>Cash/S</th></tr>${rows.join('')}</table>
-    <div class="ff-sia-hint">Best cash per Stamina first, after complication losses; scouting included. Greyed rows are (at least partly) under your minimum. Card value is the middle of its pay range.</div></div>`;
+    <table class="ff-sia-table"><tr><th>Card</th><th>Tries</th><th>Fail</th><th>Cash/S</th><th>Drops/S</th></tr>${rows.join('')}</table>
+    <div class="ff-sia-hint">Best cash per Stamina first, after complication losses; scouting included. Drops/S is their estimated sale value — it swings far more than cash. Greyed rows are (at least partly) under your minimum. Card value is the middle of its pay range.</div></div>`;
 }
 
 function renderDrops(a: StreetIntelAnalytics): string {

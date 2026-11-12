@@ -11,6 +11,9 @@ What to look for:
   $850k (the $849,850 high-risk one) paid the same per Stamina as $850k-1M.
 - From a minimum too high for the board it should lower.
 
+Each date and minimum prints two lines: "cash" judges on cash alone,
+"+drop" on cash plus the drops' estimated sale value ($/S columns follow).
+
 Steps: build_analytics_seed.py --out into a temp dir (attempts from --since,
 every card), bundle verify_min_card_suggestion.harness.ts, run it.
 
@@ -65,20 +68,24 @@ def main():
     out = subprocess.run(["node", bundle, seed, args.dates, args.minimums, args.extreme_min], check=True, cwd=tmp, capture_output=True, text=True).stdout
 
     print(f"\nseed: {seed}\n")
-    print(f"{'as of':10} {'yours':>8} -> {'suggests':>8} {'verdict':7} {'limit':8} cut cards ($/S, n)            next cards up ($/S, n)          supply/spent")
+    print(f"{'as of':10} {'basis':5} {'yours':>8} -> {'suggests':>8} {'verdict':7} {'limit':8} cut cards ($/S, n)            next cards up ($/S, n)          supply/spent")
     for line in out.splitlines():
         r = json.loads(line)
         s = r["suggestion"]
         if not s:
-            print(f"{r['date']:10} {money(r['minimum']):>8}    {r['note']}")
+            print(f"{r['date']:10} {'':5} {money(r['minimum']):>8}    {r['note']}")
             continue
         def grp(g):
-            return f"{money(g['from'])}-{money(g['to'])} {money(g['cashPerStamina'])} n={g['attempts']}" if g else ""
+            if not g:
+                return ""
+            per = g["cashPerStamina"] + (g["dropsPerStamina"] if s["countsDrops"] else 0)
+            return f"{money(g['from'])}-{money(g['to'])} {money(per)} n={g['attempts']}"
         c = s.get("compare") or {}
         extra = s.get("verdict") and f"{s['verdict']:7} {(s.get('limit') or '-'):8} {grp(c.get('cut')):31} {grp(c.get('next')):31}" or ""
         blocked = s.get("blockedAt")
         tail = f"{s['supply']:.0f}/{s['spent']:.0f}" + (f"  (at {money(blocked['value'])}: {blocked['supply']:.0f})" if blocked else "")
-        print(f"{r['date']:10} {money(r['minimum']):>8} -> {money(s['value']):>8} {extra} {tail}")
+        basis = "+drop" if s["countsDrops"] else "cash"
+        print(f"{r['date']:10} {basis:5} {money(r['minimum']):>8} -> {money(s['value']):>8} {extra} {tail}")
 
 
 if __name__ == "__main__":

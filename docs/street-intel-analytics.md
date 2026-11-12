@@ -43,6 +43,14 @@ which are worth 2–3× the cash and change which cards pay best — see
 In the in-page Street Intel panel (Auto | Analytics tabs) and the popup's
 Street Intel tab. Sections:
 
+Both suggestions come in two versions (since 2026-11-13): **counting cash
+only** and **counting cash + drops** (the drops' estimated sale value, as in
+section 6). When they agree the tab shows one answer; when they don't, both,
+each with its own Apply. Drops are worth 2–3× the cash per Stamina but only
+pay once sold, and the player holds back selling near the vault limit
+(upgrading it needs Mafia Gold), so which to follow is the player's call.
+See [street-intel-drops-by-card.md](street-intel-drops-by-card.md).
+
 1. **Suggested minimum card value**, with Apply: raise, keep or lower.
    - **Supply** (unchanged rule): over the last 7 days with the board watched
      (≥30 new cards and ≥5 attempts; needs 3 such days), cards at or above a
@@ -55,6 +63,19 @@ Street Intel tab. Sections:
      cards just above the new minimum worth the same Stamina — where the
      freed Stamina goes. "Clearly": at least 10% more *and* 2 standard
      errors, with 30+ attempts each side. Otherwise it says keep.
+   - **Counting drops**, the same test on cash + drops, with **100+
+     attempts each side**: a gold drop is worth 100+ attempts' cash and comes
+     on ~2–8% of tries, so at 30 one or two lucky drops passed the test (from
+     no minimum, 40–80 attempts on $38k–142k cards read $270–475k per Stamina
+     and it suggested keeping only those; over Oct 1–Nov 12 cards under $150k
+     made $121k in drops per Stamina, below the big cards). Lowering is still
+     on supply only, so the drops version never says go back down on payoff:
+     from $1M on Nov 12 it says keep $1M although from $800k it says keep
+     $800k.
+   - Checked on Nov 12 from $800k: cash only says $1M, cash + drops keep
+     $800k (the $849.85k card's range $179k per Stamina against $275k for
+     $881k–944k, 217 and 231 attempts — not clearly more). On Nov 13
+     cash + drops says $850k, cutting only the high $849.85k card.
    - Candidates are the card values on the board in those 7 days
      (midpoints), shown as the roundest amount between the card cut and the
      card kept, and the tab names those cards. The 30 days of attempts only
@@ -80,7 +101,15 @@ Street Intel tab. Sections:
    against high/medium/low attempts of the same value range per Stamina — the
    change in cash and failures per day had that Stamina gone to them instead.
    Suggests the option adding the most cash, if it adds at least 1% of daily
-   cash, else off — judged on cash alone. A failure's longer lockout (12 min,
+   cash, else off. The drops version judges cash + drops against 1% of daily
+   cash + drops; the table shows both Cash/day and Drops/day. There's no
+   standard-error test here, only the 1% floor and 15+ attempts each side.
+   On Nov 12 at an $800k minimum: cash only off; cash + drops $3M+ (305
+   extreme attempts skipped over 29 days, −$4.0M cash and +$16.5M drops a
+   day, −1.9 fails) — extremes under $3M drop gold on 2–4% of tries against
+   up to 11–12% for the high $1.99M and medium $881k cards. Board supply at
+   $800k with extremes at $3M+ was still 1,336 Stamina a day against 892
+   spent (this suggestion doesn't check supply itself). A failure's longer lockout (12 min,
    disaster 15 + ~6 jail, against 8 for a success) mostly overlaps time spent
    waiting for Stamina: ~57 attempts a day are ~8.5 h of lockout. Each option
    needs 15+ skipped and 15+ comparison attempts. On Oct 1–30 at a $500k
@@ -90,11 +119,12 @@ Street Intel tab. Sections:
    nearly the same cards. The two suggestions each assume the other setting
    as it is, so applying one can move the other.
 3. **Today vs 7-day average**: cash, drops (est.), attempts, fail rate
-   (failure + disaster), Stamina (attempts + paid scouts), cash per Stamina.
+   (failure + disaster), Stamina (attempts + paid scouts), cash per Stamina,
+   cash + drops per Stamina.
 4. **Board vs your Stamina**: Stamina's worth of cards at or above the
    minimum that appeared today, against Stamina spent.
 5. **Results by card** (risk × value band, last 30 days, ≥5 attempts): tries,
-   fail %, cash per Stamina. Rows under the minimum are greyed.
+   fail %, cash per Stamina, drops per Stamina. Rows under the minimum are greyed.
 6. **Drops by day**: count, estimated sale value, best item.
 
 Days run from the game's reset, 23:00 UTC (player midnight, WAT).

@@ -81,6 +81,8 @@ export interface SiCell {
   attempts: number;
   failPct: number;
   cashPerStamina: number;
+  /** Estimated sale value of the drops, per Stamina. */
+  dropsPerStamina: number;
 }
 
 export interface SiSupply {
@@ -102,11 +104,16 @@ export interface SiValueGroup {
   attempts: number;
   stamina: number;
   cashPerStamina: number;
-  /** Standard error of `cashPerStamina` (ratio estimate over attempts). */
+  /** Estimated sale value of the drops, per Stamina. */
+  dropsPerStamina: number;
+  /** Standard error of what the suggestion compares — cash per Stamina, or
+   *  cash plus drops when it counts drops (ratio estimate over attempts). */
   standardError: number;
 }
 
 export interface SiSuggestion {
+  /** Judged on cash plus the drops' estimated sale value, not cash alone. */
+  countsDrops: boolean;
   value: number;
   /** 'raise' and 'lower' move away from the current minimum; 'keep' doesn't. */
   verdict: 'raise' | 'lower' | 'keep';
@@ -136,15 +143,21 @@ export interface SiExtremeOption {
   /** Extreme attempts at or above your minimum card value that it skips. */
   skipped: number;
   cashPerDay: number;
+  /** Change in the drops' estimated sale value per day. */
+  dropsPerDay: number;
   failsPerDay: number;
 }
 
 export interface SiExtremeSuggestion {
+  /** Judged on cash plus the drops' estimated sale value, not cash alone. */
+  countsDrops: boolean;
   /** 0 means leave the rule off. */
   value: number;
   options: SiExtremeOption[];
   /** Average cash per day over the window, for scale. */
   dailyCash: number;
+  /** Average drops' estimated sale value per day over the window. */
+  dailyDrops: number;
   days: number;
 }
 
@@ -159,10 +172,14 @@ export interface StreetIntelAnalytics {
   cells: SiCell[];
   cellDays: number;
   supply: SiSupply;
+  /** Judged on cash alone. */
   suggestion: SiSuggestion | null;
+  /** The same, judged on cash plus drops (null exactly when `suggestion` is). */
+  suggestionWithDrops: SiSuggestion | null;
   /** Why there's no suggestion, when there isn't one. */
   suggestionNote: string | null;
   extremeSuggestion: SiExtremeSuggestion | null;
+  extremeSuggestionWithDrops: SiExtremeSuggestion | null;
   extremeSuggestionNote: string | null;
   /** Oldest attempt on record, so the tab can say how far back it goes. */
   since: number | null;
@@ -260,6 +277,13 @@ const SUGGESTION_SUPPLY_MARGIN = 1.1;
 const RAISE_MIN_GAIN = 0.1;
 /** Each side of that comparison needs this many attempts. */
 const RAISE_MIN_ATTEMPTS = 30;
+/** ...or this many when it counts drops. A gold drop is worth 100+
+ *  attempts' cash and comes on ~2-8% of tries, so 30 attempts with one or
+ *  two in them pass the standard-error test by luck: Nov 2026, from no
+ *  minimum, 40-80 attempts on $38k-142k cards read $270-475k per Stamina
+ *  and suggested keeping only those, while over Oct 1-Nov 12 (213 attempts)
+ *  cards under $150k made $121k in drops per Stamina, below the big cards. */
+const RAISE_MIN_ATTEMPTS_WITH_DROPS = 100;
 /** ...and the gap must be this many standard errors: one attempt's cash
  *  swings from nothing to well over the card's midpoint, so 10% between a
  *  few dozen attempts is often noise (without it, Nov 1 and Nov 5 2026 each
@@ -367,21 +391,38 @@ export function buildStreetIntelAnalytics(
 
   // Results by card value and risk, last CELL_DAYS days, best cash per Stamina first.
   const cellFrom = now - CELL_DAYS * DAY_MS;
-  const cellMap = new Map<string, { risk: SiRisk; band: string; attempts: number; fails: number; cash: number; stamina: number }>();
+  // Drops' estimated sale value per attempt, so the suggestions can be
+  // judged with or without them. Drops are worth 2-3x the cash per Stamina
+  // and don't follow card value: Oct 14-Nov 12 2026 a medium $881k card
+  // dropped gold+ on 12% of tries ($325k per Stamina with cash) against 2-5%
+  // for the high/extreme cards around it, so cash alone said cut it
+  // (docs/street-intel-drops-by-card.md).
+  const dropsOf = new Map<SiAttemptRecord, number>();
+  for (const a of attempts) dropsOf.set(a, a.drops.reduce((sum, d) => sum + dropValue(d, prices), 0));
+
+  const cellMap = new Map<string, { risk: SiRisk; band: string; attempts: number; fails: number; cash: number; drops: number; stamina: number }>();
   for (const a of attempts) {
     if (a.at < cellFrom || !a.card) continue;
     const band = valueBand(cardMidpoint(a.card));
     const key = `${a.card.risk}|${band}`;
-    const cell = cellMap.get(key) ?? { risk: a.card.risk, band, attempts: 0, fails: 0, cash: 0, stamina: 0 };
+    const cell = cellMap.get(key) ?? { risk: a.card.risk, band, attempts: 0, fails: 0, cash: 0, drops: 0, stamina: 0 };
     cell.attempts++;
     if (isFailure(a.band)) cell.fails++;
     cell.cash += a.reward - a.cashLost;
+    cell.drops += dropsOf.get(a)!;
     cell.stamina += a.card.stamina + a.card.scoutCost;
     cellMap.set(key, cell);
   }
   const cells: SiCell[] = [...cellMap.values()]
     .filter((c) => c.attempts >= CELL_MIN_ATTEMPTS && c.stamina > 0)
-    .map((c) => ({ risk: c.risk, band: c.band, attempts: c.attempts, failPct: (c.fails / c.attempts) * 100, cashPerStamina: c.cash / c.stamina }))
+    .map((c) => ({
+      risk: c.risk,
+      band: c.band,
+      attempts: c.attempts,
+      failPct: (c.fails / c.attempts) * 100,
+      cashPerStamina: c.cash / c.stamina,
+      dropsPerStamina: c.drops / c.stamina,
+    }))
     .sort((a, b) => b.cashPerStamina - a.cashPerStamina);
 
   // Board supply vs Stamina spent, on days the board was actually watched.
@@ -406,6 +447,7 @@ export function buildStreetIntelAnalytics(
   // just above that their Stamina would go to. Checked against the archive
   // by verification/street-intel/verify_min_card_suggestion.py.
   let suggestion: SiSuggestion | null = null;
+  let suggestionWithDrops: SiSuggestion | null = null;
   let suggestionNote: string | null = null;
   if (supplyDays.length < SUGGESTION_MIN_DAYS) {
     suggestionNote = `Needs ${SUGGESTION_MIN_DAYS} days with the board watched and attempts made — has ${supplyDays.length}.`;
@@ -416,7 +458,7 @@ export function buildStreetIntelAnalytics(
     // Attempts the extreme rule would let through at any minimum.
     const judged = attempts
       .filter((a) => a.at >= cellFrom && a.card && cardMidpoint(a.card) >= cardMinimumFor(a.card.risk, { ...config, minCardValue: 0 }))
-      .map((a) => ({ mid: cardMidpoint(a.card!), cash: a.reward - a.cashLost, stamina: a.card!.stamina + a.card!.scoutCost }));
+      .map((a) => ({ mid: cardMidpoint(a.card!), cash: a.reward - a.cashLost, drops: dropsOf.get(a)!, stamina: a.card!.stamina + a.card!.scoutCost }));
     // Card values on the board lately: the minimums worth suggesting fall
     // between these. Attempts reach back 30 days, to card values from
     // before a level-up the board no longer shows (Nov 8 2026: $808.65k and
@@ -430,82 +472,96 @@ export function buildStreetIntelAnalytics(
       const shown = tiers.filter((t) => t >= from && t < until);
       return shown.length ? { ...g, from: shown[0], to: shown[shown.length - 1] } : g;
     };
-    const groupOf = (from: number, to: number): SiValueGroup | null => {
+    // `countsDrops`: compare (and take the standard error of) cash plus
+    // drops rather than cash alone. One gold drop is worth more than dozens
+    // of attempts' cash, so that standard error runs far wider and it raises
+    // only on strong evidence.
+    const groupOf = (from: number, to: number, countsDrops: boolean): SiValueGroup | null => {
       const xs = judged.filter((a) => a.mid >= from && a.mid < to);
       const stamina = xs.reduce((sum, a) => sum + a.stamina, 0);
       if (xs.length === 0 || stamina === 0) return null;
-      const ratio = xs.reduce((sum, a) => sum + a.cash, 0) / stamina;
+      const cashPerStamina = xs.reduce((sum, a) => sum + a.cash, 0) / stamina;
+      const dropsPerStamina = xs.reduce((sum, a) => sum + a.drops, 0) / stamina;
+      const worth = (a: (typeof xs)[number]) => a.cash + (countsDrops ? a.drops : 0);
+      const ratio = cashPerStamina + (countsDrops ? dropsPerStamina : 0);
       const meanStamina = stamina / xs.length;
-      const spread = xs.reduce((sum, a) => sum + (a.cash - ratio * a.stamina) ** 2, 0) / Math.max(1, xs.length - 1);
+      const spread = xs.reduce((sum, a) => sum + (worth(a) - ratio * a.stamina) ** 2, 0) / Math.max(1, xs.length - 1);
       return {
         from: Math.min(...xs.map((a) => a.mid)),
         to: Math.max(...xs.map((a) => a.mid)),
         attempts: xs.length,
         stamina,
-        cashPerStamina: ratio,
+        cashPerStamina,
+        dropsPerStamina,
         standardError: Math.sqrt(spread / xs.length) / meanStamina,
       };
     };
+    const judgedValue = (g: SiValueGroup, countsDrops: boolean) => g.cashPerStamina + (countsDrops ? g.dropsPerStamina : 0);
     // The cards just above `from` that the Stamina of `stamina` would go
     // to: ascending from `from` until they cover it (or run out), with at
-    // least RAISE_MIN_ATTEMPTS attempts.
+    // least minAttempts() attempts.
     const ascending = [...judged].sort((a, b) => a.mid - b.mid);
-    const replacement = (from: number, stamina: number): SiValueGroup | null => {
+    const minAttempts = (countsDrops: boolean) => (countsDrops ? RAISE_MIN_ATTEMPTS_WITH_DROPS : RAISE_MIN_ATTEMPTS);
+    const replacement = (from: number, stamina: number, countsDrops: boolean): SiValueGroup | null => {
       let used = 0;
       let count = 0;
       let to = Infinity;
       for (const a of ascending) {
         if (a.mid < from) continue;
-        if (used >= stamina && count >= RAISE_MIN_ATTEMPTS && a.mid !== to) break;
+        if (used >= stamina && count >= minAttempts(countsDrops) && a.mid !== to) break;
         used += a.stamina;
         count++;
         to = a.mid;
       }
-      return count >= RAISE_MIN_ATTEMPTS ? groupOf(from, to + 1) : null;
+      return count >= minAttempts(countsDrops) ? groupOf(from, to + 1, countsDrops) : null;
     };
 
     const current = config.minCardValue;
-    let value = current;
-    let verdict: SiSuggestion['verdict'] = 'keep';
-    let limit: SiSuggestion['limit'] = null;
-    let compare: SiSuggestion['compare'] = null;
-    let blockedAt: SiSuggestion['blockedAt'] = null;
-    if (current > 0 && !enough(current)) {
-      verdict = 'lower';
-      const top = tiers.filter((t) => t <= current && enough(t)).pop();
-      value = top === undefined ? 0 : roundBetween(below(top), top);
-    } else {
-      // Each card value above the current minimum is a possible new lowest
-      // card kept. Raise to the highest one where the cards cut paid clearly
-      // less per Stamina than the cards their Stamina would go to, while
-      // the board still supplies enough.
-      let first: SiSuggestion['compare'] = null;
-      limit = 'history';
-      for (const t of tiers) {
-        if (t <= current) continue;
-        const candidate = roundBetween(below(t), t);
-        if (candidate <= current) continue;
-        if (!enough(candidate)) {
-          limit = 'supply';
-          blockedAt = { value: candidate, supply: supplyFor(candidate) };
-          break;
+    const suggest = (countsDrops: boolean): SiSuggestion => {
+      let value = current;
+      let verdict: SiSuggestion['verdict'] = 'keep';
+      let limit: SiSuggestion['limit'] = null;
+      let compare: SiSuggestion['compare'] = null;
+      let blockedAt: SiSuggestion['blockedAt'] = null;
+      if (current > 0 && !enough(current)) {
+        verdict = 'lower';
+        const top = tiers.filter((t) => t <= current && enough(t)).pop();
+        value = top === undefined ? 0 : roundBetween(below(top), top);
+      } else {
+        // Each card value above the current minimum is a possible new lowest
+        // card kept. Raise to the highest one where the cards cut paid clearly
+        // less per Stamina than the cards their Stamina would go to, while
+        // the board still supplies enough.
+        let first: SiSuggestion['compare'] = null;
+        limit = 'history';
+        for (const t of tiers) {
+          if (t <= current) continue;
+          const candidate = roundBetween(below(t), t);
+          if (candidate <= current) continue;
+          if (!enough(candidate)) {
+            limit = 'supply';
+            blockedAt = { value: candidate, supply: supplyFor(candidate) };
+            break;
+          }
+          const cut = groupOf(current, t, countsDrops);
+          if (!cut || cut.attempts < minAttempts(countsDrops)) continue;
+          const next = replacement(t, cut.stamina, countsDrops);
+          if (!next) break;
+          first ??= { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
+          limit = 'payoff';
+          const gap = judgedValue(next, countsDrops) - judgedValue(cut, countsDrops);
+          if (gap >= judgedValue(cut, countsDrops) * RAISE_MIN_GAIN && gap >= RAISE_MIN_Z * Math.hypot(cut.standardError, next.standardError)) {
+            value = candidate;
+            compare = { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
+          }
         }
-        const cut = groupOf(current, t);
-        if (!cut || cut.attempts < RAISE_MIN_ATTEMPTS) continue;
-        const next = replacement(t, cut.stamina);
-        if (!next) break;
-        first ??= { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
-        limit = 'payoff';
-        const gap = next.cashPerStamina - cut.cashPerStamina;
-        if (gap >= cut.cashPerStamina * RAISE_MIN_GAIN && gap >= RAISE_MIN_Z * Math.hypot(cut.standardError, next.standardError)) {
-          value = candidate;
-          compare = { cut: onBoard(cut, current, t), next: onBoard(next, t, next.to + 1) };
-        }
+        if (value !== current) verdict = 'raise';
+        else compare = first;
       }
-      if (value !== current) verdict = 'raise';
-      else compare = first;
-    }
-    suggestion = { value, verdict, limit, compare, blockedAt, supply: supplyFor(value), currentSupply: supplyFor(current), spent, days: supplyDays.length };
+      return { countsDrops, value, verdict, limit, compare, blockedAt, supply: supplyFor(value), currentSupply: supplyFor(current), spent, days: supplyDays.length };
+    };
+    suggestion = suggest(false);
+    suggestionWithDrops = suggest(true);
   }
 
   // Extreme card minimum: for each option, the extreme cards it would skip
@@ -514,12 +570,14 @@ export function buildStreetIntelAnalytics(
   // Stamina. Suggests the option that adds the most cash, if it adds at
   // least EXTREME_MIN_CASH_GAIN of daily cash; otherwise off.
   let extremeSuggestion: SiExtremeSuggestion | null = null;
+  let extremeSuggestionWithDrops: SiExtremeSuggestion | null = null;
   let extremeSuggestionNote: string | null = null;
   const windowAttempts = attempts.filter((a) => a.at >= cellFrom && a.card);
   const windowDays = new Set(windowAttempts.map((a) => gameDay(a.at))).size;
   if (windowDays > 0) {
     const dailyCash = windowAttempts.reduce((sum, a) => sum + a.reward - a.cashLost, 0) / windowDays;
-    const options: SiExtremeOption[] = [{ value: 0, skipped: 0, cashPerDay: 0, failsPerDay: 0 }];
+    const dailyDrops = windowAttempts.reduce((sum, a) => sum + dropsOf.get(a)!, 0) / windowDays;
+    const options: SiExtremeOption[] = [{ value: 0, skipped: 0, cashPerDay: 0, dropsPerDay: 0, failsPerDay: 0 }];
     for (const value of EXTREME_OPTIONS) {
       if (value <= config.minCardValue) continue;
       const inRange = windowAttempts.filter((a) => {
@@ -531,6 +589,7 @@ export function buildStreetIntelAnalytics(
       if (skipped.length < EXTREME_MIN_SKIPPED || others.length < EXTREME_MIN_SKIPPED) continue;
       const stamina = (xs: SiAttemptRecord[]) => xs.reduce((sum, a) => sum + a.card!.stamina + a.card!.scoutCost, 0);
       const cash = (xs: SiAttemptRecord[]) => xs.reduce((sum, a) => sum + a.reward - a.cashLost, 0);
+      const drops = (xs: SiAttemptRecord[]) => xs.reduce((sum, a) => sum + dropsOf.get(a)!, 0);
       const fails = (xs: SiAttemptRecord[]) => xs.filter((a) => isFailure(a.band)).length;
       const skippedStamina = stamina(skipped);
       const otherStamina = stamina(others);
@@ -538,16 +597,22 @@ export function buildStreetIntelAnalytics(
         value,
         skipped: skipped.length,
         cashPerDay: ((cash(others) / otherStamina) * skippedStamina - cash(skipped)) / windowDays,
+        dropsPerDay: ((drops(others) / otherStamina) * skippedStamina - drops(skipped)) / windowDays,
         failsPerDay: ((fails(others) / otherStamina) * skippedStamina - fails(skipped)) / windowDays,
       });
     }
     if (options.length === 1) {
       extremeSuggestionNote = `Needs at least ${EXTREME_MIN_SKIPPED} extreme and ${EXTREME_MIN_SKIPPED} other attempts above your minimum card value in the last ${CELL_DAYS} days.`;
     } else {
-      const best = options
-        .filter((o) => o.value > 0 && o.cashPerDay >= EXTREME_MIN_CASH_GAIN * dailyCash)
-        .sort((a, b) => b.cashPerDay - a.cashPerDay)[0];
-      extremeSuggestion = { value: best?.value ?? 0, options, dailyCash, days: windowDays };
+      // With drops, an option must add 1% of daily cash plus drops.
+      const pick = (countsDrops: boolean): SiExtremeSuggestion => {
+        const gain = (o: SiExtremeOption) => o.cashPerDay + (countsDrops ? o.dropsPerDay : 0);
+        const daily = dailyCash + (countsDrops ? dailyDrops : 0);
+        const best = options.filter((o) => o.value > 0 && gain(o) >= EXTREME_MIN_CASH_GAIN * daily).sort((a, b) => gain(b) - gain(a))[0];
+        return { countsDrops, value: best?.value ?? 0, options, dailyCash, dailyDrops, days: windowDays };
+      };
+      extremeSuggestion = pick(false);
+      extremeSuggestionWithDrops = pick(true);
     }
   }
 
@@ -563,8 +628,10 @@ export function buildStreetIntelAnalytics(
     cellDays: CELL_DAYS,
     supply,
     suggestion,
+    suggestionWithDrops,
     suggestionNote,
     extremeSuggestion,
+    extremeSuggestionWithDrops,
     extremeSuggestionNote,
     since,
   };
