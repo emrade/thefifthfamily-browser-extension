@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.68.1] - 2026-11-15
+
+### Fixed
+- **Career Auto's free energy refill no longer throws away energy.** The refill
+  fills energy to max, so anything on hand when it goes in is lost. It was used
+  after any shift that left less than one shift's cost, which is rarely 0: on
+  15 Nov it went in with 27 of 37 on hand. Now, if a shift leaves more than
+  about 0, it waits for regen to reach the next shift, runs it, then refills.
+  Close to the 23:00 UTC reset, when that shift couldn't happen in time, it
+  refills straight away so the day's refill isn't lost. Simulated with the real
+  code over 400 random 3-day runs: energy lost per refill fell from ~6 on
+  average (up to 36) to ~0.4, with no refill left unused at a reset.
+- **Energy items no longer stall after you use the refill by hand.** With both
+  switches on, items wait while the refill is unused. Career Auto remembered
+  "unused" for the whole day, so items could stay held back for about 2 hours.
+  It now re-checks after every shift.
+
 ## [0.68.0] - 2026-11-13
 
 ### Added
