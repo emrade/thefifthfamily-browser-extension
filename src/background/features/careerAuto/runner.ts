@@ -418,13 +418,13 @@ async function runIfEligibleOnce(force: boolean): Promise<void> {
 
   if (decision.kind === 'goal') await afterGoalShift(decision.goal, Number(resp.rank) || 0, snapshot, config);
 
-  // Free daily refill (off by default): now, when the shift has just left
-  // energy at its lowest, so none of the refill is lost.
+  // Free daily refill (off by default): now, if the shift has just left
+  // energy at about 0, so next to none of the refill is lost.
   if (config.enabled && config.useFreeRefill) {
     try {
       const energyAfter = Number(resp.stats?.energy);
       const maxEnergy = Number(resp.stats?.max_energy) || status.maxEnergy;
-      await refillAfterShift(config, energyAfter, need, maxEnergy);
+      await refillAfterShift(config, energyAfter, need, maxEnergy, status.energyRegenSeconds, resp.cooldown_seconds);
     } catch (err) {
       if (!(err instanceof SystemicActionError && err.kind === 'status-blocked') && !isNetworkFailure(err)) {
         console.error(LOG_PREFIX, 'career auto free refill after shift failed', err);

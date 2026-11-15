@@ -384,8 +384,9 @@ export function CareerAutoHome() {
         <div class="ff-toggle-row__text">
           <div class="ff-toggle-row__title">Use the free daily energy refill</div>
           <div class="ff-toggle-row__status">
-            Used straight after a shift, when energy is at its lowest (usually 0), so none of it is wasted. If it's still
-            unused near the daily reset and regen won't reach the next shift in time, it's used then. One a day.
+            Used straight after a shift that leaves energy at about 0, so none of it is wasted. If a shift leaves more
+            (say 27 of the 37 a shift costs), it waits for regen to reach the next shift, runs it, then refills. If
+            that shift wouldn't happen before the daily reset, it's used then instead. One a day.
           </div>
         </div>
         <input

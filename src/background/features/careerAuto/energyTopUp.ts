@@ -1,4 +1,4 @@
-import { CAREER_GOALS_ITEM_GAP_MS, CAREER_GOALS_MAX_ITEMS_PER_CHECK } from '@/shared/constants';
+import { CAREER_AUTO_FALLBACK_INTERVAL_MS, CAREER_GOALS_ITEM_GAP_MS, CAREER_GOALS_MAX_ITEMS_PER_CHECK } from '@/shared/constants';
 import { storage } from '@/shared/storage';
 import { gameDay } from '@/shared/careerAdvisor';
 import type { CareerAutoConfig, CareerEnergyStatus } from '@/shared/types';
@@ -89,9 +89,10 @@ export function planItems(items: EnergyItem[], need: number, room: number, maxIt
  *  restart costs one more `list`). */
 let refillSeenUnusedDay: string | null = null;
 
-/** Whether today's free energy refill is still unused. Asks the game at most
- *  once per game day while it is; a refill used by hand is noticed then, or
- *  by the next `refillAfterShift`. */
+/** Whether today's free energy refill is still unused. Asks the game once
+ *  per shift while it is (`refillAfterShift` forgets the answer), so a
+ *  refill used by hand is noticed one shift later at most, rather than only
+ *  when a shift next leaves about 0. */
 async function refillStillUnused(status: CareerEnergyStatus): Promise<boolean> {
   const day = gameDay();
   if (status.refillDoneDay === day) return false;
@@ -134,16 +135,47 @@ export function nextGameReset(now = Date.now()): number {
 
 /**
  * The free refill fills energy to max, so whatever is on hand when it's used
- * is lost. It's used right after a shift (`refillAfterShift`), when energy is
- * at its lowest — usually 0. Before a shift only as a last resort: the
- * refill is still unused and regen won't reach the shift's cost before the
- * daily reset, which would lose the whole refill instead.
+ * is lost. It's used right after a shift (`refillAfterShift`) that leaves
+ * energy at about 0. Before a shift only as a last resort: the refill is
+ * still unused and regen won't reach the shift's cost before the daily
+ * reset, which would lose the whole refill instead.
  */
 function refillDeadlinePassed(live: LiveStatus, shiftCost: number, now = Date.now()): boolean {
   if (live.energyRegenSeconds <= 0) return false;
   const points = shiftCost - live.energy;
   const readyAt = now + (Math.max(0, live.energyTimerSeconds) + Math.max(0, points - 1) * live.energyRegenSeconds) * 1000;
-  return readyAt >= nextGameReset(now);
+  return readyAt + RESET_MARGIN_MS >= nextGameReset(now);
+}
+
+/** A shift lands up to one energy-wait poll after regen reaches its cost,
+ *  plus the check itself: plan for the refill to go in this long before the
+ *  reset, not on it, or a shift due at 22:59 refills on the next day's. */
+const RESET_MARGIN_MS = CAREER_AUTO_FALLBACK_INTERVAL_MS + 60_000;
+
+/**
+ * Energy a shift run off regen can leave over: regen gained in one
+ * energy-wait poll (`CAREER_AUTO_FALLBACK_INTERVAL_MS`) past the cost.
+ * 1 at the account's 199 s a point (stats.php, 2026-11-15).
+ */
+export function refillSlack(regenSeconds: number): number {
+  return Math.ceil(CAREER_AUTO_FALLBACK_INTERVAL_MS / 1000 / regenSeconds);
+}
+
+/**
+ * Whether to use the refill straight after a shift that left `energyAfter`,
+ * below the next shift's cost. Yes when it's about 0 (within
+ * `refillSlack`). Otherwise wait: regen brings energy back to the cost,
+ * that shift leaves about 0, and the refill goes in then (2026-11-15: used
+ * with 27 of 37 on hand, all 27 lost). Exceptions, used now:
+ * - regen and the break won't allow that shift before the reset, which
+ *   would lose the whole refill (the least energy on hand is now);
+ * - regen speed unknown (stats.php said 0): can't tell when that would be.
+ */
+export function shouldRefillAfterShift(energyAfter: number, nextShiftCost: number, regenSeconds: number, cooldownSeconds: number, now = Date.now()): boolean {
+  if (regenSeconds <= 0) return true;
+  if (energyAfter <= refillSlack(regenSeconds)) return true;
+  const readyAt = now + Math.max(Math.max(0, cooldownSeconds), (nextShiftCost - energyAfter) * regenSeconds) * 1000;
+  return readyAt + RESET_MARGIN_MS >= nextGameReset(now);
 }
 
 /**
@@ -195,12 +227,21 @@ export async function topUpEnergy(config: CareerAutoConfig, live: LiveStatus, sh
 }
 
 /**
- * Straight after a shift, with the energy the shift response reports: if
- * it's below the next shift's cost, this is the lowest energy will get
- * (usually 0), so the free refill loses nothing. Returns whether it was used.
+ * Straight after a shift, with the energy the shift response reports: when
+ * it's below the next shift's cost and about 0 (`shouldRefillAfterShift`),
+ * so the free refill loses next to nothing. Returns whether it was used.
  */
-export async function refillAfterShift(config: CareerAutoConfig, energyAfter: number, nextShiftCost: number, maxEnergy: number): Promise<boolean> {
+export async function refillAfterShift(
+  config: CareerAutoConfig,
+  energyAfter: number,
+  nextShiftCost: number,
+  maxEnergy: number,
+  regenSeconds: number,
+  cooldownSeconds: number,
+): Promise<boolean> {
   if (!config.useFreeRefill) return false;
+  refillSeenUnusedDay = null;
   if (!Number.isFinite(energyAfter) || energyAfter >= nextShiftCost || nextShiftCost > maxEnergy) return false;
+  if (!shouldRefillAfterShift(energyAfter, nextShiftCost, regenSeconds, cooldownSeconds)) return false;
   return useFreeRefill(await storage.getCareerEnergyStatus());
 }

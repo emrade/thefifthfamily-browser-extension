@@ -26,6 +26,24 @@ cover the gap if on). Only exception: the refill is still unused and regen
 won't reach the shift's cost before the 23:00 UTC reset. The "use it when
 energy is below one shift" rule below is superseded.
 
+**Fixed 2026-11-15 (back to the original plan, "near 0"):** 0.65.1 refilled
+after *any* shift that left less than the next shift's cost, but that
+leftover is rarely 0 (energy runs down in steps of the cost): on 2026-11-15
+it refilled with 27 of 37 on hand and lost all 27. Now it refills after a
+shift only when energy is within `refillSlack` of 0 (the regen one 2-min
+energy-wait poll can add past the cost: 1 point at 199 s/point). Otherwise
+it waits for regen to reach the cost, runs that shift (leaving ~0), then
+refills. Exceptions, refilled straight away: that shift wouldn't come before
+the reset (break or regen, with a poll + 1 min margin, so a shift due at
+22:59 doesn't land after it), or regen speed is unknown. Items still wait
+while the refill is unused; the cached "still unused" answer is now
+forgotten after each shift, so a refill used by hand frees the items one
+shift later instead of hours later. Simulated with the real runner against a
+fake game (400 random 3-day runs × old/new; today's case replayed): energy
+lost to the refill fell from ~6 a refill on average (up to 36) to ~0.4, no refill expired, no
+pauses. An items-first variant (items cover the gap instead of waiting for
+regen) gave the same total over 3 days, since items run out either way.
+
 As built, beyond the design below: finished goals are removed from the list
 and kept under "Recently earned" (last 10); while goal mode has goals, the
 finder's Run now is off (goal mode would switch straight back); if only
