@@ -9,6 +9,18 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.69.0] - 2026-11-15
+
+### Added
+- **The HTTP archive now records the casino games.** Blackjack, Baccarat,
+  Roulette, Mines and Plinko run inside embedded frames, and none of their
+  requests were recorded before, so the archive only held Keno rounds. The
+  request recorder now runs inside the game's frames too, and what it captures
+  there goes to the archive only: no in-page feature or automation sees frame
+  traffic, so nothing else behaves differently. This is the data needed to
+  measure the casino payout bonus per game. The page a frame first loads (where
+  a game may keep its payout table) is still not recorded.
+
 ## [0.68.1] - 2026-11-15
 
 ### Fixed
