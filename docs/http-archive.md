@@ -58,9 +58,9 @@ list — not just the five endpoints the adapters parse. That is deliberate: an 
 adapter knows about yet is exactly the thing worth having a record of once it turns out
 to matter.
 
-**Game frames too (since 0.68.2).** Most casino games (Blackjack, Baccarat, Roulette,
+**Game frames too (since 0.69.0).** Most casino games (Blackjack, Baccarat, Roulette,
 Mines, Plinko) run in same-origin iframes (`/bj/?embed=1`, `/mines/?embed=1`, ...), so
-before 0.68.2 none of their requests were recorded. `mainWorldHook.ts` now runs in every
+before 0.69.0 none of their requests were recorded. `mainWorldHook.ts` now runs in every
 frame, and `frameRelay.ts` sends what a frame captures to the archive. Frames feed the
 archive only: no feature adapter, page feature or CSRF hand-off sees them. The frame's
 own document load is not a fetch/XHR, so it is still not recorded. The games' sound
