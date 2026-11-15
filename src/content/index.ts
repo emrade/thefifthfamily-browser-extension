@@ -2,9 +2,7 @@ import type { CapturedRequest } from '@/shared/messaging';
 import { sendMessage } from '@/shared/messaging';
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
-import { STORAGE_KEYS } from '@/shared/constants';
-import { DEFAULT_REQUEST_LOG_PREFERENCES } from '@/shared/requestLog/preferences';
-import { isExcluded } from '@/shared/requestLog/policy';
+import { createArchiveForwarder } from './shared/archiveForwarder';
 import { handleCapturedRequest as handlePlayerStats } from './features/playerStats';
 import { handleCapturedRequest as handleSmuggling } from './features/smuggling';
 import { handleCapturedRequest as handleFightClub, initFightClubControls, initFightClubReconOverlay } from './features/fightClub';
@@ -63,20 +61,8 @@ const INSTALL_FLAG = '__ffCapturedRequestListenerInstalled';
 if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
   (window as unknown as Record<string, boolean>)[INSTALL_FLAG] = true;
 
-  // Read once at load and kept current via onChanged, rather than awaited per
-  // request. Every captured request would otherwise pay a chrome.storage round-trip
-  // before it could be forwarded, on a path that fires for every call the game
-  // makes. Starting from the default (enabled) means captures during the first
-  // moments of page load aren't dropped while the real value is still in flight.
-  let requestLogEnabled = DEFAULT_REQUEST_LOG_PREFERENCES.enabled;
-  storage.getRequestLogPreferences().then((prefs) => {
-    requestLogEnabled = prefs.enabled;
-  });
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[STORAGE_KEYS.REQUEST_LOG_PREFERENCES]) return;
-    const next = changes[STORAGE_KEYS.REQUEST_LOG_PREFERENCES].newValue as { enabled?: boolean } | undefined;
-    requestLogEnabled = next?.enabled ?? DEFAULT_REQUEST_LOG_PREFERENCES.enabled;
-  });
+  // Same rules as the game-frame relay (frameRelay.ts): one shared forwarder.
+  const forwardToArchive = createArchiveForwarder();
 
   // The freshest `_csrf` seen on any captured POST body — background caches this
   // for the pet-courier automation's own outgoing action calls. Read here, not in a
@@ -113,23 +99,7 @@ if (!(window as unknown as Record<string, boolean>)[INSTALL_FLAG]) {
     // The archive, by contrast, deliberately takes everything same-origin: an
     // endpoint no adapter knows about yet is exactly the kind of thing worth
     // having a record of once it turns out to matter.
-    // Excluded endpoints are filtered here as well as in the background worker.
-    // The worker is authoritative, but chat.php and the announcement poll alone
-    // account for roughly 40% of all requests, and there is no reason to pay a
-    // structured-clone of every response body just to discard it on arrival.
-    if (requestLogEnabled && !isExcluded(captured.url)) {
-      sendMessage({
-        type: 'request-log',
-        method: captured.method,
-        url: captured.url,
-        requestBody: captured.requestBody,
-        responseText: captured.responseText,
-        truncated: captured.truncated,
-        status: captured.status,
-        durationMs: captured.durationMs,
-        timestamp: captured.timestamp,
-      });
-    }
+    forwardToArchive(captured);
   });
 
   // Gated by the player's own Settings toggles — each in-page feature only starts
