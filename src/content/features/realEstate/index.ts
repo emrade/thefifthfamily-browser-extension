@@ -668,7 +668,13 @@ function refresh(force: boolean) {
   const cards = cardEls.map(parseCard).filter((c): c is ParsedCard => c !== null);
   const unowned = unownedEls.map(parseUnownedCard).filter((c): c is UnownedCard => c !== null);
   const signature = computeSignature(cards, unowned);
-  if (!force && signature === lastSignature) return;
+  // Same numbers isn't enough to skip: when the player leaves the page and
+  // comes back, or the game re-renders it, the cards are new elements with
+  // none of our ribbons or plans on them, though nothing they report changed.
+  const overlaysMissing =
+    cards.some((c) => !c.el.querySelector(':scope > .ff-re-ribbon')) ||
+    unowned.some((u) => !u.el.querySelector(':scope > .ff-re-plan'));
+  if (!force && !overlaysMissing && signature === lastSignature) return;
   lastSignature = signature;
 
   const measured: MeasuredPortfolio | null =
