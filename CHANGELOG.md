@@ -9,6 +9,23 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.69.1] - 2026-11-16
+
+### Fixed
+- **The Real Estate Advisor shows again when you come back to the page.** If
+  you left Real Estate and returned (or the game redrew the page) within the
+  same hour and without a new vault collection, the per-property ribbons and
+  the "FF plan" on properties you don't own yet didn't appear. The advisor
+  skipped redrawing because the game's numbers hadn't changed, without noticing
+  the cards were new and had none of its boxes on them. It now redraws whenever
+  they're missing. The bug dated from the advisor's first version.
+
+### Changed
+- **The HTTP archive no longer keeps the casino games' sound files** (.wav and
+  other audio, about 1.5 MB per casino session, no game data). Rows already
+  recorded are removed by the archive's regular cleanup. Other game assets,
+  such as Roulette's bet table, are still kept.
+
 ## [0.69.0] - 2026-11-15
 
 ### Added
