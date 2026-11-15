@@ -34,6 +34,11 @@ const EXCLUDED_PATHS = [
   /\/api\/get_announcements\.php$/,
   /\/api\/feed\.php$/,
   /\/actions\/milestones_check\.php$/,
+  // Sound effects the casino games fetch inside their frames (/roulette/assets/*.wav,
+  // /mines/sounds/*.wav, /plinko/assets/sfx/*.wav): binary audio read as text, about
+  // 1.5 MB per casino session (measured 2026-11-15), no game data. Their other
+  // assets (e.g. /roulette/assets/catalog.json, the bet table) are still kept.
+  /\.(wav|mp3|ogg|m4a|aac|flac|opus)$/i,
 ];
 
 /**

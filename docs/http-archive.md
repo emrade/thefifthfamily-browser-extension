@@ -63,7 +63,9 @@ Mines, Plinko) run in same-origin iframes (`/bj/?embed=1`, `/mines/?embed=1`, ..
 before 0.68.2 none of their requests were recorded. `mainWorldHook.ts` now runs in every
 frame, and `frameRelay.ts` sends what a frame captures to the archive. Frames feed the
 archive only: no feature adapter, page feature or CSRF hand-off sees them. The frame's
-own document load is not a fetch/XHR, so it is still not recorded. Frame rows look like
+own document load is not a fetch/XHR, so it is still not recorded. The games' sound
+files (`.wav` and other audio) are excluded in `policy.ts` (~1.5 MB of binary per casino
+session, no game data); their other assets, such as Roulette's `catalog.json`, are kept. Frame rows look like
 any other `page` row; tell them apart by path.
 
 ### Capture policy
