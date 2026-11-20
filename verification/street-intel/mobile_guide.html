@@ -1,0 +1,390 @@
+<title>Street Intel Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one narrow column built for a phone held in one hand — pick a card, read the odds; tabs for complications and the numbers behind it. */
+:root {
+  --bg: #f4f2ee;
+  --surface: #ffffff;
+  --line: #ddd8cf;
+  --fg: #1d1b18;
+  --muted: #6b665d;
+  --brass: #9a7524;
+  --brass-soft: rgba(154,117,36,.12);
+  --good: #1f7a4d;
+  --good-soft: rgba(31,122,77,.12);
+  --bad: #b3362b;
+  --bad-soft: rgba(179,54,43,.10);
+  --warn: #9a6a00;
+  --bar: #e8e3da;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121110; --surface: #1b1a18; --line: #2f2c28; --fg: #ece7dd; --muted: #9a948a;
+    --brass: #d4b062; --brass-soft: rgba(212,176,98,.14); --good: #4fc98a; --good-soft: rgba(79,201,138,.14);
+    --bad: #ef7b6f; --bad-soft: rgba(239,123,111,.13); --warn: #e0b04a; --bar: #2a2724; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121110; --surface: #1b1a18; --line: #2f2c28; --fg: #ece7dd; --muted: #9a948a;
+  --brass: #d4b062; --brass-soft: rgba(212,176,98,.14); --good: #4fc98a; --good-soft: rgba(79,201,138,.14);
+  --bad: #ef7b6f; --bad-soft: rgba(239,123,111,.13); --warn: #e0b04a; --bar: #2a2724; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 560px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
+header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 14px 10px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+h1 { margin: 0; font: 800 1.35rem/1.1 var(--display); letter-spacing: -.01em; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+h1 small { font: 500 .72rem var(--mono); color: var(--muted); letter-spacing: 0; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.tabs button { font: 600 .82rem var(--body); color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 8px 4px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--brass-soft); color: var(--fg); }
+.tabs button:focus-visible, input:focus-visible, select:focus-visible, .pick:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+section { display: grid; gap: 14px; padding-top: 16px; }
+label.field { display: grid; gap: 6px; font: 600 .7rem var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+input[type="search"], select, input[type="number"] { width: 100%; font: 500 1rem var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; }
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+.matches { display: grid; gap: 2px; margin-top: -6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pick { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; text-align: left; width: 100%; font: 500 .95rem var(--body); color: var(--fg); background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; cursor: pointer; }
+.pick:last-child { border-bottom: 0; }
+.pick span { font: .75rem var(--body); color: var(--muted); white-space: nowrap; }
+.cond-list { max-height: 55vh; overflow-y: auto; overscroll-behavior: contain; }
+.cpick { display: grid; gap: 2px; text-align: left; width: 100%; font: 500 .92rem/1.35 var(--body); color: var(--fg); background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 12px; cursor: pointer; }
+.cpick:last-child { border-bottom: 0; }
+.cpick span { font-size: .74rem; color: var(--muted); }
+.cpick[aria-current="true"] { background: var(--brass-soft); }
+.cpick:focus-visible, .quick button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.quick { display: flex; gap: 8px; margin-top: -6px; }
+.quick button { flex: 1; font: 600 .85rem var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 10px; cursor: pointer; }
+.quick button[aria-pressed="true"] { background: var(--brass-soft); border-color: var(--brass); }
+.hint { font-size: .8rem; color: var(--muted); margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.card h2 { margin: 0; font: 700 1.2rem/1.2 var(--display); text-wrap: balance; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: .78rem; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 600; }
+.cond { font-size: .8rem; padding: 8px 10px; border-radius: 8px; background: var(--brass-soft); }
+.rows { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.row.best { border-color: var(--brass); background: var(--brass-soft); }
+.row.dead { opacity: .65; }
+.row .lbl { font-weight: 600; font-size: .93rem; min-width: 0; }
+.row .sub { grid-column: 1; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.row .pct { grid-row: 1 / span 2; grid-column: 2; font: 600 1.5rem var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.row .pct small { display: block; font: 500 .62rem var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--bar); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--muted); }
+.row.best .bar i { background: var(--brass); }
+.chip { display: inline-block; font: 700 .6rem var(--body); letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; vertical-align: 2px; margin-left: 6px; }
+.chip.best, .chip.pick-c { background: var(--brass); color: var(--surface); }
+.chip.avoid { background: var(--bad-soft); color: var(--bad); }
+.verdict { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; font-size: .88rem; }
+.verdict.go { background: var(--good-soft); }
+.verdict.go strong { color: var(--good); }
+.verdict.skip { background: var(--bad-soft); }
+.verdict.skip strong { color: var(--bad); }
+.verdict strong { font: 800 .95rem var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.empty { border: 1px dashed var(--line); border-radius: 14px; padding: 18px; color: var(--muted); font-size: .88rem; }
+.scen { display: grid; gap: 8px; }
+.scen p { margin: 0; font-weight: 600; font-size: .93rem; }
+.choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ch { border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; display: grid; gap: 2px; }
+.ch.pick-r { border-color: var(--brass); background: var(--brass-soft); }
+.ch.avoid-r { border-color: var(--bad); background: var(--bad-soft); }
+.ch b { font: 700 .8rem var(--display); text-transform: uppercase; letter-spacing: .05em; }
+.ch span { font: 500 .78rem var(--mono); font-variant-numeric: tabular-nums; }
+.ch em { font-style: normal; font-size: .66rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+dl { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: .9rem; }
+dt { color: var(--muted); }
+dd { margin: 0; font: 600 .9rem var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+h3 { margin: 0; font: 700 .72rem var(--body); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.note { font-size: .8rem; color: var(--muted); line-height: 1.5; margin: 0; }
+.stale { color: var(--warn); }
+@media (prefers-reduced-motion: no-preference) { .bar i { transition: width .25s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Street Intel Guide <small id="asOf"></small></h1>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-odds" aria-selected="true" data-view="odds">Card odds</button>
+      <button role="tab" id="tab-comp" aria-selected="false" data-view="comp">Complications</button>
+      <button role="tab" id="tab-me" aria-selected="false" data-view="me">Your numbers</button>
+    </div>
+  </header>
+
+  <section id="view-odds">
+    <label class="field" for="cardSearch">Card title
+      <input type="search" id="cardSearch" placeholder="Type part of the title, e.g. appraiser" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="matches" id="matches" hidden></div>
+    <label class="field" for="condSearch">Condition on the card
+      <input type="search" id="condSearch" placeholder="Tap to see all, or type a word, e.g. fog" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="quick" id="condQuick">
+      <button type="button" data-cond="__none__" aria-pressed="false">No condition</button>
+      <button type="button" data-cond="__unsure__" aria-pressed="false">Not sure</button>
+    </div>
+    <div class="matches cond-list" id="condMatches" hidden></div>
+    <div id="result"></div>
+  </section>
+
+  <section id="view-comp" hidden>
+    <label class="field" for="compSearch">Complication text
+      <input type="search" id="compSearch" placeholder="e.g. getaway, smoke, footsteps" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="hint">Your real win record for each choice. <b>Pick</b> is the best choice so far; <b>Avoid</b> has lost every time (2+ tries).</p>
+    <div id="compList" class="scen-list" style="display:grid;gap:10px"></div>
+  </section>
+
+  <section id="view-me" hidden>
+    <div class="card">
+      <h3>Go / skip rule</h3>
+      <div class="settings">
+        <label class="field" for="minPct">Minimum odds %
+          <input type="number" id="minPct" min="0" max="95" step="1" inputmode="numeric">
+        </label>
+        <label class="field" for="minValue">Minimum reward ($k)
+          <input type="number" id="minValue" min="0" step="50" inputmode="numeric">
+        </label>
+      </div>
+      <p class="note">The extension's defaults are 50% and $750k (the middle of the card's reward range). Change them here to match your own settings; this phone remembers them.</p>
+    </div>
+    <div class="card">
+      <h3>Your stats</h3>
+      <dl id="statsList"></dl>
+    </div>
+    <div class="card">
+      <h3>Your Street Intel bonuses</h3>
+      <dl id="modsList"></dl>
+      <p class="note" id="modsNote"></p>
+    </div>
+    <div class="card">
+      <h3>Where this comes from</h3>
+      <p class="note" id="sourceNote"></p>
+    </div>
+  </section>
+</div>
+
+<script>
+const D = /*GUIDE_DATA*/null;
+const STAT_NAMES = { strength: 'Strength', defence: 'Defence', agility: 'Agility', dexterity: 'Dexterity' };
+const CHOICE_STAT = { fight: 'Strength', run: 'Agility', talk: 'Dexterity' };
+const POOLED = { fight: 0.85, run: 0.83, talk: 0.9 };
+const NONE = '__none__', UNSURE = '__unsure__';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('sig.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('sig.' + k, JSON.stringify(v)); } catch {} },
+};
+const fmtDate = (ms) => new Date(ms).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const daysAgo = (ms) => Math.floor((Date.now() - ms) / 86400000);
+
+// Same formula as src/shared/streetIntelPredict.ts.
+function predict(key, condKey) {
+  const card = D.cards[key];
+  const cond = D.conditions[condKey];
+  const m = card && D.mods.mastery[card.category];
+  if (!card || !cond || !m) return null;
+  const shared = D.mods.rank + D.mods.prestige + D.mods.collection + D.mods.recon + m[0] + cond.global;
+  return card.approaches.map((a) => {
+    if (a.autofail) return { ...a, pct: 0 };
+    const stat = D.stats[a.stat];
+    const raw = card.base * (1 + (shared + stat / 5 + (cond.stats[a.stat] || 0)) / 100) + a.bonus;
+    return { ...a, pct: Math.max(0, Math.min(95, Math.round(raw))) };
+  });
+}
+
+function condEffect(c) {
+  const parts = [];
+  if (c.global) parts.push(`${c.global > 0 ? '+' : ''}${c.global} to every approach`);
+  for (const [s, v] of Object.entries(c.stats)) parts.push(`${v > 0 ? '+' : ''}${v} ${STAT_NAMES[s] || s}`);
+  return parts.length ? parts.join(', ') : 'no effect on odds';
+}
+
+// ---- Card odds ----
+const keys = Object.keys(D.cards).sort((a, b) => D.names[a].localeCompare(D.names[b]));
+// Opens on a real card so the first view shows what the guide does.
+let selected = store.get('card', null);
+if (!selected || !D.cards[selected]) selected = D.cards['the appraiser blinks'] ? 'the appraiser blinks' : keys[0];
+
+const condKeys = Object.keys(D.conditions).filter(Boolean).sort();
+let condVal = store.get('cond', NONE);
+if (condVal !== NONE && condVal !== UNSURE && !D.conditions[condVal]) condVal = NONE;
+
+function syncCondField() {
+  $('condSearch').value = condVal === NONE || condVal === UNSURE ? '' : condVal;
+  for (const b of document.querySelectorAll('#condQuick button')) b.setAttribute('aria-pressed', String(b.dataset.cond === condVal));
+}
+
+// Tapping the field lists every condition; typing narrows it (matches the
+// sentence or its effect, e.g. "agility").
+function showCondMatches() {
+  const raw = $('condSearch').value.trim().toLowerCase();
+  const q = raw === condVal.toLowerCase() ? '' : raw;
+  const hits = condKeys.filter((k) => !q || k.toLowerCase().includes(q) || condEffect(D.conditions[k]).toLowerCase().includes(q));
+  const box = $('condMatches');
+  box.innerHTML = hits.length
+    ? hits.map((k) => `<button class="cpick" data-cond="${esc(k)}" aria-current="${k === condVal}">${esc(k)}<span>${esc(condEffect(D.conditions[k]))}</span></button>`).join('')
+    : `<div class="cpick" style="cursor:default">No known condition matches "${esc(raw)}"<span>Pick "Not sure" to see the range across every condition</span></div>`;
+  box.hidden = false;
+}
+
+function chooseCond(value) {
+  condVal = value;
+  store.set('cond', value);
+  syncCondField();
+  $('condMatches').hidden = true;
+  renderResult();
+}
+
+function showMatches() {
+  const q = $('cardSearch').value.trim().toLowerCase();
+  const box = $('matches');
+  if (!q || (selected && D.names[selected].toLowerCase() === q)) { box.hidden = true; return; }
+  const hits = keys.filter((k) => k.includes(q)).slice(0, 8);
+  box.innerHTML = hits.length
+    ? hits.map((k) => `<button class="pick" data-key="${esc(k)}">${esc(D.names[k])}<span>${esc(D.cards[k].category)} · lvl ${D.cards[k].level}</span></button>`).join('')
+    : `<div class="pick" style="cursor:default">No card by that name in your history<span>${keys.length} of ${D.catalogTitles} known</span></div>`;
+  box.hidden = false;
+}
+
+function renderResult() {
+  const out = $('result');
+  if (!selected) {
+    out.innerHTML = `<div class="empty">Pick a card to see the odds of each approach before you scout. Search above covers the ${keys.length} cards you've seen on your board.</div>`;
+    return;
+  }
+  const card = D.cards[selected];
+  const unsure = condVal === UNSURE;
+  const condKey = condVal === NONE || unsure ? '' : condVal;
+  const rows = predict(selected, condKey);
+  if (!rows) {
+    out.innerHTML = `<div class="empty">No odds for this card: you haven't scouted a ${esc(card.category)} card yet, so its mastery bonus is unknown. Scout one on PC and refresh the guide.</div>`;
+    return;
+  }
+  let range = null;
+  if (unsure) {
+    range = {};
+    for (const k of Object.keys(D.conditions)) for (const r of predict(selected, k)) {
+      const cur = range[r.key] || [101, -1];
+      range[r.key] = [Math.min(cur[0], r.pct), Math.max(cur[1], r.pct)];
+    }
+  }
+  const bestPct = Math.max(...rows.map((r) => r.pct));
+  const minPct = Number(store.get('minPct', 50));
+  const minK = Number(store.get('minValue', 750));
+  const cond = D.conditions[condKey];
+  const rowHtml = rows.map((r) => {
+    const isBest = r.pct === bestPct && r.pct > 0;
+    const sub = r.autofail ? `${STAT_NAMES[r.stat] || r.stat} · always fails on this card` : `${STAT_NAMES[r.stat] || r.stat}${r.bonus ? ` · ${r.bonus > 0 ? '+' : ''}${r.bonus} approach bonus` : ''}`;
+    const rng = range && !r.autofail ? `<small>${range[r.key][0]}–${range[r.key][1]}% any condition</small>` : '';
+    return `<div class="row${isBest ? ' best' : ''}${r.autofail ? ' dead' : ''}">
+      <div class="lbl">${esc(r.label)}${isBest ? '<span class="chip best">Best</span>' : ''}</div>
+      <div class="pct">${r.pct}%${rng}</div>
+      <div class="sub">${esc(sub)}</div>
+      <div class="bar"><i style="width:${r.pct}%"></i></div>
+    </div>`;
+  }).join('');
+  const go = bestPct >= minPct;
+  const verdict = `<div class="verdict ${go ? 'go' : 'skip'}"><div><strong>${go ? 'Go' : 'Skip'}</strong> · best is ${bestPct}%, your minimum is ${minPct}%${unsure ? ' (with no condition)' : ''}. Take it only if the middle of its reward range is at least $${minK >= 1000 ? (minK / 1000) + 'M' : minK + 'k'}.</div></div>`;
+  out.innerHTML = `<div class="card">
+    <div><h2>${esc(D.names[selected])}</h2></div>
+    <div class="meta"><span><b>${esc(card.category)}</b></span><span>Level ${card.level}</span><span>Base odds <b>${card.base}%</b></span>${card.legendary ? '<span><b>Legendary</b></span>' : ''}</div>
+    ${unsure ? `<div class="cond">Condition unknown. The big number assumes none; the small range covers every known condition.</div>` : condKey ? `<div class="cond">${esc(condKey)} <b>${esc(condEffect(cond))}</b></div>` : ''}
+    ${card.varies ? `<div class="cond stale">This card's approaches changed between boards lately. Check the stat each approach uses in the game before trusting these numbers.</div>` : ''}
+    ${verdict}
+    <div class="rows">${rowHtml}</div>
+  </div>`;
+}
+
+function choose(key) {
+  selected = key;
+  store.set('card', key);
+  $('cardSearch').value = D.names[key];
+  $('matches').hidden = true;
+  renderResult();
+}
+
+$('cardSearch').addEventListener('input', showMatches);
+$('cardSearch').addEventListener('focus', showMatches);
+$('matches').addEventListener('click', (e) => { const b = e.target.closest('[data-key]'); if (b) choose(b.dataset.key); });
+$('condSearch').addEventListener('input', showCondMatches);
+$('condSearch').addEventListener('focus', showCondMatches);
+$('condMatches').addEventListener('click', (e) => { const b = e.target.closest('[data-cond]'); if (b) chooseCond(b.dataset.cond); });
+$('condQuick').addEventListener('click', (e) => { const b = e.target.closest('[data-cond]'); if (b) chooseCond(b.dataset.cond); });
+// Close an open list when tapping anywhere else; an emptied condition field
+// that was left goes back to showing the current choice.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#condSearch, #condMatches, #condQuick')) { $('condMatches').hidden = true; syncCondField(); }
+  if (!e.target.closest('#cardSearch, #matches')) $('matches').hidden = true;
+});
+
+// ---- Complications ----
+function describe(cells) {
+  const choices = ['fight', 'run', 'talk'].map((c) => {
+    const [wins, attempts] = cells[c] || [0, 0];
+    const blocked = attempts >= 2 && wins === 0;
+    const score = blocked ? 0 : (wins + POOLED[c] * 2) / (attempts + 2);
+    return { c, wins, attempts, blocked, score };
+  });
+  const best = choices.filter((x) => !x.blocked).sort((a, b) => b.score - a.score)[0];
+  return { choices, best: best ? best.c : null };
+}
+const scenarios = Object.entries(D.complications)
+  .map(([s, cells]) => ({ s, cells, n: Object.values(cells).reduce((t, v) => t + v[1], 0) }))
+  .sort((a, b) => b.n - a.n);
+
+function renderComps() {
+  const q = $('compSearch').value.trim().toLowerCase();
+  const list = scenarios.filter((x) => x.s.toLowerCase().includes(q));
+  $('compList').innerHTML = list.length ? list.map(({ s, cells, n }) => {
+    const { choices, best } = describe(cells);
+    return `<div class="card scen"><p>${esc(s)}</p>
+      <div class="choices">${choices.map((x) => {
+        const cls = x.blocked ? ' avoid-r' : x.c === best ? ' pick-r' : '';
+        const chip = x.blocked ? '<span class="chip avoid">Avoid</span>' : x.c === best ? '<span class="chip pick-c">Pick</span>' : '';
+        return `<div class="ch${cls}"><b>${x.c}${chip}</b><em>${CHOICE_STAT[x.c]}</em><span>${x.attempts ? `${x.wins}/${x.attempts} won` : 'never tried'}</span></div>`;
+      }).join('')}</div></div>`;
+  }).join('') : `<div class="empty">No complication with that text in your history. Pick the choice whose stat is your strongest.</div>`;
+}
+$('compSearch').addEventListener('input', renderComps);
+
+// ---- Your numbers ----
+function renderMe() {
+  $('minPct').value = store.get('minPct', 50);
+  $('minValue').value = store.get('minValue', 750);
+  $('statsList').innerHTML = ['strength', 'defence', 'agility', 'dexterity'].map((s) => `<dt>${STAT_NAMES[s]}</dt><dd>${D.stats[s]}</dd>`).join('')
+    + `<dt>Level</dt><dd>${D.stats.level}</dd>`;
+  const m = D.mods;
+  const mast = Object.entries(m.mastery).sort().map(([c, v]) => `<dt>Mastery · ${esc(c)}</dt><dd>+${v[0]}</dd>`).join('');
+  $('modsList').innerHTML = `<dt>Rank</dt><dd>+${m.rank}</dd><dt>Prestige</dt><dd>+${m.prestige}</dd><dt>Collection</dt><dd>+${m.collection}</dd><dt>Recon</dt><dd>+${m.recon}</dd>${mast}`;
+  const age = daysAgo(m.scoutAt);
+  $('modsNote').innerHTML = `From your last scout, ${fmtDate(m.scoutAt)}${age >= 7 ? ` <span class="stale">(${age} days ago)</span>` : ''}. Rank also updates from every attempt. Mastery and collection can grow without a scout, so if odds look low, scout one card on PC and refresh the guide.`;
+  $('sourceNote').innerHTML = `Built from your archive exports up to ${fmtDate(D.dataUntil)}. Stats as of ${fmtDate(D.stats.at)}. Odds use the same formula as the extension's badges: the wiki's base odds, the card's condition, your bonuses and your stats. It matched the game on 99% of past scouts; short buffs are left out, so a number can come out a little low, never high. Complications: ${scenarios.reduce((t, x) => t + x.n, 0)} resolved since August.`;
+}
+$('minPct').addEventListener('change', () => { store.set('minPct', Math.max(0, Math.min(95, Number($('minPct').value) || 0))); renderResult(); });
+$('minValue').addEventListener('change', () => { store.set('minValue', Math.max(0, Number($('minValue').value) || 0)); renderResult(); });
+
+// ---- Tabs ----
+function show(view) {
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.view === view));
+  for (const v of ['odds', 'comp', 'me']) $('view-' + v).hidden = v !== view;
+  store.set('view', view);
+}
+document.querySelector('.tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); });
+
+$('asOf').textContent = 'data to ' + fmtDate(D.dataUntil);
+syncCondField();
+if (selected) $('cardSearch').value = D.names[selected];
+renderResult();
+renderComps();
+renderMe();
+show(store.get('view', 'odds'));
+</script>
