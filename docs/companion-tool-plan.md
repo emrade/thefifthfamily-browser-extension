@@ -820,7 +820,8 @@ How members fill it in:
    into the next pack.
 
 **Tested end to end (2026-11-20)** on every scout with the current layout
-(10,424): each scout was treated as an unknown card, with the bonuses
+(10,424; `verification/street-intel/companion/verify_unknown_cards.py`): each
+scout was treated as an unknown card, with the bonuses
 calibrated from a *different* card of the same type scouted in the previous 6
 hours.
 - Revealed approaches: **87.1% worked out to exactly one role, 12.7% narrowed
@@ -842,7 +843,7 @@ the game changes the layout again this check must be re-run.
 Question: can "Worth it / OK / Skip" labels from the player's drop history be
 trusted by other players? Data: all 4,906 attempts 2026-08-10 → 11-20 (player
 levels 55–147), drops valued as `analyze_drops_by_card.py` does, joined to card
-titles; script in the session scratchpad.
+titles; `verification/street-intel/companion/verify_card_value.py`.
 
 - **Labels per card were noise.** Splitting recent play (levels 130–147) into
   two halves in time, the 28 cards with 10+ tries in both halves ranked almost
@@ -913,7 +914,7 @@ their stats, the formula gives the one unknown (the shared bonus) to within a
 small window.
 
 Tested on every scout in the archive (8,698 usable, 2026-08-10 → 2026-11-01;
-script in the session scratchpad, to be moved into `verification/` when built):
+`verification/street-intel/companion/verify_calibration.py`):
 - The formula with the true bonuses reproduces the game's shown odds 9,424 of
   9,425 times.
 - One scout pins the shared bonus to a window of 2.9 points (median; 90% under
