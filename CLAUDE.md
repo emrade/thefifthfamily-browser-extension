@@ -141,3 +141,25 @@ enhancement rule (+N% of an item's base stats per level) directly.
   report findings and stop unless a fix is explicitly requested.
 - Non-obvious UX/behavior tradeoffs get surfaced as a question before
   shipping, not decided unilaterally.
+
+## TFF Consigliere (companion web app + Discord bot)
+
+A separate project for the player's family, fed by data this extension produces.
+Plan: `docs/companion-tool-plan.md`; build design: `docs/companion-tool-build.md`;
+archive checks: `verification/street-intel/companion/`.
+
+- Code: `/Users/emrade/Dev/Apps/nextjs/tff-consigliere` —
+  https://github.com/emrade/tff-consigliere (private)
+- Database: Neon project `tff-consigliere` (id `twilight-paper-89044508`,
+  London `aws-eu-west-2`, database `consigliere`), org `org-sweet-hat-04001937`
+- Hosting: Vercel (free `*.vercel.app` subdomain) — project not created yet
+- Discord application "TFF Consigliere" (id `1573365451562684488`):
+  https://discord.com/developers/applications/1573365451562684488 — one app for
+  sign-in and the bot; private bot (only the owner can add it), server installs
+  only; sign-in redirect `http://localhost:3000/api/auth/callback/discord`
+  (add the Vercel one once deployed). Client secret and bot token are never
+  stored in this repo; the player pastes them into Vercel.
+- Private test server "Consigliere Test" — id to be recorded
+
+The extension stays personal; it only produces the Street Intel pack (game-rule
+data, never the player's stats or counts).
