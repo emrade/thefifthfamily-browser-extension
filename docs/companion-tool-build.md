@@ -126,6 +126,50 @@ the search instead of below it.
 with its own sections, its own `api/<module>/` routes, its own `<module>_*`
 tables and pack. Bottom bar, Me, My logs and the access check stay as they are.
 
+## Look: themes, typefaces and appearance (decided 2026-11-20)
+
+Members choose their own look in Me → Style; three independent settings,
+saved to their account (with stats and calibrations) and on the device so the
+app opens in the right look with no flash of the default.
+
+| Setting | Options | Default |
+|---|---|---|
+| Appearance | Dark · Light · Match my phone | **Dark** |
+| Theme | Seal · Ledger · Deco Noir (colours, corners, card and tab style, meaning colours; each with a light and a dark palette) | **Seal** |
+| Typeface | the nine pairings on the brand canvas (titles, labels, numbers) | **Poster and dossier** (Abril Fatface + Special Elite) |
+
+Built so themes and typefaces can be added or removed later:
+- One registry per kind (`lib/look/themes.ts`, `lib/look/typefaces.ts`); each
+  entry is plain data (colour tokens for light and dark, radius, card style,
+  tab style, label case and tracking, per-font size adjustments). Screens use
+  only tokens and data attributes (`data-theme`, `data-type`,
+  `data-appearance` on `<html>`), never a theme or font by name.
+- An unknown saved value (a removed theme or font) falls back to the default.
+- All fonts are declared, but a phone only downloads the one in use.
+- What members read and tap (card names, approaches, descriptions) stays the
+  phone's own font; only titles, labels and numbers change.
+- A screenshot test renders every screen in every theme × typeface × light/dark
+  so a font that breaks a layout is caught before members see it.
+
+Fixed for everyone (not themeable): the **logo is the wax seal "C"** (direction
+A): app icon, launch screen, favicon, Discord app icon and bot avatar.
+
+Theme looks accepted 2026-11-20 (second round, brand canvas
+https://claude.ai/artifact/3z6pLpSHfoJpUsEBU6H2JS, the six screen artboards).
+The first round was rejected as flat; each theme now has atmosphere, real
+metal, a material, depth and a signature moment:
+
+| Theme | Material and light | Signature moment |
+|---|---|---|
+| Seal | dark leather under a warm lamp, parchment file cards in light mode, oxblood glow at the bottom | the best approach is stamped with the wax seal; Pick is a gold coin; Avoid and "always fails" are red rubber stamps; GO is a stamped verdict |
+| Ledger | green-black leather book, a ruled ledger page (blue rules, red margin) | the best approach is highlighted like a ledger line; Pick is circled in green ink; Avoid is struck through in red |
+| Deco Noir | black lacquer with gold sunburst rays, cream and gold in light mode | gilded double frames with diamond corners; the verdict sits on emerald felt; the best odds is a gold token |
+
+Shared: metallic gold (gradients, glow on what matters), layered cards with
+real shadows, vignettes, and the seal mark with "CONSIGLIERE" in each header.
+The brand sheets on the canvas still show first-round type; the screens are
+the reference.
+
 ## Data flow
 
 - **Pack:** fetched on open with its ETag; unchanged → nothing downloaded.
@@ -191,6 +235,7 @@ disagreements.
 |---|---|---|
 | 0. Accounts | GitHub repo, Vercel project, Neon project, Discord application + private test server | create the Discord application and test server (their account); approve creating the Neon project (Claude can do it); connect GitHub ↔ Vercel |
 | 1. Skeleton | Next.js app, installable shell with the bottom bar and Home, Neon schema, Discord sign-in, access check, request-access flow | the family server id |
+| 1b. Brand and design foundations | logo and mark (all icon sizes, Discord app icon and bot avatar), colour palette incl. meaning colours (best, Pick, Avoid, won, lost), type, component style, icon style, voice; three complete directions shown on real screens, one chosen, then locked into tokens and components before more screens are built | pick a direction |
 | 2. Pack | producer, rules generation + check, upload; pack route; Street Intel › Card odds with calibration | — |
 | 3. Complications | verdicts + family record, logging (1-tap, 2-tap, undo/change), My logs, offline queue | — |
 | 4. Me + admin | setup sync, setup to-dos, admin page, bot DMs for requests | — |
