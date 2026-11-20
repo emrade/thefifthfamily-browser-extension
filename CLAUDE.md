@@ -159,7 +159,7 @@ archive checks: `verification/street-intel/companion/`.
   only; sign-in redirect `http://localhost:3000/api/auth/callback/discord`
   (add the Vercel one once deployed). Client secret and bot token are never
   stored in this repo; the player pastes them into Vercel.
-- Private test server "Consigliere Test" — id to be recorded
+- Private test server "Consigliere Test" (server id `1573368320470683649`) — where the bot is tested before the family server
 
 The extension stays personal; it only produces the Street Intel pack (game-rule
 data, never the player's stats or counts).
