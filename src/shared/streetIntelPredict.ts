@@ -1,5 +1,8 @@
 import catalogData from '@/shared/data/streetIntelCatalog.json';
 import conditionsData from '@/shared/data/streetIntelConditions.json';
+import { approachOdds } from '@/shared/streetIntelOdds';
+
+export { approachOdds };
 
 /**
  * A Street Intel card's exact odds before scouting it.
@@ -122,12 +125,7 @@ export function predictCard(card: PredictableCard, mods: PlayerIntelMods | null,
   for (const a of card.approaches) {
     const stat = rawStats[a.stat];
     if (typeof stat !== 'number') return null;
-    if (a.autofail) {
-      approaches.push({ key: a.key, pct: 0 });
-      continue;
-    }
-    const raw = entry.base * (1 + (shared + stat / 5 + (conditions.stats[a.stat] ?? 0)) / 100) + a.bonus;
-    approaches.push({ key: a.key, pct: Math.max(0, Math.min(95, Math.round(raw))) });
+    approaches.push({ key: a.key, pct: approachOdds(entry.base, shared, stat, conditions.stats[a.stat] ?? 0, a.bonus, a.autofail) });
   }
   return { category: entry.category, base: entry.base, conditions, approaches };
 }

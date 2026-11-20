@@ -165,3 +165,8 @@ archive checks: `verification/street-intel/companion/`.
 
 The extension stays personal; it only produces the Street Intel pack (game-rule
 data, never the player's stats or counts).
+
+After merging archives, refreshing the phone guide, or changing
+`src/shared/streetIntelOdds.ts` or the catalogue/conditions tables, offer
+`/refresh-consigliere-pack` (rebuilds, checks and uploads the pack; a formula
+change also needs an app deploy).
