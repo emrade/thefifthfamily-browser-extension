@@ -152,12 +152,14 @@ archive checks: `verification/street-intel/companion/`.
   https://github.com/emrade/tff-consigliere (private)
 - Database: Neon project `tff-consigliere` (id `twilight-paper-89044508`,
   London `aws-eu-west-2`, database `consigliere`), org `org-sweet-hat-04001937`
-- Hosting: Vercel (free `*.vercel.app` subdomain); project not created yet
+- Live: https://tff-consigliere.vercel.app (Vercel project `tff-consigliere`
+  on "emrade's projects", functions in London `lhr1`). Neon branches: `main`
+  for production, `dev` for local development.
 - Discord application "TFF Consigliere" (id `1573365451562684488`):
   https://discord.com/developers/applications/1573365451562684488: one app for
   sign-in and the bot; private bot (only the owner can add it), server installs
   only; sign-in redirect `http://localhost:3000/api/auth/callback/discord`
-  (add the Vercel one once deployed). Client secret and bot token are never
+  and `https://tff-consigliere.vercel.app/api/auth/callback/discord`. Client secret and bot token are never
   stored in this repo; the player pastes them into Vercel.
 - Private test server "Consigliere Test" (server id `1573368320470683649`), where the bot is tested before the family server
 
