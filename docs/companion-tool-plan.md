@@ -269,9 +269,12 @@ extra space, not the other way round.
 - **Installed, full screen:** opens from the home-screen icon with no browser
   bars; its own icon, name and launch screen on iPhone and Android; respects the
   notch and home-bar safe areas.
-- **App navigation:** a bottom tab bar (e.g. Avoid list · Odds · Log · Me) within
-  thumb reach; screens slide in and out; back works like the phone's back.
-  Tablet and desktop turn the tabs into a side bar.
+- **App navigation:** a bottom bar within thumb reach — **Home · My logs · Me** —
+  that stays the same as modules are added; Home has one tile per module, and
+  each module has its own sections (Street Intel: **Card odds | Complications**,
+  as in the phone guide). Screens slide in and out; back works like the phone's
+  back. Tablet and desktop turn the bar into a side bar. Details in
+  [companion-tool-build.md](./companion-tool-build.md#screens-phone-first).
 - **Bottom sheets, not pop-ups:** choices like Won/Lost, a condition picker or a
   card's details rise from the bottom and can be swiped away.
 - **Touch-first:** targets at least 44 px, no hover-only controls, no tiny text

@@ -49,18 +49,21 @@ The producer uploads with its own **Neon role that can only write
 app/
   sign-in/page.tsx                 Discord sign-in, unofficial note
   request-access/page.tsx          non-family: in-game name + note, then "waiting"
-  (app)/layout.tsx                 shell: bottom tab bar, safe areas, offline banner
-  (app)/page.tsx                   Avoid list (home) + setup to-dos on top
-  (app)/odds/page.tsx              card search → card sheet (odds, roles, calibrate)
-  (app)/log/page.tsx               my recent logs (swipe to change/remove) + "log a few at once"
-  (app)/me/page.tsx                stats, calibrations, in-game name, what we store, delete my data
-  (app)/admin/page.tsx             admins only: requests, verdict disagreements, card reports, moderation
+  (app)/layout.tsx                 shell: bottom bar (Home · My logs · Me), safe areas, offline banner
+  (app)/page.tsx                   Home: one tile per module (opens Street Intel directly while it's the only one)
+  (app)/street-intel/layout.tsx    module header + section switch [Card odds | Complications]
+  (app)/street-intel/page.tsx      Card odds: type a card name → pick → condition → percentages
+  (app)/street-intel/complications/page.tsx   the 24 complications: Pick/Avoid, family record, logging
+  (app)/logs/page.tsx              My logs: every logged result from any module (swipe to change/remove), "log a few at once"
+  (app)/me/page.tsx                in-game name, stats, calibrations, what we store, delete my data, unofficial note; admin entry for admins
+  (app)/me/admin/page.tsx          admins only: requests, verdict disagreements, card reports, moderation
   api/auth/[...all]/route.ts       Better Auth
-  api/pack/route.ts                GET active pack (ETag, cached on device)
-  api/record/route.ts              GET family record + current verdict per scenario/choice
-  api/results/route.ts             POST log · PATCH change · DELETE remove (own entries)
-  api/setup/route.ts               GET/PUT member_setup
-  api/card-reports/route.ts        POST a scouted approach of an unknown card
+  api/street-intel/pack/route.ts           GET active pack (ETag, cached on device)
+  api/street-intel/record/route.ts         GET family record + current verdict per scenario/choice
+  api/street-intel/results/route.ts        POST log · PATCH change · DELETE remove (own entries)
+  api/street-intel/card-reports/route.ts   POST a scouted approach of an unknown card
+  api/logs/route.ts                GET my logs across modules
+  api/setup/route.ts               GET/PUT member_setup (stats are game-wide; calibrations per module)
   api/admin/[...]/route.ts         decide requests, moderate, accept card reports
   api/discord/interactions/route.ts  the bot
 lib/
@@ -84,16 +87,44 @@ server id instead of a session.
 
 ## Screens (phone first)
 
-| Tab | Screen | Key interactions |
-|---|---|---|
-| **Avoid** (home) | all 24 scenarios, each row: scenario text, Pick and Avoid, family record per choice (4 choices; Stand Your Ground "not enough data yet") | search field at top; **Pick → Won** button per row (1 tap); tap a choice → bottom sheet Won / Lost (2 taps); toast with Undo · Change; setup to-do cards above the list until done |
-| **Odds** | card search (recent cards first) → card sheet | condition picker (full list + search, as the phone guide); per approach: odds, role, best marked; "Calibrate with this scout" (approach + shown odds) when the card type isn't calibrated; for unknown cards: "teach us this card" with the same input |
-| **Log** | my recent logs; "log a few at once" | swipe a row: Change · Remove; compact grid for catching up |
-| **Me** | in-game name, stats, calibrations per card type (age, re-calibrate), what we store, delete my data, unofficial note, sign out | number pads for stats; calibrations list shows "Robbery ✓ 2 days ago · Leverage — not yet" |
-| *(Admin)* | only for admins | pending requests (approve/reject), verdict disagreements, card reports (accept/reject), recent logs by member (remove) |
+Navigation is **app-level, not module-level** (decided 2026-11-20): the bottom
+bar never changes as modules are added; each module gets a tile on Home and its
+own screen with its own sections.
 
-Tablet/desktop: the tab bar becomes a side bar; the card sheet becomes a side
-panel.
+```
+┌──────────────────────────────┐     ┌──────────────────────────────┐
+│ TFF Consigliere              │     │ ‹ Street Intel               │
+│                              │     │ [ Card odds | Complications ]│
+│ ┌──────────────────────────┐ │     │                              │
+│ │ Street Intel             │ │     │ 🔍 Type a card name…         │
+│ │ Card odds · Complications│ │     │   The Appraiser Blinks       │
+│ └──────────────────────────┘ │     │                              │
+│ ┌──────────────────────────┐ │     │ Condition: Dense fog ▾       │
+│ │ (future module)          │ │     │                              │
+│ └──────────────────────────┘ │     │ Talk ............ 65%  BEST  │
+│                              │     │ Fight ........... 50%        │
+│                              │     │ Run ............. 31%        │
+│                              │     │ Steel yourself .. always fails│
+├──────────────────────────────┤     ├──────────────────────────────┤
+│  Home     My logs     Me     │     │  Home     My logs     Me     │
+└──────────────────────────────┘     └──────────────────────────────┘
+```
+
+| Where | What | Key interactions |
+|---|---|---|
+| **Home** (bottom bar) | one tile per module; opens Street Intel directly while it's the only module | module setup to-dos show on its tile ("calibrate 2 more card types") |
+| Street Intel › **Card odds** | as the phone guide: type a card name → pick → condition → each approach's percentage, best marked | condition picker (full list + search); recent cards first; "Calibrate with this scout" when the card type isn't calibrated; unknown cards: "teach us this card" with the same input |
+| Street Intel › **Complications** | as the phone guide's list: all 24, each with Pick and Avoid and the family record per choice (4 choices; Stand Your Ground "not enough data yet") | search; **Pick → Won** per row (1 tap); tap a choice → bottom sheet Won / Lost (2 taps); toast with Undo · Change |
+| **My logs** (bottom bar) | every logged result, any module, newest first | swipe a row: Change · Remove; "log a few at once" |
+| **Me** (bottom bar) | in-game name, stats (game-wide, used by every module), calibrations per card type, what we store, delete my data, unofficial note, sign out; **Admin** for admins | number pads for stats; "Robbery ✓ 2 days ago · Leverage — not yet" |
+| Me › **Admin** | pending requests, verdict disagreements, card reports, members' logs | approve/reject, accept/reject, remove |
+
+Tablet/desktop: the bottom bar becomes a side bar; the card result sits beside
+the search instead of below it.
+
+**Adding a module later:** a tile on Home, a folder under `app/(app)/<module>/`
+with its own sections, its own `api/<module>/` routes, its own `<module>_*`
+tables and pack. Bottom bar, Me, My logs and the access check stay as they are.
 
 ## Data flow
 
@@ -159,9 +190,9 @@ disagreements.
 | Step | Delivers | Needs from the player |
 |---|---|---|
 | 0. Accounts | GitHub repo, Vercel project, Neon project, Discord application + private test server | create the Discord application and test server (their account); approve creating the Neon project (Claude can do it); connect GitHub ↔ Vercel |
-| 1. Skeleton | Next.js app, installable shell with tab bar, Neon schema, Discord sign-in, access check, request-access flow | the family server id |
-| 2. Pack | producer, rules generation + check, upload; `/api/pack`; Odds tab with calibration | — |
-| 3. Avoid list | verdicts + family record, logging (1-tap, 2-tap, undo/change), Log tab, offline queue | — |
+| 1. Skeleton | Next.js app, installable shell with the bottom bar and Home, Neon schema, Discord sign-in, access check, request-access flow | the family server id |
+| 2. Pack | producer, rules generation + check, upload; pack route; Street Intel › Card odds with calibration | — |
+| 3. Complications | verdicts + family record, logging (1-tap, 2-tap, undo/change), My logs, offline queue | — |
 | 4. Me + admin | setup sync, setup to-dos, admin page, bot DMs for requests | — |
 | 5. Bot | slash commands on the test server | — |
 | 6. Finish | unknown-card reports, data rights, nightly backup + a test restore, phone testing | try it on their phone |
