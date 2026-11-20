@@ -111,6 +111,31 @@ for (const card of known) {
 }
 console.log(`2. calibration: ${windows} scouts replayed, ${misses.length} wrong`);
 
+// 4. Teaching unknown cards: with a window a scout of another card gave, the
+//    true bonus must always be among those that fit what the game showed.
+let taught = 0, unique = 0;
+const teachMisses = [];
+for (const card of known) {
+  for (const condition of Object.values(pack.conditions)) {
+    for (const stats of STAT_SETS.slice(1)) {
+      for (const shared of [3.3, 27.9, 61.5, 118.2]) {
+        const truth = appOdds.cardOdds(card, condition, stats, { lo: shared - 1e-6, hi: shared + 1e-6 });
+        // A realistic window: about 3 points wide around the true bonus.
+        const win = { lo: shared - 1.7, hi: shared + 1.3 };
+        for (const a of card.approaches) {
+          const shown = truth.find((x) => x.key === a.key).low;
+          if (shown >= 95) continue;
+          const fits = appOdds.rolesThatFit(card, condition, a.stat, stats, win, shown);
+          taught++;
+          if (fits.length === 1) unique++;
+          if (!fits.includes(a.role)) teachMisses.push(`${card.name} ${a.key}: ${a.role} not in [${fits}] for ${shown}%`);
+        }
+      }
+    }
+  }
+}
+console.log(`4. teaching: ${taught} approaches, true bonus always among the fits: ${teachMisses.length === 0}, exactly one fits: ${((100 * unique) / taught).toFixed(1)}%`);
+
 const verdictDiffs = [];
 const tally = JSON.parse(readFileSync(packPath.replace(/\.json$/, '.tally.json'), 'utf8'));
 for (const [scenario, cells] of Object.entries(tally)) {
@@ -124,7 +149,7 @@ for (const [scenario, cells] of Object.entries(tally)) {
 }
 console.log(`3. complication verdicts: ${Object.keys(tally).length} scenarios, ${verdictDiffs.length} different`);
 
-const problems = [...diffs, ...misses, ...verdictDiffs];
+const problems = [...diffs, ...misses, ...verdictDiffs, ...teachMisses];
 if (problems.length) {
   console.error(problems.slice(0, 15).join('\n'));
   process.exit(1);

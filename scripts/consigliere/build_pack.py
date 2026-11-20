@@ -39,6 +39,17 @@ STATS = {"strength", "defence", "agility", "dexterity"}
 RECENT_MS = 45 * 86_400_000
 
 
+SMALL_WORDS = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "with"}
+
+
+def title_case(key):
+    """A display name for a title never seen on a board (the catalogue only has
+    lower-case keys): capitalise each word, except small words after the first.
+    Unlike str.title(), leaves "quartermaster's" as "Quartermaster's"."""
+    words = key.split(" ")
+    return " ".join(w if (i and w in SMALL_WORDS) else w[:1].upper() + w[1:] for i, w in enumerate(words))
+
+
 def role_of(a):
     if a.get("autofail"):
         return "always_fails"
@@ -70,7 +81,7 @@ def main():
     pack_cards = {}
     for key, entry in sorted(catalog.items()):
         card = {
-            "name": names.get(key, key.title()),
+            "name": names.get(key, title_case(key)),
             "base": entry["base"],
             "category": entry["category"],
             "level": entry["level"],
