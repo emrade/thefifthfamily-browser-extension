@@ -33,7 +33,7 @@ tool collects and runs on **its own** play data.
 | Condition effects (38 sentences) | game rules (learned from this player's scouts) | yes |
 | Card approaches (stat, bonus, always-fails) | game rules | yes. 168 of 240 cards seen so far; no title's approaches changed in the 45 days to 2026-11-20 (they did vary before 2026-09-06) |
 | Complication win/loss record | this player's play | **verdicts only** (Pick/Avoid), never counts — see [Data ownership](#data-ownership) |
-| Card value (drops, cash) | this player's play | open — see decision 15 |
+| Card value (drops, cash) | this player's play | not in version 1 — didn't hold across levels (decision 15) |
 | Stats and Street Intel bonuses | each player's own | entered by the member, saved to their account (synced across devices and the bot) |
 
 How much a player's stats matter (measured on the guide's data, 6,552 card ×
@@ -73,15 +73,10 @@ How each feature fits the rule:
    adds. Fast path: type 2–3 letters, tap the condition, done; recent cards on
    top; bonuses calibrated once per card type (see
    [Calibrating a member's bonuses](#calibrating-a-members-bonuses-tested-2026-11-20)).
-3. **Card value — a label inside card odds**, not a separate feature (decided
-   2026-11-20): "Worth it / OK / Skip" next to the go/skip call, from the
-   player's drop history. Every label has an **info breakdown saying why**, in
-   words rather than the player's numbers: e.g. "Drops gold or legendary items
-   often for its risk level, so it earns more per Stamina than its cash reward
-   suggests", or "Pays mostly in cash; valuable drops are rare", plus how well
-   tested the label is ("based on many tries" / "few tries — treat as a
-   guess"). Only shown when the label holds for other player levels —
-   decision 15.
+3. ~~Card value — a label inside card odds~~ — **left out of version 1**
+   (tested 2026-11-20, see [Card value check](#card-value-check-2026-11-20)):
+   per-card labels from the player's drops were no better than chance, and the
+   ranking of risk tiers flipped as the player levelled up.
 4. **Logging results — optional, but a first-class, effortless flow** (the
    player's priority, 2026-11-20). Optional means the tool never *depends* on
    it — not that it's tucked away. Logging must be so easy that doing it is the
@@ -170,9 +165,7 @@ between refreshes. Members need the verdict, not the counts.
 - Nothing from the player's archive is counted in the tool's tally, so the player
   can log their own manual results through the tool like anyone else without
   double counting.
-- Card value follows the same rule: if it's built from the player's archive, it
-  can only ship as verdicts ("worth it" / "weak"), not numbers — decision 15.
-  Logging drops per attempt is probably too much work for members.
+- Card value was tested and left out of version 1 (decision 15).
 
 ## The fourth complication choice (found 2026-11-20)
 
@@ -266,6 +259,33 @@ Members use web, phones, tablets, different browsers and the game's own app.
   (Discord dropdowns cap at 25 options, there are 38 conditions), one-tap
   changes, richer results, remembered bonuses. The bot wins for quick actions
   inside Discord.
+
+## Look and feel: native-feeling mobile app (decided 2026-11-20)
+
+Mobile-first and installable (PWA), designed to feel like a phone app, **not a
+website shrunk to fit**. Desktop and tablet get the same app laid out for the
+extra space, not the other way round.
+
+- **Installed, full screen:** opens from the home-screen icon with no browser
+  bars; its own icon, name and launch screen on iPhone and Android; respects the
+  notch and home-bar safe areas.
+- **App navigation:** a bottom tab bar (e.g. Avoid list · Odds · Log · Me) within
+  thumb reach; screens slide in and out; back works like the phone's back.
+  Tablet and desktop turn the tabs into a side bar.
+- **Bottom sheets, not pop-ups:** choices like Won/Lost, a condition picker or a
+  card's details rise from the bottom and can be swiped away.
+- **Touch-first:** targets at least 44 px, no hover-only controls, no tiny text
+  links; swipe on a log entry to change or remove it.
+- **Feels instant:** the pack is on the device, so lookups need no loading;
+  logging updates the screen at once and syncs behind the scenes; skeleton
+  placeholders instead of spinners where something does load.
+- **System type and controls:** the phone's own font (San Francisco / Roboto),
+  native inputs and number pads, light and dark following the phone's setting.
+- **Small touches:** a short vibration on logging where the phone supports it
+  (Android; iPhone browsers don't allow it), no pull-to-refresh bounce where it
+  would fight the app's own scrolling.
+- **Unofficial note** (decision 1) on the sign-in screen and in "Me", not on
+  every screen.
 
 ## Access
 
@@ -446,7 +466,6 @@ versioned bundle, e.g. `2026-11-20`.
 | Cards | title, category, level, base odds, approaches (stat, bonus, always-fails) | `src/shared/data/streetIntelCatalog.json` + archived boards |
 | Conditions | each sentence's effect | `src/shared/data/streetIntelConditions.json` |
 | Complication verdicts | per scenario: Pick and Avoid choices only, **no counts** | archive (pairing as `build_complication_seed.py`, rule as `describeComplicationChoices`) |
-| Card value | design open (decision 15); verdicts only if from the archive | archive (as `analyze_drops_by_card.py`) |
 | Rules | odds formula + Pick/Avoid rule as one small script | compiled from the extension's own TS (`streetIntelPredict.ts`, `streetIntelComplications.ts`) |
 
 Never in the pack: stats, bonuses, cash, bank, history, or counts of any kind
@@ -553,7 +572,7 @@ cards with new conditions.
 | `version` | text, primary key | e.g. `2026-11-20`; a second build the same day gets a suffix (`2026-11-20.2`) |
 | `created_at` | timestamptz, default now() | |
 | `data_until` | timestamptz | newest archive row the pack was built from |
-| `pack` | jsonb | cards, conditions, complication verdicts, card value |
+| `pack` | jsonb | cards, conditions, complication verdicts |
 | `rules` | text | the compiled rules script |
 | `summary` | jsonb | the builder's counts (cards known, …) for comparing versions — admin only, never served to members |
 | `is_active` | boolean, default false | exactly one active: a partial unique index on `(is_active) where is_active` |
@@ -678,7 +697,7 @@ accepted cards go into the next pack.
 
 | Phase | What | Needs |
 |---|---|---|
-| 1 | Web page: card odds, the Avoid list with logging + family record, card value labels (if they hold); setup to-dos; Discord sign-in, access requests, admin page; service + Neon; nightly backup; the pack refresh skill + a CLAUDE.md reminder to offer it after archive merges. **Discord bot built in the same project** (commands, logging, admin notifications), tested on a private test server | Discord app (one app serves both sign-in and the bot), Vercel account, Neon database, GitHub account, server ID |
+| 1 | Web page: card odds, the Avoid list with logging + family record; setup to-dos; Discord sign-in, access requests, admin page; service + Neon; nightly backup; the pack refresh skill + a CLAUDE.md reminder to offer it after archive merges. **Discord bot built in the same project** (commands, logging, admin notifications), tested on a private test server | Discord app (one app serves both sign-in and the bot), Vercel account, Neon database, GitHub account, server ID |
 | 1b | Bot installed in the family server | someone with "Manage Server" there (the player once admin, or an admin doing the install) |
 | 1+ (nice to have) | Data rights page + delete my data; unknown-card reports (also as a bot command) | — |
 
@@ -726,10 +745,8 @@ Decided items are kept, struck through, so the reasoning isn't lost.
 14. ~~Database and logging details~~ — **decided** (left to Claude, by common
     practice): verdict switches at 10 family results with 3+ per choice; keep
     `display_name` (needed to tell applicants apart); 20 logs per member per hour.
-15. **Card value labels:** shown inside card odds (decided). Still to check
-    before building: whether "worth it / OK / skip" from this player's drops
-    holds for players at other levels, and the minimum tries per card before
-    showing a label. If it doesn't hold, leave it out.
+15. ~~Card value labels~~ — **left out of version 1** (tested 2026-11-20): the
+    labels didn't hold. See [Card value check](#card-value-check-2026-11-20).
 16. ~~In-game usernames~~ — **decided: a setup to-do on the main page**
     (nicknames aren't set to in-game names).
 18. ~~Web address~~ — **decided: a free `*.vercel.app` subdomain.** Everything
@@ -802,8 +819,46 @@ How members fill it in:
    accepted when two members agree, or an admin approves it. Accepted cards go
    into the next pack.
 
+**Tested end to end (2026-11-20)** on every scout with the current layout
+(10,424): each scout was treated as an unknown card, with the bonuses
+calibrated from a *different* card of the same type scouted in the previous 6
+hours.
+- Revealed approaches: **87.1% worked out to exactly one role, 12.7% narrowed
+  to two (the right one among them), 0 wrong**, 19 of 10,599 (0.2%) fit no role
+  (flagged rather than guessed).
+- An always-fails approach always shows **0%** when revealed (3,248 of 3,248),
+  so it's recognised outright.
+- A scout reveals 1 approach (8,295 scouts) or 2 (2,129) for this player, so a
+  card needs several scouts: most cards had all four roles after **2–6 scouts**
+  (median about 4), counting every scout of that card. Pooling every member's
+  scouts makes that quick. The rule "each role appears once per card" settles
+  most two-way cases once other approaches are known.
+
 Caveat: earlier boards (before 2026-09-06) had other bonus values (5–16), so if
 the game changes the layout again this check must be re-run.
+
+## Card value check (2026-11-20)
+
+Question: can "Worth it / OK / Skip" labels from the player's drop history be
+trusted by other players? Data: all 4,906 attempts 2026-08-10 → 11-20 (player
+levels 55–147), drops valued as `analyze_drops_by_card.py` does, joined to card
+titles; script in the session scratchpad.
+
+- **Labels per card were noise.** Splitting recent play (levels 130–147) into
+  two halves in time, the 28 cards with 10+ tries in both halves ranked almost
+  unrelated (rank correlation 0.11), and only 9 of 28 landed in the same
+  Worth it / OK / Skip third both times — exactly what chance gives (9.3).
+- **Value changes with level (or time — with one player they can't be
+  separated).** Drop value per Stamina rose from ~$19–69k (levels 55–109) to
+  ~$180–300k (levels 130+), and the best risk tier changed with it: extreme at
+  levels 55–109, then low/extreme/high close at 110–129, then medium at 130+.
+- Titles within a tier do differ by more than chance in gold-or-better drop
+  rates, but that is likely mixed up with when (at what level) each title was
+  played.
+
+Decision: card value is **not in version 1**. Revisit only with data from
+several players at different levels — e.g. if the tool ever collects drop
+results, which members are unlikely to log by hand.
 
 ## Backups (checked 2026-11-20)
 
@@ -888,10 +943,6 @@ player whose bonuses change slowly drifts less.
 
 ## Unverified
 
-- **Working out an unknown card's approaches from a member's scouts:** the
-  layout finding makes it straightforward (see [Cards the pack doesn't
-  know](#cards-the-pack-doesnt-know-2026-11-20)), but it hasn't been run
-  end-to-end on real scouts yet.
 - **Whether complication outcomes are the same for every player**, not just this
   account. Family logs will show it: verdict disagreements on the admin page.
 - **Artifact sharing** — whether members without Claude can open a shared link
