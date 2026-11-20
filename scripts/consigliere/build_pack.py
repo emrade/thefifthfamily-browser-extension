@@ -15,10 +15,14 @@ Fails rather than guessing when a board shows an approach outside the four
 known roles (the game changed the layout) or a title changed approaches in
 the last 45 days.
 
+Also writes OUT.tally.json next to it: the player's own complication record
+per scenario and choice, which scripts/consigliere/add_verdicts.mjs turns
+into Pick/Avoid verdicts with the extension's rule. That file holds counts:
+it stays on this Mac and is never uploaded.
+
 Run: python3 -I scripts/consigliere/build_pack.py OUT.json
 """
 
-import concurrent.futures
 import json
 import sys
 from collections import defaultdict
@@ -28,8 +32,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "verification"))
 sys.path.insert(0, str(REPO / "verification/street-intel"))
-from archive_paths import find_archives  # noqa: E402
-from build_mobile_guide import scan  # noqa: E402
+from build_mobile_guide import collect, complication_tally  # noqa: E402
 
 ROLES = {25: "+25", 10: "+10", -10: "-10"}
 STATS = {"strength", "defence", "agility", "dexterity"}
@@ -44,12 +47,8 @@ def role_of(a):
 
 def main():
     out = Path(sys.argv[1])
-    files = find_archives()
-    boards = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=6) as pool:
-        for path, (events, _stats) in zip(files, pool.map(scan, files)):
-            boards.extend((ts, data) for ts, kind, data in events if kind == "board")
-            print(f"  {Path(path).name}: {sum(1 for e in events if e[1] == 'board')} boards", file=sys.stderr)
+    uniq, _stats = collect()
+    boards = [(ts, data) for ts, kind, data in uniq if kind == "board"]
     if not boards:
         raise SystemExit("No Street Intel boards in the archives: nothing to build from.")
     boards.sort(key=lambda b: b[0])
@@ -107,6 +106,10 @@ def main():
         },
     }
     out.write_text(json.dumps(pack, separators=(",", ":"), ensure_ascii=False))
+    tally = complication_tally(uniq, ("fight", "stand_ground", "run", "talk"))
+    tally_path = out.with_suffix(".tally.json")
+    tally_path.write_text(json.dumps(tally, ensure_ascii=False))
+    print(f"complication record: {len(tally)} scenarios -> {tally_path} (stays local)", file=sys.stderr)
     known = sum(1 for c in pack_cards.values() if c["approaches"])
     print(f"pack {version}: {len(pack_cards)} cards ({known} with approaches), {len(pack['conditions'])} conditions, "
           f"data until {pack['dataUntil']} -> {out} ({out.stat().st_size // 1024} KB)", file=sys.stderr)

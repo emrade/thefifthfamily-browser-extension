@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * Generates TFF Consigliere's odds rules from this extension's own formula
- * (`approachOdds` in src/shared/streetIntelOdds.ts), so the two can never
- * drift: the app's copy is compiled from this one, never edited by hand.
+ * Generates TFF Consigliere's rules from this extension's own code, so the
+ * two can never drift: the odds formula (src/shared/streetIntelOdds.ts) and
+ * the complication Pick/Avoid rule (src/shared/streetIntelComplicationRule.ts).
+ * The app's copy is compiled from these, never edited by hand.
  *
  * Writes <app>/src/lib/rules/street-intel.generated.js with RULES_VERSION, a
  * hash of the compiled code. Packs carry the RULES_VERSION they were built
@@ -22,7 +23,13 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const app = process.argv[2] ?? process.env.CONSIGLIERE_DIR ?? '/Users/emrade/Dev/Apps/nextjs/tff-consigliere';
 
 const result = await build({
-  stdin: { contents: "export { approachOdds } from '@/shared/streetIntelOdds';", resolveDir: repo, loader: 'ts' },
+  stdin: {
+    contents:
+      "export { approachOdds } from '@/shared/streetIntelOdds';\n" +
+      "export { assessChoices, POOLED_WIN_RATE, PRIOR_WEIGHT, BLOCKED_MIN_ATTEMPTS } from '@/shared/streetIntelComplicationRule';",
+    resolveDir: repo,
+    loader: 'ts',
+  },
   alias: { '@': join(repo, 'src') },
   bundle: true,
   write: false,
@@ -38,7 +45,7 @@ const code = result.outputFiles[0].text
   .filter((line) => !/^\s*\/\//.test(line)) // esbuild's source-path comments
   .join('\n')
   .trim();
-if (/streetIntel|shared\/|\.json/.test(code)) throw new Error('compiled rules still reference the source; refusing to write');
+if (/streetIntel|shared\/|\.json|extension/i.test(code)) throw new Error('compiled rules still reference the source; refusing to write');
 const version = createHash('sha256').update(code).digest('hex').slice(0, 12);
 
 const out = join(app, 'src/lib/rules/street-intel.generated.js');

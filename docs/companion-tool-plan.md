@@ -153,11 +153,22 @@ between refreshes. Members need the verdict, not the counts.
 - **Useful from day one:** at launch every known scenario already shows Pick
   and Avoid — the part members act on. The family record next to it starts
   empty ("no family results yet") and fills in as members log.
-- **Switching a verdict to family data** (decided 2026-11-20): a scenario's
-  verdict comes from the family's data, using the same rule as the extension
-  (`describeComplicationChoices`), once the scenario has **at least 10 family
-  results** and **every choice has at least 3**. A family "Avoid" also needs the
-  extension's own bar: 0 wins in 2+ tries. Until then the seed verdict stands.
+- **Members log what they actually chose**, whatever the advice said: the
+  advice is a guide, and the logs are how it improves.
+- **Family data takes over mark by mark** (decided 2026-11-20, replacing "at
+  least 10 results and every choice at least 3", which would almost never be
+  met because members rarely pick an Avoided choice):
+  - *Pick:* from the seed until the scenario has 10 family results, then the
+    family's best choice by the extension's scoring (shrunk toward the pooled
+    rate, so a 1/1 can't beat a 14/15). Only choices the family has tried, and
+    never an Avoided one. If the seeded Pick loses its first 2 family tries,
+    the family's best replaces it early.
+  - *Avoid:* a seeded Avoid stays until the family tries it 3+ times with at
+    least one win, then it's lifted. The family adds its own Avoid with the
+    extension's bar (0 wins in 2+ tries).
+  - Stand Your Ground gets its marks the same way, from family data only.
+  The seed is a starting point that fades as members log, which also suits
+  opening the tool beyond the family later.
 - **Disagreement is flagged, not flipped silently.** If the family's verdict
   differs from the seed, it shows on the admin page for the player to review.
   Early on, the player's data is far larger, so a disagreement is more likely bad
@@ -228,9 +239,9 @@ Ways it's kept effortless:
    Remove asks first ("Remove this result?"), like every action that deletes
    or ends something (rule, 2026-11-20: sign out, delete my data, remove,
    revoke and reject always confirm; quick reversible actions use Undo).
-6. **Catching up later.** "Log a few at once": the 24 scenarios as compact
-   rows, each with the four choices and Won/Lost — for a member who played
-   several and logs them afterwards.
+6. ~~Catching up later ("log a few at once")~~ dropped (2026-11-20): the game
+   keeps no complication history, so logging later relies on memory. Log
+   right after the complication; the list already allows several in a row.
 
 **Details:**
 - Buttons at least 44 px tall (the common touch-target minimum); Won and Lost are far enough apart not to mis-tap.

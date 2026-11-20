@@ -1,3 +1,4 @@
+import { assessChoices, POOLED_WIN_RATE } from './streetIntelComplicationRule';
 import type { ComplicationChoiceKey, ComplicationTypeStats } from './types';
 
 /**
@@ -59,16 +60,6 @@ const SEED_RECORDS: Record<string, Partial<Record<ComplicationChoiceKey, [number
   'The client starts panicking.': { fight: [0, 1], run: [10, 12], talk: [8, 9] },
 };
 
-/** Pooled win rate of each choice in scenarios where it *isn't* blocked
- *  (same analysis) — the prior a scenario's own small sample is shrunk
- *  toward when ranking choices. */
-const POOLED_WIN_RATE: Record<ComplicationChoiceKey, number> = { fight: 0.85, run: 0.83, talk: 0.9 };
-const PRIOR_WEIGHT = 2;
-/** Zero wins in at least this many tries = blocked. Replayed chronologically
- *  over the full history (only data available before each event), this rule
- *  cut expected losses from $30.7M to ~$10M. */
-const BLOCKED_MIN_ATTEMPTS = 2;
-
 export const COMPLICATION_CHOICES: ComplicationChoiceKey[] = ['fight', 'run', 'talk'];
 
 /** The game has served the same scenario with both a curly and a straight
@@ -118,14 +109,7 @@ export function describeComplicationChoices(
   typeStats: ComplicationTypeStats | undefined,
 ): { choices: ComplicationChoiceAssessment[]; best: ComplicationChoiceKey | null } {
   const s = normalizeScenario(scenario);
-  const choices = COMPLICATION_CHOICES.map((choice) => {
-    const { wins, attempts } = cellRecord(s, choice, typeStats);
-    const blocked = attempts >= BLOCKED_MIN_ATTEMPTS && wins === 0;
-    const score = blocked ? 0 : (wins + POOLED_WIN_RATE[choice] * PRIOR_WEIGHT) / (attempts + PRIOR_WEIGHT);
-    return { choice, wins, attempts, blocked, score };
-  });
-  const best = choices.filter((c) => !c.blocked).sort((a, b) => b.score - a.score)[0]?.choice ?? null;
-  return { choices, best };
+  return assessChoices(COMPLICATION_CHOICES, (choice) => cellRecord(s, choice, typeStats), POOLED_WIN_RATE);
 }
 
 export function isBlockedChoice(scenario: string, choice: ComplicationChoiceKey, typeStats: ComplicationTypeStats | undefined): boolean {

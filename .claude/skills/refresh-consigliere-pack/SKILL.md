@@ -21,13 +21,18 @@ archive data).
    days. That means the game changed the layout: stop and tell the player;
    re-run `verification/street-intel/companion/verify_unknown_cards.py`
    before changing anything.
-2. **Regenerate the rules**: `node scripts/consigliere/build_rules.mjs`.
+   It also writes `<scratch>/pack.tally.json`, your own complication record
+   (counts): it stays on this Mac, never goes into the pack or the app.
+   Add the verdicts (Pick/Avoid only, from the extension's own rule):
+   `node scripts/consigliere/add_verdicts.mjs <scratch>/pack.json`
+2. **Regenerate the rules**: `node scripts/consigliere/build_rules.mjs`
+   (the odds formula and the complication rule).
    It prints the rules version. Note whether
    `src/lib/rules/street-intel.generated.js` in the app changed
    (`git -C <app> status --short`).
 3. **Check**: `node scripts/consigliere/check_rules.mjs <scratch>/pack.json`.
-   Must end with `0 differences`. Anything else: stop and report; never
-   upload.
+   Must end with `0 differences` (odds, calibration, complication verdicts).
+   Anything else: stop and report; never upload.
 4. **Upload to dev**: `python3 -I scripts/consigliere/upload_pack.py <scratch>/pack.json dev`
 5. **If the rules changed**, deploy them before the production upload, or
    production members would see "Card data isn't ready" until the deploy
@@ -37,7 +42,8 @@ archive data).
 6. **Upload to production**: `python3 -I scripts/consigliere/upload_pack.py <scratch>/pack.json main`
    Members see the new pack within about five minutes (server cache).
 7. **Report**: pack version, cards known (of 240), conditions, data until,
-   whether the rules changed, and the check result. Delete the scratch pack.
+   whether the rules changed, and the check result. Delete the scratch pack
+   and its tally file.
 
 Credentials: `.env.consigliere` (git-ignored, mode 600) holds
 `PACK_UPLOAD_URL_MAIN` / `PACK_UPLOAD_URL_DEV` for the `pack_uploader` role,

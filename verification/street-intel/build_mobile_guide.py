@@ -110,8 +110,9 @@ def scan(path):
     return events, stats
 
 
-def main():
-    out = Path(sys.argv[1])
+def collect():
+    """Every archive's events, de-duplicated and in time order, plus the
+    newest stats. Shared with scripts/consigliere/build_pack.py."""
     files = find_archives()
     events, stats = [], None
     with concurrent.futures.ProcessPoolExecutor(max_workers=6) as pool:
@@ -129,6 +130,37 @@ def main():
             seen.add(key)
             uniq.append(e)
     uniq.sort(key=lambda e: e[0])
+    return uniq, stats
+
+
+def complication_tally(uniq, choices=CHOICES):
+    """{scenario: {choice: [wins, attempts]}}: every resolved complication,
+    paired with its attempt's scenario by opportunity id, as
+    build_complication_seed.py does. The first resolution per opportunity
+    counts; pre-Phase-One rows (still returning comp_score) are skipped."""
+    scen_by_opp, done_opp = {}, set()
+    tally = defaultdict(lambda: {c: [0, 0] for c in choices})
+    for _ts, kind, data in uniq:
+        if kind == "attempt":
+            opp, _rank, scen = data
+            if scen and opp is not None:
+                scen_by_opp[opp] = scen
+        elif kind == "comp":
+            opp, choice, success, pre_patch = data
+            if opp is None or opp in done_opp:
+                continue
+            done_opp.add(opp)
+            if pre_patch or choice not in choices or opp not in scen_by_opp:
+                continue
+            cell = tally[scen_by_opp[opp]][choice]
+            cell[1] += 1
+            cell[0] += 1 if success else 0
+    return tally
+
+
+def main():
+    out = Path(sys.argv[1])
+    uniq, stats = collect()
 
     catalog = json.loads((REPO / "src/shared/data/streetIntelCatalog.json").read_text())["cards"]
     conditions = json.loads((REPO / "src/shared/data/streetIntelConditions.json").read_text())["conditions"]
@@ -140,8 +172,7 @@ def main():
     # only boards from the last 45 days decide whether a title still varies.
     recent_from = uniq[-1][0] - 45 * 86_400_000
     mods = None  # rank, prestige, collection, recon, mastery{category: (value, ts)}, scoutAt, rankAt
-    scen_by_opp, done_opp = {}, set()
-    tally = defaultdict(lambda: {c: [0, 0] for c in CHOICES})
+    tally = complication_tally(uniq)
     last_attempt = 0
 
     for ts, kind, data in uniq:
@@ -173,23 +204,11 @@ def main():
                 "rankAt": ts,
             }
         elif kind == "attempt":
-            opp, rank, scen = data
+            _opp, rank, _scen = data
             last_attempt = ts
             if mods and isinstance(rank, int) and rank * 2 != mods["rank"]:
                 mods["rank"] = rank * 2
                 mods["rankAt"] = ts
-            if scen and opp is not None:
-                scen_by_opp[opp] = scen
-        elif kind == "comp":
-            opp, choice, success, pre_patch = data
-            if opp is None or opp in done_opp:
-                continue
-            done_opp.add(opp)
-            if pre_patch or choice not in CHOICES or opp not in scen_by_opp:
-                continue
-            cell = tally[scen_by_opp[opp]][choice]
-            cell[1] += 1
-            cell[0] += 1 if success else 0
 
     if not mods or not stats:
         raise SystemExit("No scout or stats found in the archives — nothing to build from.")

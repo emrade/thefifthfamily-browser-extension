@@ -8,6 +8,9 @@
  *    generated rules) vs `predictCard` here (src/shared/streetIntelPredict.ts).
  *    Also catches a pack whose base odds or conditions differ from the
  *    extension's tables.
+ * 3. Complication verdicts: the pack's Pick/Avoid for every scenario must be
+ *    what the extension's own `describeComplicationChoices` says on the same
+ *    results (PACK.tally.json, which stays local).
  * 2. Calibration: for a known shared bonus, the window the app works out from
  *    each approach's shown odds must contain it, and the odds it then shows
  *    must include the true ones.
@@ -35,6 +38,7 @@ async function bundle(entry, root, name) {
 }
 const appOdds = await bundle(join(app, 'src/lib/street-intel/odds.ts'), app, 'app');
 const ext = await bundle(join(repo, 'src/shared/streetIntelPredict.ts'), repo, 'ext');
+const extComp = await bundle(join(repo, 'src/shared/streetIntelComplications.ts'), repo, 'extcomp');
 
 const BONUS = { '+25': 25, '+10': 10, '-10': -10, always_fails: 0 };
 const STAT_SETS = [
@@ -107,7 +111,20 @@ for (const card of known) {
 }
 console.log(`2. calibration: ${windows} scouts replayed, ${misses.length} wrong`);
 
-const problems = [...diffs, ...misses];
+const verdictDiffs = [];
+const tally = JSON.parse(readFileSync(packPath.replace(/\.json$/, '.tally.json'), 'utf8'));
+for (const [scenario, cells] of Object.entries(tally)) {
+  // A name the extension has no seed for, so only these results count.
+  const fresh = `Check: ${scenario}`;
+  const typeStats = { [fresh]: Object.fromEntries(['fight', 'run', 'talk'].map((c) => [c, { attempts: cells[c]?.[1] ?? 0, successes: cells[c]?.[0] ?? 0 }])) };
+  const { choices, best } = extComp.describeComplicationChoices(fresh, typeStats);
+  const want = { pick: best, avoid: choices.filter((c) => c.blocked).map((c) => c.choice) };
+  const got = pack.complications?.[scenario];
+  if (JSON.stringify(got) !== JSON.stringify(want)) verdictDiffs.push(`"${scenario}": pack ${JSON.stringify(got)}, extension ${JSON.stringify(want)}`);
+}
+console.log(`3. complication verdicts: ${Object.keys(tally).length} scenarios, ${verdictDiffs.length} different`);
+
+const problems = [...diffs, ...misses, ...verdictDiffs];
 if (problems.length) {
   console.error(problems.slice(0, 15).join('\n'));
   process.exit(1);
