@@ -224,9 +224,10 @@ Ways it's kept effortless:
 5. **Undoing or changing any time.** A member can undo or correct any of their
    own entries whenever they notice — not only within the toast's 10 seconds:
    "My recent logs" lists their entries with **Change** (pick a different
-   choice or flip Won/Lost) and **Remove** on each. No confirmation dialogs;
-   every action shows the same Undo toast, so even a mistaken Remove is one tap
-   to reverse.
+   choice or flip Won/Lost) and **Remove** on each. Change shows an Undo toast;
+   Remove asks first ("Remove this result?"), like every action that deletes
+   or ends something (rule, 2026-11-20: sign out, delete my data, remove,
+   revoke and reject always confirm; quick reversible actions use Undo).
 6. **Catching up later.** "Log a few at once": the 24 scenarios as compact
    rows, each with the four choices and Won/Lost — for a member who played
    several and logs them afterwards.
