@@ -9,6 +9,20 @@ rather than in a separate `chore: bump version` commit).
 To keep this current: add a new `## [x.y.z] - YYYY-MM-DD` section at the top
 whenever a version is bumped for release, listing what actually shipped.
 
+## [0.69.2] - 2026-11-21
+
+### Fixed
+- Street Intel pre-scout odds (Go blind, Smart exact odds, the in-game odds
+  display) now keep your bonuses current from the Street Intel page itself:
+  rank, prestige, recon and each card type's mastery. They used to update
+  only from scouts, so with Go blind (no scouts) they stayed at 1 November's
+  values while recon and mastery grew, and odds read 2 to 5 points low on
+  most cards. Collection still comes from scouts.
+
+### Changed
+- Internal: the odds formula and the complication rule live in their own
+  files, shared with the family companion tool. No change in behaviour.
+
 ## [0.69.1] - 2026-11-16
 
 ### Fixed
