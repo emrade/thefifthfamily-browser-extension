@@ -17,7 +17,9 @@ export { approachOdds };
  *   same values (`streetIntelConditions.json`, learned from every scout).
  * - rank, prestige, collection, recon, mastery — player-level, the same on
  *   every card (mastery per category), carried over from the latest scout
- *   (`PlayerIntelMods`); rank is also refreshed from every attempt.
+ *   (`PlayerIntelMods`); rank is also refreshed from every attempt, and rank,
+ *   prestige, recon and mastery from every Street Intel page load
+ *   (`@/shared/streetIntelPageBonuses`). Collection comes only from scouts.
  * - stat — the player's own base stat ÷ 5 (stats.php).
  *
  * Replaying every scout since 2026-08-21 from only what was known before it
@@ -56,7 +58,7 @@ export function cardConditions(modifier: string | null): CardConditions | null {
   return CONDITIONS[modifier ?? ''] ?? null;
 }
 
-/** The player's own modifiers, from the latest scout (any card). */
+/** The player's own modifiers, from the latest scout (any card) or Street Intel page. */
 export interface PlayerIntelMods {
   rank: number;
   prestige: number;

@@ -295,7 +295,7 @@ export const storage = {
 
   getStreetIntelAutoStatus: () => get<StreetIntelAutoStatus | null>(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, null),
   setStreetIntelAutoStatus: (v: StreetIntelAutoStatus) => set(STORAGE_KEYS.STREET_INTEL_AUTO_STATUS, v),
-  /** The player's own Street Intel modifiers from the latest scout, for
+  /** The player's own Street Intel modifiers, from the latest scout or Street Intel page, for
    *  pre-scout odds — see `@/shared/streetIntelPredict`. Background-only writer
    *  (background/features/streetIntel/playerMods.ts). */
   getStreetIntelPlayerMods: () => get<PlayerIntelMods | null>(STORAGE_KEYS.STREET_INTEL_PLAYER_MODS, null),

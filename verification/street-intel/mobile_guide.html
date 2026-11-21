@@ -365,8 +365,12 @@ function renderMe() {
   const m = D.mods;
   const mast = Object.entries(m.mastery).sort().map(([c, v]) => `<dt>Mastery · ${esc(c)}</dt><dd>+${v[0]}</dd>`).join('');
   $('modsList').innerHTML = `<dt>Rank</dt><dd>+${m.rank}</dd><dt>Prestige</dt><dd>+${m.prestige}</dd><dt>Collection</dt><dd>+${m.collection}</dd><dt>Recon</dt><dd>+${m.recon}</dd>${mast}`;
-  const age = daysAgo(m.scoutAt);
-  $('modsNote').innerHTML = `From your last scout, ${fmtDate(m.scoutAt)}${age >= 7 ? ` <span class="stale">(${age} days ago)</span>` : ''}. Rank also updates from every attempt. Mastery and collection can grow without a scout, so if odds look low, scout one card on PC and refresh the guide.`;
+  const from = m.pageAt && m.pageAt > m.scoutAt ? m.pageAt : m.scoutAt;
+  const age = daysAgo(from);
+  $('modsNote').innerHTML = (m.pageAt && m.pageAt > m.scoutAt
+    ? `From your Street Intel page, ${fmtDate(m.pageAt)}; collection from your last scout, ${fmtDate(m.scoutAt)}.`
+    : `From your last scout, ${fmtDate(m.scoutAt)}.`)
+    + `${age >= 7 ? ` <span class="stale">(${age} days ago)</span>` : ''} Refresh the guide after an export to pick up newer bonuses.`;
   $('sourceNote').innerHTML = `Built from your archive exports up to ${fmtDate(D.dataUntil)}. Stats as of ${fmtDate(D.stats.at)}. Odds use the same formula as the extension's badges: the wiki's base odds, the card's condition, your bonuses and your stats. It matched the game on 99% of past scouts; short buffs are left out, so a number can come out a little low, never high. Complications: ${scenarios.reduce((t, x) => t + x.n, 0)} resolved since August.`;
 }
 $('minPct').addEventListener('change', () => { store.set('minPct', Math.max(0, Math.min(95, Number($('minPct').value) || 0))); renderResult(); });

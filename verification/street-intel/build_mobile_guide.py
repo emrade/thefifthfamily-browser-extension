@@ -10,7 +10,10 @@ The page works out a card's odds before scouting with the same formula as
 - the player's own bonuses, replayed the way
   `src/background/features/streetIntel/playerMods.ts` keeps them: every
   scout updates rank/prestige/collection/recon and that card type's mastery,
-  every attempt's `rank` updates the rank bonus (2 x rank);
+  every attempt's `rank` updates the rank bonus (2 x rank), and every Street
+  Intel page updates rank/prestige/recon/mastery from the bonuses it shows
+  (Python twin of `src/shared/streetIntelPageBonuses.ts`; collection is only
+  ever from scouts);
 - the latest strength/defence/agility/dexterity from stats.php;
 - every resolved complication, paired with its attempt's scenario the same
   way as build_complication_seed.py (pre-Phase-One rows skipped).
@@ -39,6 +42,39 @@ CHOICES = ("fight", "run", "talk")
 BUTTON_RE = re.compile(
     r'siScout\((\d+),this\)"\s+data-title="([^"]*)"\s+data-desc="[^"]*"\s+data-approaches="([^"]*)"\s+data-modifier="([^"]*)"'
 )
+
+
+PAGE_CATEGORIES = ("Robbery", "Interception", "Extortion", "Exploitation", "Leverage")
+
+
+def _page_text(h):
+    h = re.sub(r"<(script|style)\b.*?</\1>", " ", h, flags=re.S | re.I)
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", h)))
+
+
+def page_bonuses(h):
+    """The bonuses the Street Intel page shows, or None: same rules as
+    parsePageBonuses in src/shared/streetIntelPageBonuses.ts."""
+    # The Active Bonuses row itself, not the page's CSS rule for it (which comes first).
+    m = re.search(r'class="[^"]*\bsi-bonuses\b', h)
+    if not m:
+        return None
+    i = m.start()
+    t = _page_text(h)
+    rank = re.search(r"\+([\d.]+)% rank bonus", t)
+    recon = re.search(r"\+([\d.]+)% recon\b", t)
+    if not (rank and recon):
+        return None
+    pills = _page_text(h[i:i + 6000])
+    prestige = re.search(r"\+([\d.]+)% Prestige(?! Loot)", pills)
+    mastery = {}
+    for c in PAGE_CATEGORIES:
+        m = re.search(r"\+([\d.]+)% " + c + r"\b", pills)
+        if m:
+            mastery[c] = float(m.group(1))
+    num = lambda s: int(float(s)) if float(s).is_integer() else float(s)
+    return {"rank": num(rank.group(1)), "recon": num(recon.group(1)), "prestige": num(prestige.group(1)) if prestige else None,
+            "mastery": {k: num(str(v)) for k, v in mastery.items()}}
 
 
 def norm(s):
@@ -81,6 +117,9 @@ def scan(path):
                 cards.append((int(m.group(1)), html.unescape(m.group(2)), approaches))
             if cards:
                 events.append((ts, "board", cards))
+            bonuses = page_bonuses(h)
+            if bonuses:
+                events.append((ts, "pagebonus", bonuses))
             continue
         if ep != "POST /actions/street_intel.php":
             continue
@@ -203,6 +242,17 @@ def main():
                 "scoutAt": ts,
                 "rankAt": ts,
             }
+        elif kind == "pagebonus":
+            # Needs a scout first (collection is only ever from scouts).
+            if mods:
+                mods["rank"] = data["rank"]
+                mods["recon"] = data["recon"]
+                if data["prestige"] is not None:
+                    mods["prestige"] = data["prestige"]
+                for c, v in data["mastery"].items():
+                    mods["mastery"][c] = [v, ts]
+                mods["rankAt"] = ts
+                mods["pageAt"] = ts
         elif kind == "attempt":
             _opp, rank, _scen = data
             last_attempt = ts
@@ -248,7 +298,8 @@ def main():
     print(f"titles whose approaches changed in the last 45 days: {len(changing)} {changing[:8]}", file=sys.stderr)
     print(f"bonuses: {json.dumps({k: v for k, v in mods.items() if k != 'mastery'})}", file=sys.stderr)
     print(f"mastery: {json.dumps(mods['mastery'])}", file=sys.stderr)
-    print(f"last scout {when(mods['scoutAt'])}, rank updated {when(mods['rankAt'])}, stats {when(stats[0])}: {stats[1]}", file=sys.stderr)
+    page_at = when(mods["pageAt"]) if mods.get("pageAt") else "never"
+    print(f"last scout {when(mods['scoutAt'])}, last Street Intel page {page_at}, rank updated {when(mods['rankAt'])}, stats {when(stats[0])}: {stats[1]}", file=sys.stderr)
     print(f"complications: {sum(c[1] for s in tally.values() for c in s.values())} across {len(tally)} scenarios", file=sys.stderr)
     print(f"data until {when(newest)} -> {out}", file=sys.stderr)
 

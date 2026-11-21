@@ -20,7 +20,7 @@ import { parseSharedCooldownSeconds, parseStreetIntelOpportunities, type StreetI
 import { DEFAULT_SHARED_MODS_UPPER_BOUND, computeEstimate, sumSharedModifiers, upperBoundEstimate, upperBoundSharedMods } from '@/shared/streetIntelEstimate';
 import { pickAvoidingBlocked } from '@/shared/streetIntelComplications';
 import { bestPredicted, predictCard, type PlayerIntelMods } from '@/shared/streetIntelPredict';
-import { recordAttempt, recordScout, rememberBoard } from './playerMods';
+import { recordAttempt, recordPageBonuses, recordScout, rememberBoard } from './playerMods';
 import { bumpComplicationTypeStats, recordComplicationOutcome } from './complicationTally';
 import type {
   ComplicationChoiceKey,
@@ -197,6 +197,8 @@ async function fetchPanel(): Promise<{ opportunities: StreetIntelOpportunity[]; 
   const text = await res.text();
   const opportunities = parseStreetIntelOpportunities(text);
   if (!opportunities) return null;
+  // Before this cycle predicts anything, so it uses the bonuses this page shows.
+  await recordPageBonuses(text, Date.now());
   return { opportunities, cooldownSeconds: parseSharedCooldownSeconds(text) };
 }
 

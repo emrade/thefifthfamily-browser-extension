@@ -1,14 +1,19 @@
 import { LOG_PREFIX } from '@/shared/log';
 import { storage } from '@/shared/storage';
 import type { RecordRequestInput } from '@/shared/requestLog/record';
+import { unwrapPanelEnvelope } from '@/shared/panelEnvelope';
+import { foldPageBonuses, parsePageBonuses } from '@/shared/streetIntelPageBonuses';
 import { catalogCard, foldAttemptRank, foldScoutMods } from '@/shared/streetIntelPredict';
 import { parseStreetIntelOpportunities } from './streetIntelPanelRegexParser';
 
 /**
  * Keeps `PlayerIntelMods` (the player's own Street Intel modifiers, for
- * pre-scout odds) current from every scout and attempt — the page's and the
- * auto runner's alike, via the request archive's capture point, plus the
- * runner's own calls directly (so it still works with archive capture off).
+ * pre-scout odds) current from every scout and attempt, and from the bonuses
+ * the Street Intel page itself shows (rank, prestige, recon, mastery; see
+ * `@/shared/streetIntelPageBonuses`), so they stay current when the runner
+ * goes days without scouting. Covers the page's and the auto runner's
+ * traffic alike, via the request archive's capture point, plus the runner's
+ * own calls directly (so it still works with archive capture off).
  *
  * A scout response doesn't name its card, and mastery is per category, so the
  * latest board's id → title is kept in memory to look the category up. A
@@ -19,8 +24,22 @@ import { parseStreetIntelOpportunities } from './streetIntelPanelRegexParser';
 const titleById = new Map<number, string>();
 let chain: Promise<void> = Promise.resolve();
 
-function enqueue(task: () => Promise<void>): void {
+function enqueue(task: () => Promise<void>): Promise<void> {
   chain = chain.then(task).catch((err) => console.error(LOG_PREFIX, 'street intel player mods update failed', err));
+  return chain;
+}
+
+/** The bonuses a Street Intel page response shows. Resolves once stored, so a
+ *  caller about to predict from them can wait for it. */
+export function recordPageBonuses(responseText: string, at: number): Promise<void> {
+  const html = unwrapPanelEnvelope(responseText)?.html;
+  const page = html ? parsePageBonuses(html) : null;
+  if (!page) return Promise.resolve();
+  return enqueue(async () => {
+    const prev = await storage.getStreetIntelPlayerMods();
+    const next = foldPageBonuses(prev, page, at);
+    if (next && next !== prev) await storage.setStreetIntelPlayerMods(next);
+  });
 }
 
 export function rememberBoard(opportunities: { id: number; title: string }[]): void {
@@ -74,6 +93,7 @@ export function observeStreetIntelPlayerMods(input: RecordRequestInput): void {
   if (input.method === 'GET' && url.searchParams.get('type') === 'street_intel') {
     const board = parseStreetIntelOpportunities(input.responseText);
     if (board) rememberBoard(board);
+    void recordPageBonuses(input.responseText, input.timestamp);
     return;
   }
   if (input.method !== 'POST' || !input.requestBody || !/action=(scout|attempt)\b/.test(input.requestBody)) return;
